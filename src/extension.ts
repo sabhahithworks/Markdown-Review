@@ -9,6 +9,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ReviewPanel } from './panel/ReviewPanel.js';
 import { REVIEW_VIEW_TYPE, isPanelState } from './panel/messages.js';
+import { ReviewStore } from './store/ReviewStore.js';
 
 /**
  * Phases 3–4 implement these. A declared-but-dead command is worse UX than an honest placeholder
@@ -52,8 +53,11 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 }
 
-export function deactivate(): void {
-  // Nothing to tear down: every disposable is registered on `context.subscriptions`.
+export function deactivate(): Thenable<void> {
+  // Panels and channels are all on `context.subscriptions`. Stores are not: they outlive their
+  // panels on purpose, and a debounced sidecar write may still be pending, so flushing here is the
+  // last chance to not lose a comment the user just typed.
+  return ReviewStore.disposeAll();
 }
 
 function placeholder(commandId: string): vscode.Disposable {

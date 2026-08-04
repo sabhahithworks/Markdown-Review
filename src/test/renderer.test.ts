@@ -24,6 +24,17 @@ function dataLines(html: string): number[] {
   return [...html.matchAll(/data-line="(\d+)"/g)].map((match) => Number(match[1]));
 }
 
+/**
+ * Every `[data-ap-start, data-ap-end]` pair in a rendered document, in document order. The two
+ * attributes are always written together and last, so they are always adjacent in the markup.
+ */
+function anchorSpans(html: string): [number, number][] {
+  return [...html.matchAll(/data-ap-start="(\d+)" data-ap-end="(\d+)"/g)].map((match) => [
+    Number(match[1]),
+    Number(match[2]),
+  ]);
+}
+
 /** The `data-line` of the first element matching `pattern`, which must capture the number. */
 function firstDataLine(html: string, pattern: RegExp): number {
   const match = pattern.exec(html);
@@ -56,7 +67,7 @@ describe('R1 — data-line points at real, on-disk line numbers', () => {
   });
 
   it('anchors a fence at its first content line, not the ``` marker', () => {
-    const line = firstDataLine(html, /<pre data-line="(\d+)"><code class="language-ts"/);
+    const line = firstDataLine(html, /<pre data-line="(\d+)"[^>]*><code class="language-ts"/);
     expect(KITCHEN_SINK_LINES[line]).toBe(
       'export function verify(token: string, keys: KeySet): Claims {',
     );
@@ -65,7 +76,7 @@ describe('R1 — data-line points at real, on-disk line numbers', () => {
   });
 
   it('anchors indented code at its own first line', () => {
-    const line = firstDataLine(html, /<pre data-line="(\d+)"><code>plain indented/);
+    const line = firstDataLine(html, /<pre data-line="(\d+)"[^>]*><code>plain indented/);
     expect(KITCHEN_SINK_LINES[line]).toBe('    plain indented block');
   });
 });
@@ -184,7 +195,7 @@ describe('R5 — fence escaping and shape', () => {
 
   it('puts data-line on <pre> and the language class on <code>', () => {
     const { html } = renderMarkdown('```ts\nconst x = 1;\n```\n');
-    expect(html).toMatch(/<pre data-line="1"><code class="language-ts">/);
+    expect(html).toMatch(/<pre data-line="1"[^>]*><code class="language-ts">/);
   });
 
   it('omits the class for an untagged fence', () => {
@@ -223,7 +234,7 @@ describe('R6 — the renderer instance does not change tokenization', () => {
       if (!under) continue;
 
       // Everything anchor space is derived from must be byte-identical. `attrs` is the only field
-      // allowed to differ, and only by `data-line` / `id`.
+      // allowed to differ, and only by `data-line` / `id` / the `data-ap-*` offset pair.
       expect({
         type: under.type,
         tag: under.tag,
@@ -252,7 +263,7 @@ describe('R6 — the renderer instance does not change tokenization', () => {
         ([name]) => !(base.attrs ?? []).some(([baseName]) => baseName === name),
       );
       for (const [name] of added) {
-        expect(['data-line', 'id']).toContain(name);
+        expect(['data-line', 'id', 'data-ap-start', 'data-ap-end']).toContain(name);
       }
     }
   });
@@ -278,6 +289,72 @@ describe('R7 — data-line covers every block in anchor space', () => {
       .filter((line) => !rendered.has(line));
 
     expect(missing).toEqual([]);
+  });
+});
+
+describe('R13 — data-ap-* carries every anchor-space offset into the DOM', () => {
+  /**
+   * The Phase 3 replacement for "the webview rebuilds anchor space from the DOM" (Plan 03 §9 C1).
+   * The webview reads these attributes instead of re-deriving block boundaries, so if the stamped
+   * pairs stop matching `renderPlainText`'s spans exactly, every anchor created against a stamped
+   * block lands at the wrong offset. Fix the renderer; do not relax the assertion.
+   */
+  it.each([
+    ['the kitchen-sink fixture', KITCHEN_SINK],
+    ['a document with no front matter', '# A\n\ntext\n\n```js\ncode\n```\n\n- a\n- b\n'],
+    ['nested lists and tables', '| a | b |\n|---|---|\n| 1 | 2 |\n\n- x\n  - y\n    - z\n'],
+    ['consecutive fences', '```js\na\n```\n\n```py\nb\n```\n\n```\nc\n```\n'],
+    ['images, whose alt text is in anchor space but not in the DOM', '![a diagram](d.png) after\n'],
+  ])('stamps exactly the BlockSpan offsets of %s, in document order', (_label, source) => {
+    const doc = renderPlainText(source);
+    const stamped = anchorSpans(renderMarkdown(source).html);
+
+    expect(stamped).toEqual(doc.blocks.map((block) => [block.start, block.end]));
+  });
+
+  it('puts a tight list item’s offsets on its <li>, not its hidden <p>', () => {
+    // The carrier walk-back exists for exactly this: `renderToken` emits nothing for a hidden
+    // token, so offsets stamped on a tight `paragraph_open` would never reach the DOM.
+    const { html } = renderMarkdown('- alpha\n- beta\n');
+    const doc = renderPlainText('- alpha\n- beta\n');
+
+    expect(anchorSpans(html)).toEqual(doc.blocks.map((block) => [block.start, block.end]));
+    expect(/<li[^>]*data-ap-start=/.test(html)).toBe(true);
+  });
+
+  it('survives the hand-built fence rule', () => {
+    // `renderer.rules.fence` builds its markup by hand, so it forwards attributes explicitly and is
+    // the one place a new attribute can silently go missing.
+    const source = '```js\nconst x = 1;\n```\n';
+    const doc = renderPlainText(source);
+    const { html } = renderMarkdown(source);
+
+    expect(anchorSpans(html)).toEqual(doc.blocks.map((block) => [block.start, block.end]));
+    expect(html).toMatch(/<pre[^>]*data-ap-start="\d+" data-ap-end="\d+"/);
+  });
+
+  it('leaves front matter unstamped', () => {
+    const { frontMatterHtml } = renderMarkdown(KITCHEN_SINK);
+    expect(frontMatterHtml).not.toContain('data-ap-start');
+  });
+});
+
+describe('R14 — every span gets its own carrier element', () => {
+  it('stamps as many elements as there are blocks', () => {
+    // `stampAnchorSpace` skips a carrier that is already stamped rather than overwriting it, so a
+    // collision shows up here as a shortfall instead of as a wrong offset in production.
+    for (const source of [
+      KITCHEN_SINK,
+      '- tight\n- list\n',
+      '- loose\n\n- list\n',
+      '> quoted\n>\n> > deeper\n',
+      '| a | b |\n|---|---|\n| 1 | 2 |\n',
+      '- outer\n  - inner\n    - deepest\n',
+    ]) {
+      expect(anchorSpans(renderMarkdown(source).html)).toHaveLength(
+        renderPlainText(source).blocks.length,
+      );
+    }
   });
 });
 

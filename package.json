@@ -84,7 +84,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit && tsc -p tsconfig.webview-test.json --noEmit",
     "lint": "eslint .",
     "lint:css": "node scripts/check-css-colors.mjs",
     "build": "node esbuild.mjs && npm run lint:css",
@@ -96,16 +96,19 @@
     "dompurify": "^3.4.13",
     "highlight.js": "^11.11.1",
     "markdown-it": "^15.0.0",
-    "markdown-it-task-lists": "^2.1.1"
+    "markdown-it-task-lists": "^2.1.1",
+    "nanoid": "^3.3.17"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/diff-match-patch": "^1.0.36",
+    "@types/jsdom": "^28.0.3",
     "@types/node": "^22.0.0",
     "@types/vscode": "~1.90.0",
     "@vscode/test-electron": "^3.1.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.8.0",
+    "jsdom": "^29.1.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.66.0",
     "vitest": "^4.1.10"

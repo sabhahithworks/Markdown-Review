@@ -50,12 +50,34 @@ interface Frame {
 
 const EMPTY_MAP: readonly [number, number] = [0, 0];
 
-export function renderPlainText(markdown: string): PlainTextDoc {
-  const { body, lineOffset } = splitFrontMatter(markdown.normalize('NFC'));
-  const tokens = md.parse(body, {});
+/**
+ * The result of {@link walkSpans}: anchor space, plus the provenance needed to tie each block back
+ * to the token that produced it.
+ */
+export interface SpanWalk {
+  text: string;
+  blocks: BlockSpan[];
+  /**
+   * Parallel to `blocks`: the index in `tokens` of the token each block was emitted from (an
+   * `inline`, `fence` or `code_block`). `renderer.ts` uses it to find the DOM element that will
+   * carry the block's offsets; `renderPlainText` ignores it.
+   */
+  tokenIndex: number[];
+}
 
+/**
+ * The normative anchor-space walk, over an already-parsed token stream.
+ *
+ * Extracted from `renderPlainText` so `renderer.ts` can stamp the *same* offsets onto the rendered
+ * HTML by calling this function on its own token stream. That is the whole point: block boundaries
+ * in the DOM and in anchor space cannot disagree, because there is only one walk. Reimplementing
+ * these rules against the DOM — the obvious alternative — diverges on image alt text, table-cell
+ * joining and fenced code.
+ */
+export function walkSpans(tokens: readonly MarkdownIt.Token[], lineOffset: number): SpanWalk {
   const pieces: string[] = [];
   const blocks: BlockSpan[] = [];
+  const tokenIndex: number[] = [];
   let cursor = 0;
 
   const frames: Frame[] = [];
@@ -70,7 +92,13 @@ export function renderPlainText(markdown: string): PlainTextDoc {
   function emit(
     content: string,
     separator: string,
-    meta: { kind: BlockKind; lineStart: number; lineEnd: number; headingLevel?: number },
+    meta: {
+      kind: BlockKind;
+      lineStart: number;
+      lineEnd: number;
+      headingLevel?: number;
+      sourceToken: number;
+    },
   ): boolean {
     if (content.length === 0) return false;
 
@@ -93,10 +121,14 @@ export function renderPlainText(markdown: string): PlainTextDoc {
     };
     if (meta.headingLevel !== undefined) span.headingLevel = meta.headingLevel;
     blocks.push(span);
+    tokenIndex.push(meta.sourceToken);
     return true;
   }
 
-  for (const token of tokens) {
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (!token) continue;
+
     if (token.nesting === 1) {
       // Push a frame for *every* opening token, inheriting the enclosing map when the token has
       // none. `th_open`/`td_open` carry no map — the line info lives on the enclosing `tr_open` —
@@ -131,12 +163,18 @@ export function renderPlainText(markdown: string): PlainTextDoc {
         const isCell = frame?.isCell ?? false;
         const separator = isCell && cellsEmittedInRow > 0 ? ' ' : '\n';
 
-        const meta: { kind: BlockKind; lineStart: number; lineEnd: number; headingLevel?: number } =
-          {
-            kind: frame?.kind ?? 'text',
-            lineStart: map[0],
-            lineEnd: map[1],
-          };
+        const meta: {
+          kind: BlockKind;
+          lineStart: number;
+          lineEnd: number;
+          headingLevel?: number;
+          sourceToken: number;
+        } = {
+          kind: frame?.kind ?? 'text',
+          lineStart: map[0],
+          lineEnd: map[1],
+          sourceToken: index,
+        };
         if (frame?.headingLevel !== undefined) meta.headingLevel = frame.headingLevel;
 
         if (emit(content, separator, meta) && isCell) cellsEmittedInRow += 1;
@@ -152,6 +190,7 @@ export function renderPlainText(markdown: string): PlainTextDoc {
           lineStart,
           // exclusive end; content spans `countLines + 1` lines
           lineEnd: lineStart + countLines(content) + 1,
+          sourceToken: index,
         });
         break;
       }
@@ -164,6 +203,7 @@ export function renderPlainText(markdown: string): PlainTextDoc {
           kind: 'code',
           lineStart,
           lineEnd: token.map?.[1] ?? lineStart + countLines(content),
+          sourceToken: index,
         });
         break;
       }
@@ -174,7 +214,13 @@ export function renderPlainText(markdown: string): PlainTextDoc {
     }
   }
 
-  return { text: pieces.join(''), blocks, frontMatterLineOffset: lineOffset };
+  return { text: pieces.join(''), blocks, tokenIndex };
+}
+
+export function renderPlainText(markdown: string): PlainTextDoc {
+  const { body, lineOffset } = splitFrontMatter(markdown.normalize('NFC'));
+  const { text, blocks } = walkSpans(md.parse(body, {}), lineOffset);
+  return { text, blocks, frontMatterLineOffset: lineOffset };
 }
 
 /**

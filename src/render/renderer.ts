@@ -22,11 +22,20 @@
  *
  * `src/test/renderer.test.ts` R6 enforces (2) and R7 enforces (3). If R7 fails, the DOM and anchor
  * space have desynced and Phase 3's `hintLine` lookups are silently wrong — do not weaken it.
+ *
+ * ## Anchor-space offsets (Phase 3)
+ *
+ * Beyond `data-line`, every block element carries `data-ap-start` / `data-ap-end`: its exact
+ * offsets into `renderPlainText(source).text`. They come from `walkSpans` — the *same* function
+ * `renderPlainText` uses, run on this instance's token stream — so the DOM and anchor space cannot
+ * disagree about block boundaries. See `stampAnchorSpace` below, and Plan 03 §9 C1 for why the
+ * webview no longer re-derives any of this from the DOM. R13 and R14 enforce it.
  */
 
 import type MarkdownIt from 'markdown-it';
 import { splitFrontMatter } from './frontMatter.js';
 import { createMarkdownIt } from './markdownIt.js';
+import { walkSpans } from './plaintext.js';
 
 /**
  * Maps a markdown image `src` to a webview-safe URI, or returns `null` to leave the original
@@ -40,7 +49,10 @@ export interface RenderOptions {
 }
 
 export interface RenderedDoc {
-  /** Body HTML. Block elements carry `data-line` in on-disk, 0-based line numbers. */
+  /**
+   * Body HTML. Block elements carry `data-line` in on-disk, 0-based line numbers, and
+   * `data-ap-start` / `data-ap-end` in anchor-space offsets.
+   */
   html: string;
   /** The collapsed front-matter block. Absent when the document had no front matter. */
   frontMatterHtml?: string;
@@ -110,6 +122,8 @@ export function createRenderMarkdownIt(): MarkdownIt.MarkdownIt {
         token.attrSet('id', uniqueSlug(inlineTextOf(state.tokens[i + 1]), env.slugs));
       }
     }
+
+    stampAnchorSpace(state.tokens, env.lineOffset);
   });
 
   /**
@@ -128,12 +142,18 @@ export function createRenderMarkdownIt(): MarkdownIt.MarkdownIt {
     // string like `"><script` has no business reaching a class attribute at all.
     const lang = /^[\w+#-]{1,24}$/.test(info) ? info : '';
 
-    // Set by the core rule above as a decimal string; `attrGet` is typed `string | number | null`.
-    const line = token.attrGet('data-line');
-    const lineAttr = line === null ? '' : ` data-line="${escapeHtml(String(line))}"`;
+    // Set by the core rule above as decimal strings; `attrGet` is typed `string | number | null`.
+    // This rule builds its markup by hand, so every attribute the core rule sets has to be
+    // forwarded explicitly — a fence that loses `data-ap-*` is a fence the webview cannot anchor in.
+    const attrs = ['data-line', 'data-ap-start', 'data-ap-end']
+      .map((name) => {
+        const value = token.attrGet(name);
+        return value === null ? '' : ` ${name}="${escapeHtml(String(value))}"`;
+      })
+      .join('');
     const classAttr = lang ? ` class="${escapeHtml(String(md.options.langPrefix) + lang)}"` : '';
 
-    return `<pre${lineAttr}><code${classAttr}>${escapeHtml(token.content)}</code></pre>\n`;
+    return `<pre${attrs}><code${classAttr}>${escapeHtml(token.content)}</code></pre>\n`;
   };
 
   const baseImage = md.renderer.rules.image;
@@ -209,6 +229,61 @@ function renderFrontMatter(frontMatter: string): string {
     `<pre><code>${escapeHtml(frontMatter)}</code></pre>` +
     '</details>'
   );
+}
+
+/**
+ * Stamps each anchor-space `BlockSpan`'s offsets onto the DOM element that will render it, as
+ * `data-ap-start` / `data-ap-end`.
+ *
+ * This is what lets the webview map a DOM selection into anchor space without reimplementing the
+ * normalization rules. It calls the very same `walkSpans` that `renderPlainText` calls, on a token
+ * stream the consistency invariant above guarantees is identical — so block boundaries in the DOM
+ * and in anchor space cannot drift apart. A DOM-side reimplementation would diverge on at least
+ * image alt text, table-cell joining and fenced code.
+ *
+ * The webview must treat any element carrying these attributes as a *leaf* for the purposes of the
+ * walk: a tight list item's `<li>` carries its own text's span while nested `<li>`s carry theirs,
+ * so descending past a stamped descendant would double-count.
+ */
+function stampAnchorSpace(tokens: MarkdownIt.Token[], lineOffset: number): void {
+  const { blocks, tokenIndex } = walkSpans(tokens, lineOffset);
+
+  for (let i = 0; i < blocks.length; i++) {
+    const span = blocks[i];
+    const source = tokenIndex[i];
+    if (!span || source === undefined) continue;
+
+    const carrier = carrierFor(tokens, source);
+    // First span wins. Two spans sharing a carrier would mean the offsets are ambiguous, so the
+    // honest move is to leave the second unstamped: the webview then reports `offset: -1` and the
+    // host falls back to `hintLine`, rather than anchoring against a wrong offset. R14 asserts this
+    // does not happen for real documents.
+    if (!carrier || carrier.attrGet('data-ap-start') !== null) continue;
+
+    carrier.attrSet('data-ap-start', String(span.start));
+    carrier.attrSet('data-ap-end', String(span.end));
+  }
+}
+
+/**
+ * The token whose rendered element should carry a span's offsets.
+ *
+ * `fence` and `code_block` render their own element, so they carry it themselves. An `inline`
+ * token is unwrapped by `renderInline` and renders no element of its own, so the offsets go on its
+ * enclosing open token — skipping `hidden` ones, because markdown-it hides the `paragraph_open` of
+ * a *tight* list item and `renderToken` emits nothing for a hidden token. That walk-back is what
+ * puts a tight item's offsets on its `<li>` and a loose item's on its `<p>`.
+ */
+function carrierFor(tokens: MarkdownIt.Token[], index: number): MarkdownIt.Token | undefined {
+  const token = tokens[index];
+  if (!token) return undefined;
+  if (token.type !== 'inline') return token;
+
+  for (let i = index - 1; i >= 0; i--) {
+    const candidate = tokens[i];
+    if (candidate && candidate.nesting === 1 && !candidate.hidden) return candidate;
+  }
+  return undefined;
 }
 
 /** Concatenates an inline token's rendered text — the same idea as `plaintext.ts`'s `inlineText`. */

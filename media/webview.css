@@ -352,3 +352,295 @@ li:has(> input[type='checkbox']) {
 .hljs-strong {
   font-weight: 600;
 }
+
+/* ==========================================================================
+ * Commenting (Plan 03 §5; PRD §6)
+ *
+ * Same rule as everything above: colour comes from `--vscode-*`, layout is plain numbers.
+ * `check-css-colors.mjs` fails the build on a literal, so opacity and border-style do the work a
+ * hardcoded tint would otherwise do.
+ * ========================================================================== */
+
+:root {
+  --mr-gutter-width: 280px;
+  --mr-gutter-gap: 24px;
+}
+
+/* The positioning context for the highlight overlay and the card gutter. */
+body {
+  position: relative;
+}
+
+/* Room for the margin column. `.mr-narrow` reclaims it below. */
+body:not(.mr-narrow) {
+  padding-right: calc(var(--mr-gutter-width) + var(--mr-gutter-gap) * 2);
+}
+
+/* ---------- Anchor highlights ---------- */
+
+/*
+ * An overlay of positioned rectangles rather than wrappers around the text: wrapping would split
+ * the text nodes that anchor offsets are measured against.
+ */
+#highlight-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.mr-highlight {
+  position: absolute;
+  border-radius: 2px;
+  background-color: var(--vscode-editor-selectionHighlightBackground);
+  transition: background-color 120ms ease-in-out;
+}
+
+.mr-highlight.mr-highlight-active {
+  background-color: var(--vscode-editor-findMatchHighlightBackground);
+}
+
+/*
+ * Confidence below the "position uncertain" threshold (PRD §5): drawn as a dashed underline rather
+ * than a confident fill, so the UI never asserts a position it does not have.
+ */
+.mr-highlight-uncertain {
+  background-color: transparent;
+  border-bottom: 1px dashed var(--vscode-editorWarning-foreground);
+}
+
+/* ---------- Gutter cards ---------- */
+
+#gutter {
+  position: absolute;
+  top: 0;
+  right: var(--mr-gutter-gap);
+  width: var(--mr-gutter-width);
+  height: 100%;
+}
+
+.mr-card {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-editorWidget-background);
+  font-size: calc(var(--vscode-font-size) * 0.95);
+  transition: border-color 120ms ease-in-out;
+}
+
+.mr-card:hover,
+.mr-card:focus-visible,
+.mr-card.mr-card-active {
+  border-color: var(--vscode-focusBorder);
+  outline: none;
+}
+
+.mr-card-orphaned {
+  border-style: dashed;
+}
+
+.mr-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.mr-card-author {
+  font-weight: 600;
+}
+
+.mr-card-time,
+.mr-popover-author,
+.mr-popover-hint {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+}
+
+.mr-card-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mr-badge {
+  padding: 0 6px;
+  border-radius: 8px;
+  background-color: var(--vscode-textBlockQuote-background);
+  color: var(--vscode-editorWarning-foreground);
+  font-size: 0.8em;
+}
+
+.mr-card-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.mr-card-action {
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--mr-radius);
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  font-family: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.mr-card-action:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.mr-card-action:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.mr-card-editor,
+.mr-popover-input {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-family: inherit;
+  font-size: inherit;
+  resize: vertical;
+}
+
+.mr-card-editor:focus,
+.mr-popover-input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+/* Terminal state, collapsed out of the way at the bottom of the column (PRD §6). */
+.mr-resolved-group {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+}
+
+.mr-resolved-group > summary {
+  padding: 6px 0;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  user-select: none;
+}
+
+.mr-resolved-group .mr-card {
+  position: static;
+  margin-bottom: 8px;
+  opacity: 0.75;
+}
+
+/* ---------- Selection button and popover ---------- */
+
+.mr-selection-button,
+.mr-popover {
+  position: fixed;
+  z-index: 10;
+}
+
+.mr-selection-button {
+  padding: 4px 10px;
+  border: 1px solid var(--vscode-button-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font-family: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.mr-selection-button:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.mr-selection-button:focus-visible,
+.mr-marker:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.mr-popover {
+  width: var(--mr-gutter-width);
+  padding: 10px 12px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-editorWidget-background);
+}
+
+.mr-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.mr-button-primary,
+.mr-button-secondary {
+  padding: 4px 10px;
+  border-radius: var(--mr-radius);
+  font-family: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.mr-button-primary {
+  border: 1px solid var(--vscode-button-border);
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.mr-button-primary:hover:not(:disabled) {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.mr-button-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mr-button-secondary {
+  border: 1px solid var(--vscode-panel-border);
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+.mr-button-secondary:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* ---------- Narrow panes (< 700px): the margin collapses to inline markers (PRD §6) ---------- */
+
+.mr-narrow #gutter {
+  position: static;
+  width: auto;
+  height: auto;
+}
+
+.mr-narrow .mr-card {
+  position: static;
+  width: auto;
+  margin: 8px 0;
+}
+
+.mr-marker {
+  position: absolute;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  font-size: 0.8em;
+  line-height: 1;
+  pointer-events: auto;
+  cursor: pointer;
+}

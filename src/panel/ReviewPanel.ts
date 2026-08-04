@@ -6,11 +6,18 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import * as os from 'node:os';
 import * as path from 'node:path';
+import { nanoid } from 'nanoid';
 import * as vscode from 'vscode';
+import { createAnchor } from '../anchor/create.js';
+import { createLocator } from '../anchor/locate.js';
+import type { Comment, Located, PlainTextDoc } from '../anchor/types.js';
+import { MAX_ANCHOR_LENGTH, MIN_ANCHOR_LENGTH } from '../anchor/types.js';
 import { renderPlainText } from '../render/plaintext.js';
 import type { ImageResolver } from '../render/renderer.js';
 import { renderMarkdown } from '../render/renderer.js';
+import { ReviewStore } from '../store/ReviewStore.js';
 import type { HostMessage } from './messages.js';
 import { REVIEW_VIEW_TYPE, isWebviewMessage } from './messages.js';
 
@@ -26,6 +33,25 @@ const REFRESH_DEBOUNCE_MS = 400;
 
 const ALLOWED_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 
+/**
+ * The name attached to new comments: the `markdownReview.author` setting, else the system username
+ * (PRD §4). `os.userInfo()` throws when the uid has no passwd entry — some containers — so the
+ * fallback keeps comment creation working rather than failing on a cosmetic field.
+ */
+function authorName(): string {
+  const configured = vscode.workspace
+    .getConfiguration('markdownReview')
+    .get<string>('author', '')
+    .trim();
+  if (configured.length > 0) return configured;
+
+  try {
+    return os.userInfo().username;
+  } catch {
+    return 'unknown';
+  }
+}
+
 export class ReviewPanel {
   private static readonly panels = new Map<string, ReviewPanel>();
 
@@ -38,6 +64,16 @@ export class ReviewPanel {
   private debounce: ReturnType<typeof setTimeout> | undefined;
   /** Set by `renderAnyway`; in-memory only, so a reload re-arms the size guard. */
   private forceRender = false;
+
+  /** Comments for this file. Shared with every other consumer of the same target (PRD §11). */
+  private readonly store: ReviewStore;
+
+  /**
+   * Anchor space for the content currently in the webview. Every anchor this panel creates or
+   * locates is expressed against *this* document, so it is refreshed in lock-step with `setContent`
+   * and is `undefined` only before the first successful render.
+   */
+  private doc: PlainTextDoc | undefined;
 
   static createOrShow(
     context: vscode.ExtensionContext,
@@ -105,6 +141,11 @@ export class ReviewPanel {
   ) {
     ReviewPanel.panels.set(target.toString(), this);
 
+    this.store = ReviewStore.for(context, target, output);
+    // Every state change round-trips through the store, including this panel's own edits, so there
+    // is exactly one path from data to view.
+    this.store.onDidChange(() => this.postReviewState(), null, this.disposables);
+
     panel.iconPath = {
       light: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-light.svg'),
       dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-dark.svg'),
@@ -121,7 +162,9 @@ export class ReviewPanel {
         switch (raw.type) {
           case 'ready':
             this.ready = true;
-            this.post({ type: 'init', targetPath: this.target.fsPath });
+            // `targetPath` here is the absolute path the serializer needs to reopen the file — not
+            // `ReviewFile.targetPath`, which is workspace-relative (PRD §4). Two different jobs.
+            this.post({ type: 'init', targetPath: this.target.fsPath, author: authorName() });
             void this.refresh();
             break;
           case 'renderAnyway':
@@ -133,6 +176,19 @@ export class ReviewPanel {
             break;
           case 'error':
             this.output.appendLine(`[webview] ${raw.message}`);
+            break;
+          case 'addComment':
+            void this.addComment(raw.selectedText, raw.offset, raw.hintLine, raw.body);
+            break;
+          case 'editComment':
+            this.store.updateCommentBody(raw.id, raw.body.trim());
+            break;
+          case 'deleteComment':
+            // A user action, so permitted — only *automatic* deletion is forbidden (PRD §4).
+            this.store.deleteComment(raw.id);
+            break;
+          case 'resolveComment':
+            this.store.setStatus(raw.id, 'resolved');
             break;
         }
       },
@@ -157,6 +213,9 @@ export class ReviewPanel {
     this.disposed = true;
 
     if (this.debounce !== undefined) clearTimeout(this.debounce);
+    // Flush, don't dispose: the store outlives this panel and may still be held by the command
+    // layer or a panel in another column. `ReviewStore.disposeAll()` on deactivate owns teardown.
+    void this.store.flush();
     ReviewPanel.panels.delete(this.target.toString());
 
     for (const disposable of this.disposables.splice(0)) {
@@ -214,10 +273,85 @@ export class ReviewPanel {
       );
     }
 
+    this.doc = plain;
+
     const message: HostMessage = rendered.frontMatterHtml
       ? { type: 'setContent', html: rendered.html, frontMatterHtml: rendered.frontMatterHtml }
       : { type: 'setContent', html: rendered.html };
     this.post(message);
+
+    // Content and state go out together: posting state against the *previous* content would flash
+    // highlights at stale positions.
+    await this.store.ensureLoaded();
+    if (this.disposed || generation !== this.renderGeneration) return;
+    this.postReviewState();
+  }
+
+  /**
+   * Sends the comments and where each one currently sits.
+   *
+   * `located` is computed here rather than in the webview because the host already holds the
+   * `PlainTextDoc` — and keeping the confidence cascade host-side keeps `diff-match-patch` out of
+   * the webview bundle (Plan 03 §9 C2). One locator is built per post and reused across comments,
+   * as `createLocator`'s contract intends.
+   */
+  private postReviewState(): void {
+    const review = this.store.getState();
+    const located: Record<string, Located | null> = {};
+
+    if (this.doc) {
+      const locate = createLocator(this.doc);
+      for (const comment of review.comments) located[comment.id] = locate(comment.anchor);
+    } else {
+      // Nothing rendered yet; the cards still render, without highlights.
+      for (const comment of review.comments) located[comment.id] = null;
+    }
+
+    this.post({ type: 'reviewState', review, located });
+  }
+
+  /**
+   * Turns a selection from the webview into a persisted comment (Plan 03 §4).
+   *
+   * `offset` already arrives in anchor space — the webview reads the enclosing block's
+   * `data-ap-start` and adds the intra-block offset — with `-1` as the "could not map" sentinel
+   * that `createAnchor` recovers from using `hintLine`.
+   */
+  private async addComment(
+    selectedText: string,
+    offset: number,
+    hintLine: number,
+    body: string,
+  ): Promise<void> {
+    const doc = this.doc;
+    if (!doc) return;
+
+    const result = createAnchor({ selectedText, offset, doc, hintLine });
+    if (!result.ok) {
+      // The pure layer returns a reason; the wording is the extension layer's job (Plan 01 §4).
+      void vscode.window.showWarningMessage(
+        result.reason === 'too-short'
+          ? `Select at least ${String(MIN_ANCHOR_LENGTH)} characters`
+          : `Selection too long to anchor — select under ${String(MAX_ANCHOR_LENGTH)} characters`,
+      );
+      return;
+    }
+
+    const text = body.trim();
+    if (text.length === 0) return; // the popover disables submit on empty; belt and braces
+
+    await this.store.ensureLoaded();
+    if (this.disposed) return;
+
+    const comment: Comment = {
+      id: nanoid(8),
+      body: text,
+      author: authorName(),
+      createdAt: new Date().toISOString(),
+      status: 'open',
+      anchor: result.anchor,
+    };
+    this.store.addComment(comment);
   }
 
   /** Returns the document text, or `undefined` when the size guard fired and reported it. */
@@ -342,6 +476,10 @@ export class ReviewPanel {
 <body>
   <div id="front-matter-root"></div>
   <main id="content"></main>
+  <!-- Highlights are absolutely-positioned rectangles over the content, never wrappers around it:
+       wrapping would split the text nodes anchor offsets are measured against. -->
+  <div id="highlight-overlay" aria-hidden="true"></div>
+  <aside id="gutter" aria-label="Comments"></aside>
   <div id="notice" hidden></div>
   <script nonce="${nonce}" src="${scriptUri.toString()}"></script>
 </body>

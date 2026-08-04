@@ -1,0 +1,15 @@
+{
+  // The webview test suite is the one place the two worlds meet: it drives DOM code from
+  // `media/src` while importing the host's `render/` modules to assert the two agree about anchor
+  // space. So it needs the DOM lib *and* node types, which is exactly the combination
+  // `tsconfig.webview.json` refuses — hence a third project rather than relaxing that one.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2022", "dom", "dom.iterable"]
+  },
+  "exclude": [],
+  // Only the test entry points are listed; TypeScript follows the imports from there into
+  // `media/src` and `src/render`. `src/types` carries an ambient declaration, which is never
+  // imported and so has to be named explicitly.
+  "include": ["media/test", "src/types"]
+}

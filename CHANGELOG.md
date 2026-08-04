@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Phase 3 — commenting: select rendered text, leave a comment, and have it persist. Selections are
+  captured in anchor space (`media/src/anchorSpace.ts`), turned into durable anchors host-side, and
+  stored in a human-readable, hand-editable sidecar at `.reviews/<flattened-path>.json`
+  (`src/store/`). Comments render as gutter cards aligned to their anchors, with the anchored span
+  highlighted, edit / delete / resolve, a collapsed group for resolved comments, and a collapse to
+  inline markers below 700 px. Every comment created in this phase is `open`; status inference and
+  prompts arrive with Phase 4.
+  - Block elements now carry `data-ap-start` / `data-ap-end`, their exact offsets into the
+    normalized plain text. Both the HTML and the plain text are produced by one shared token walk
+    (`walkSpans`), so the DOM and anchor space cannot disagree about where a block begins — see the
+    `docs/plans/03-commenting.md` §9 note below.
+  - `nanoid` (v3, for CommonJS) is the comment-id source, as specified by PRD §4. `jsdom` is added
+    as a devDependency for the new webview test project; nothing extra ships in the `.vsix`.
 - Phase 2 — read-only review pane: extension manifest and a two-bundle esbuild pipeline,
   `markdownReview.open` opening a themed, CSP-locked webview beside the editor, `data-line`
   injection and front-matter rendering (`src/render/renderer.ts`), the extension⇄webview message
@@ -26,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `docs/plans/03-commenting.md` §9 records the corrections Phase 3 applied to its own plan. The
+  release-blocking one: the webview no longer rebuilds anchor space by walking the DOM. That design
+  would have diverged from the host on image alt text, table-cell joining and fenced code — the
+  plan itself named it the design's biggest silent-corruption risk — so offsets are now computed
+  once, host-side, and stamped onto the rendered elements. `locate()` is correspondingly *not*
+  bundled into the webview, keeping `diff-match-patch` out of that payload.
 - `docs/plans/02-preview-pane.md` §10 records the corrections Phase 2 applied to its own plan. The
   release-blocking one: a fenced block's `data-line` must be `token.map[0] + 1`, matching the first
   content line `plaintext.ts` anchors its `BlockSpan` to — as originally specified it pointed at the

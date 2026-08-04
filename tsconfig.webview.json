@@ -17,5 +17,8 @@
   // `exclude` is inherited too, and the base excludes `media` — clear it or this project has no
   // inputs at all.
   "exclude": [],
+  // Deliberately *not* including `media/test`: those tests import the host renderer to assert the
+  // two agree, which would drag `src/render` into this `types: []` project and defeat the very
+  // guarantee it exists to enforce. They get their own project — `tsconfig.webview-test.json`.
   "include": ["media/src", "src/panel/messages.ts"]
 }

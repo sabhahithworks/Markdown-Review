@@ -14,6 +14,12 @@ describe('isWebviewMessage', () => {
     { type: 'openExternal', url: 'https://example.com' },
     { type: 'openExternal', url: '' },
     { type: 'error', message: 'boom' },
+    { type: 'addComment', selectedText: 'hello', offset: 12, hintLine: 3, body: 'fix this' },
+    // `-1` is the documented "webview could not map the selection" sentinel (Plan 03 §2).
+    { type: 'addComment', selectedText: 'hello', offset: -1, hintLine: 3, body: '' },
+    { type: 'editComment', id: 'abc12345', body: 'reworded' },
+    { type: 'deleteComment', id: 'abc12345' },
+    { type: 'resolveComment', id: 'abc12345' },
   ];
 
   it.each(valid.map((message) => [JSON.stringify(message), message] as const))(
@@ -37,6 +43,33 @@ describe('isWebviewMessage', () => {
     ['error without message', { type: 'error' }],
     ['error with a non-string message', { type: 'error', message: { toString: 'no' } }],
     ['a host message coming back the wrong way', { type: 'setContent', html: '<p>x</p>' }],
+    ['addComment without a body', { type: 'addComment', selectedText: 'a', offset: 1, hintLine: 1 }],
+    [
+      'addComment with a string offset',
+      { type: 'addComment', selectedText: 'a', offset: '1', hintLine: 1, body: 'b' },
+    ],
+    [
+      'addComment with a NaN offset',
+      { type: 'addComment', selectedText: 'a', offset: Number.NaN, hintLine: 1, body: 'b' },
+    ],
+    [
+      'addComment with an Infinity hintLine',
+      {
+        type: 'addComment',
+        selectedText: 'a',
+        offset: 1,
+        hintLine: Number.POSITIVE_INFINITY,
+        body: 'b',
+      },
+    ],
+    [
+      'addComment with a non-string selectedText',
+      { type: 'addComment', selectedText: null, offset: 1, hintLine: 1, body: 'b' },
+    ],
+    ['editComment without a body', { type: 'editComment', id: 'a' }],
+    ['editComment with a numeric id', { type: 'editComment', id: 7, body: 'b' }],
+    ['deleteComment without an id', { type: 'deleteComment' }],
+    ['resolveComment with a null id', { type: 'resolveComment', id: null }],
   ];
 
   it.each(invalid)('rejects %s', (_label, value) => {
@@ -61,6 +94,9 @@ describe('isPanelState', () => {
     { targetPath: '/a/b.md' },
     { targetPath: '/a/b.md', scrollLine: 0 },
     { targetPath: '/a/b.md', scrollLine: 120 },
+    { targetPath: '/a/b.md', filter: [] },
+    { targetPath: '/a/b.md', filter: ['open', 'orphaned'] },
+    { targetPath: '/a/b.md', scrollLine: 12, filter: ['resolved'] },
   ];
 
   it.each(valid.map((state) => [JSON.stringify(state), state] as const))(
@@ -79,6 +115,9 @@ describe('isPanelState', () => {
     ['a non-number scrollLine', { targetPath: '/a/b.md', scrollLine: '12' }],
     ['a null scrollLine', { targetPath: '/a/b.md', scrollLine: null }],
     ['a string', '/a/b.md'],
+    ['a non-array filter', { targetPath: '/a/b.md', filter: 'open' }],
+    ['a filter holding an unknown status', { targetPath: '/a/b.md', filter: ['open', 'wontfix'] }],
+    ['a filter holding a non-string', { targetPath: '/a/b.md', filter: [1] }],
   ];
 
   it.each(invalid)('rejects %s', (_label, value) => {

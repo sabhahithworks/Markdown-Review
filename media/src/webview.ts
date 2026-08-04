@@ -26,6 +26,10 @@ import typescript from 'highlight.js/lib/languages/typescript';
 import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
 import type { HostMessage, PanelState, WebviewMessage } from '../../src/panel/messages.js';
+import { resetBlockMaps } from './anchorSpace.js';
+import type { CommentsView } from './comments.js';
+import { initComments } from './comments.js';
+import { initSelection } from './selection.js';
 
 /**
  * Declared locally rather than pulling in `@types/vscode-webview`: six lines against a dependency,
@@ -67,6 +71,11 @@ for (const [name, language] of Object.entries(LANGUAGES)) {
 const contentRoot = requireElement('content');
 const frontMatterRoot = requireElement('front-matter-root');
 const noticeRoot = requireElement('notice');
+const gutterRoot = requireElement('gutter');
+const overlayRoot = requireElement('highlight-overlay');
+
+/** Built on `init`, because the popover shows the author the host will attribute the comment to. */
+let comments: CommentsView | undefined;
 
 let targetPath = '';
 /** A `data-line` value, not a pixel offset, so it survives a re-render that changes layout. */
@@ -121,28 +130,33 @@ function saveState(): void {
 
 // ---------------------------------------------------------------- rendering
 
+/**
+ * `data-*` attributes already survive DOMPurify's default `ALLOW_DATA_ATTR`, but naming the ones
+ * this codebase depends on documents that they are load-bearing, not incidental. Losing
+ * `data-ap-start` / `data-ap-end` would silently disable anchoring.
+ */
+const SANITIZE_OPTIONS = {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ['style'],
+  ADD_ATTR: ['data-line', 'data-no-anchor', 'data-ap-start', 'data-ap-end'],
+};
+
 function setContent(html: string, frontMatterHtml: string | undefined): void {
   hideNotice();
 
-  // `data-*` attributes already survive DOMPurify's default `ALLOW_DATA_ATTR`, but naming the two
-  // this codebase depends on documents that they are load-bearing, not incidental.
-  const clean = DOMPurify.sanitize(html, {
-    USE_PROFILES: { html: true },
-    FORBID_TAGS: ['style'],
-    ADD_ATTR: ['data-line', 'data-no-anchor'],
-  });
+  const clean = DOMPurify.sanitize(html, SANITIZE_OPTIONS);
   contentRoot.innerHTML = clean;
 
   frontMatterRoot.innerHTML = frontMatterHtml
-    ? DOMPurify.sanitize(frontMatterHtml, {
-        USE_PROFILES: { html: true },
-        FORBID_TAGS: ['style'],
-        ADD_ATTR: ['data-line', 'data-no-anchor'],
-      })
+    ? DOMPurify.sanitize(frontMatterHtml, SANITIZE_OPTIONS)
     : '';
 
   highlightAll();
+  // After highlighting, not before: highlight.js replaces the text nodes inside every `<pre>`, and
+  // a map built against the old ones would point at detached nodes.
+  resetBlockMaps();
   restoreScroll();
+  comments?.reposition();
 }
 
 function highlightAll(): void {
@@ -155,6 +169,39 @@ function highlightAll(): void {
       hljs.highlightElement(element);
     }
   }
+}
+
+// ---------------------------------------------------------------- commenting
+
+/**
+ * Wires selection capture and the card gutter together. Deferred until `init` because the popover
+ * shows the author the host will attribute new comments to, and only the host knows it (it comes
+ * from `markdownReview.author` or the system username).
+ */
+function startCommenting(author: string): CommentsView {
+  initSelection({
+    root: contentRoot,
+    author,
+    onSubmit: ({ selectedText, offset, hintLine, body }) => {
+      vscode.postMessage({ type: 'addComment', selectedText, offset, hintLine, body });
+    },
+    onWarning: report,
+  });
+
+  return initComments({
+    root: contentRoot,
+    gutter: gutterRoot,
+    overlay: overlayRoot,
+    onEdit: (id, body) => {
+      vscode.postMessage({ type: 'editComment', id, body });
+    },
+    onDelete: (id) => {
+      vscode.postMessage({ type: 'deleteComment', id });
+    },
+    onResolve: (id) => {
+      vscode.postMessage({ type: 'resolveComment', id });
+    },
+  });
 }
 
 // ---------------------------------------------------------------- notices
@@ -273,6 +320,11 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
     case 'init':
       targetPath = message.targetPath;
       saveState();
+      comments ??= startCommenting(message.author);
+      break;
+
+    case 'reviewState':
+      comments?.setState(message.review, message.located);
       break;
 
     case 'setContent':

@@ -134,3 +134,87 @@ module, two bundles.
 - [ ] Overlapping anchors stack cards without overlap; < 700 px pane collapses to inline markers
 - [ ] Edit / delete / resolve all round-trip through the sidecar
 - [ ] Windows-style path naming unit test passes; `npm test` green, no CSP regressions
+
+## 9. Spec corrections applied in this phase
+
+Recorded here so later phases don't "restore" them, mirroring Plan 01 §9 and Plan 02 §10.
+
+### Release-blocking — changes the design in §2 and §6 above
+
+**C1 — the webview must not rebuild anchor space from the DOM.** §2 as written asked
+`media/src/selection.ts` to reconstruct the document's flat plain text by walking the DOM and
+cross-check it against `renderPlainText(source).text`. §2 itself called this "the number-one silent
+corruption risk in the whole design", and it was worse than it looks: the two texts derive from
+*different substrates* — `plaintext.ts` walks markdown-it **tokens**, a DOM walk sees rendered
+**elements** — so three divergences were guaranteed rather than hypothetical:
+
+- **image alt text** is in anchor space (`inlineText` recurses into an image's alt children) but is
+  not a DOM text node, so every offset after an image would land early;
+- **table cells** join with `' '` rather than `'\n'`, which a DOM walk can only know by re-deriving
+  table structure;
+- **fenced code** is verbatim rather than collapsed, *and* highlight.js rewrites its text nodes.
+
+Replaced by **host-stamped offsets**. The token walk was extracted from `renderPlainText` into
+`walkSpans` (`src/render/plaintext.ts`), and `renderer.ts`'s existing core rule now calls that same
+function on its own token stream to stamp `data-ap-start` / `data-ap-end` — each block's exact
+offsets into `renderPlainText(source).text` — onto the element that renders it. Block boundaries
+therefore cannot drift: it is one function over one token stream, not two implementations kept in
+agreement by a test. The webview only maps *within* a block, where the same three cases are handled
+explicitly and a mistake shifts a highlight by a few characters instead of corrupting an anchor.
+
+Consequences elsewhere: `renderer.rules.fence` builds markup by hand and forwards the new
+attributes explicitly; DOMPurify's `ADD_ATTR` gained both; the carrier for a span is the enclosing
+non-`hidden` open token, which is what puts a *tight* list item's offsets on its `<li>` (markdown-it
+hides tight-list `paragraph_open`, and `renderToken` emits nothing for a hidden token). R13 and R14
+enforce all of it, and `media/test/anchorSpace.test.ts` asserts the DOM walk reproduces
+`renderPlainText`'s output exactly across 17 document shapes.
+
+`verifyBlockMap` is kept as a runtime backstop: on a mismatch the webview reports to the output
+channel and degrades to `offset: -1`, rather than trusting a number it cannot justify.
+
+**C2 — `locate()` is not bundled into the webview.** §6's closing paragraph justified shipping the
+confidence cascade webview-side "for the §5 highlight refresh on resize". Resizing changes layout,
+not `doc.text`, so located offsets are invariant under it — there is nothing to recompute, only
+rectangles to re-measure. The host computes `located` and posts it, as the rest of §6 already said.
+This keeps `diff-match-patch` out of the webview bundle, which grew by ~12 KB this phase against
+Phase 5's 500 KB budget instead of ~50 KB.
+
+### Corrected in this plan, inline above
+
+- **Highlights are an overlay, not a wrapper.** §5 says "wraps the plain-text range back to DOM
+  ranges". Implemented as absolutely-positioned rectangles from `Range.getClientRects()` instead:
+  `surroundContents` splits the text nodes inside the blocks whose offsets anchoring depends on, so
+  wrapping a range would silently move every offset taken afterwards. The overlay is
+  `pointer-events: none` so text stays selectable, and hover emphasis is done by hit-testing.
+- **Two panels on one file** (§8) is not reachable as written. Phase 2's `createOrShow` keys panels
+  by URI and reveals the existing one, by design. The shared-store requirement still holds for the
+  command layer and Phase 4's watcher, but the *observable* two-panel case is two windows — separate
+  extension hosts, separate memory — which is served by the sidecar `FileSystemWatcher`, not by the
+  in-memory registry. Verify it that way.
+- **The store is split three ways**, not one file. `sidecarPath.ts` (naming) and `reviewFile.ts`
+  (validation) are pure and `vscode`-free — they hold the Windows-separator landmine and the
+  hand-edited-JSON boundary, which are the parts worth unit-testing — and both are enforced as
+  `vscode`-free by `eslint.config.mjs`. `ReviewStore.ts` is the I/O half.
+- **External sidecar edits that are invalid are ignored, not quarantined.** §3 says re-read and
+  re-validate. A hand-edit in progress is transiently unparseable, so backing it up on every
+  keystroke would litter `.bak` files; the store keeps its in-memory state and logs instead.
+  Quarantine still applies on the initial read, which is what PRD §11 describes.
+- **Two distinct `targetPath`s.** `PanelState.targetPath` and `HostMessage.init` carry an absolute
+  `fsPath` (the serializer needs it to reopen the file); `ReviewFile.targetPath` is
+  workspace-relative with forward slashes (PRD §4). Both names were already in use; they are not
+  the same value.
+- **`init` gained an `author` field**, so the popover can show whose name the comment will carry
+  without the webview guessing.
+
+### Dependency decisions
+
+- **`nanoid` pinned to `^3`**, not `^5`. v5 is ESM-only, and this project compiles with
+  `module: node16` to a CJS bundle, so importing it fails typecheck with TS1479. v3 ships a
+  `require` condition and is otherwise identical for our use.
+- **`jsdom` added as a devDependency** (approved before implementation), plus a second vitest
+  project for `media/test`. The webview's intra-block offset walk is exactly the code that fails
+  silently, and Phase 2 shipped `media/src` with no automated coverage at all. Dev toolchain sits
+  outside the PRD §3 runtime freeze — nothing extra ships in the `.vsix`.
+- **A third tsconfig**, `tsconfig.webview-test.json`. The webview tests need the DOM lib *and* node
+  types, which is precisely the combination `tsconfig.webview.json` exists to forbid, so folding
+  them in would have defeated that project's purpose.

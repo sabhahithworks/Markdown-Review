@@ -27,6 +27,12 @@ export default tseslint.config(
       'src/render/**/*.ts',
       'src/prompt/**/*.ts',
       'src/panel/messages.ts',
+      // Phase 3: the sidecar naming rules and the validation guard are the parts of the store with
+      // landmines in them (Windows separators, hand-edited JSON), so they are kept `vscode`-free
+      // and unit-tested. `store/ReviewStore.ts` is deliberately *not* on this list — it is the
+      // vscode-facing half.
+      'src/store/sidecarPath.ts',
+      'src/store/reviewFile.ts',
     ],
     rules: {
       'no-restricted-imports': [
@@ -36,7 +42,7 @@ export default tseslint.config(
             {
               name: 'vscode',
               message:
-                'Pure modules (anchor/, render/, prompt/) and the webview-bundled message contract must not import vscode — see PRD §10 Phase 1.',
+                'Pure modules (anchor/, render/, prompt/, the store naming+validation halves) and the webview-bundled message contract must not import vscode — see PRD §10 Phase 1.',
             },
           ],
         },

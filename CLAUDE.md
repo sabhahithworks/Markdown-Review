@@ -12,13 +12,15 @@ A VS Code extension (working name `markdown-review`) that renders any Markdown f
 
 ## Current state
 
-**Phase 1 (anchoring core) is complete and green.** `src/anchor/` and `src/render/` are implemented and tested (`npm run check` = typecheck + lint + 138 vitest tests). Phase 2 (read-only preview pane) is next.
+**Phases 1–3 are complete and green.** Anchoring core (`src/anchor/`, `src/render/`), the read-only preview pane (`src/panel/`, `media/`), and commenting (`src/store/`, `media/src/{anchorSpace,selection,comments}.ts`) are implemented and tested — `npm run check` = typecheck (three tsconfig projects) + lint + 341 vitest tests. Phase 4 (prompt generation + change detection) is next.
 
 Per-phase execution plans live under `docs/plans/` — start at `docs/plans/README.md` (phase map, shared conventions, contract-ownership table), then execute the plan for the current phase. Run the previous phase's acceptance checklist before starting a new phase.
 
-Commands: `npm run check` (the one command the definition-of-done maps to), `npm test`, `npm run test:watch`, `npm run typecheck`, `npm run lint`. `PERF=0 npm test` skips the 5 MB performance suite.
+Commands: `npm run check` (the one command the definition-of-done maps to), `npm test`, `npm run test:watch`, `npm run typecheck`, `npm run lint`, `npm run build` (also runs the hardcoded-colour check). `PERF=0 npm test` skips the 5 MB performance suite. Tests are split into two vitest projects — `--project node` for `src/test/`, `--project webview` for the jsdom suites in `media/test/`.
 
-Two release-blocking PRD defects were found and fixed during Phase 1 — see `docs/plans/01-anchoring-core.md` §9 for the full list, and read it before touching `src/anchor/fuzzy.ts`.
+Two release-blocking PRD defects were found and fixed during Phase 1 — see `docs/plans/01-anchoring-core.md` §9 for the full list, and read it before touching `src/anchor/fuzzy.ts`. Phase 3 corrected its own plan the same way; read `docs/plans/03-commenting.md` §9 before touching anchor-space plumbing.
+
+**The load-bearing invariant added in Phase 3:** `walkSpans` in `src/render/plaintext.ts` is called by *both* `renderPlainText` and `renderer.ts`'s core rule, which is what makes the `data-ap-start` / `data-ap-end` offsets on rendered blocks agree with anchor space by construction. The webview reads those attributes and never re-derives block boundaries. Do not give the webview its own opinion about where blocks begin — that was the design Phase 3 removed, and `media/test/anchorSpace.test.ts` exists to keep it removed.
 
 ## Build order (PRD §10 — binding)
 
