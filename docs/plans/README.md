@@ -34,8 +34,10 @@ Neither is in `npm run check`: the first launches a VS Code window (and download
 use), the second needs a browser. `npm run check` stays the fast inner loop.
 
 What remains genuinely manual is written down rather than remembered — see
-[03-acceptance-run.md](03-acceptance-run.md) for the current list, and keep it to things a machine
-cannot reach (CSP enforcement, window reload, real theme palettes, cross-window sync).
+[03-acceptance-run.md](03-acceptance-run.md) and [04-acceptance-run.md](04-acceptance-run.md) for
+the current lists, and keep them to things a machine cannot reach (CSP enforcement, window reload,
+real theme palettes, cross-window sync, modal confirms, and above all a *real* agent editing a real
+document). The Phase 4 run subsumes the Phase 3 one, which is still that phase's entry gate.
 
 ## Contract ownership — the no-duplication rule
 

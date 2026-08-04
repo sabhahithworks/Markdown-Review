@@ -201,8 +201,9 @@ exactly when it matters. Mocha was reconsidered and declined: the suite grew by 
 
 ## 9. Acceptance checklist
 
-Each item records *how* it is verified, following Plan 03 §8. Date this section when the manual
-remainder passes.
+Each item records *how* it is verified, following Plan 03 §8. The manual remainder is scripted in
+[04-acceptance-run.md](04-acceptance-run.md), which also carries the two Phase 3 items that are
+this phase's entry gate. Date this section when it passes.
 
 - [x] Copy prompt produces the PRD §7 format byte-for-byte for the golden fixture; baseline
       snapshots at copy time
