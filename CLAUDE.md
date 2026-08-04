@@ -12,11 +12,16 @@ A VS Code extension (working name `markdown-review`) that renders any Markdown f
 
 ## Current state
 
-**Phases 1–3 are complete and green.** Anchoring core (`src/anchor/`, `src/render/`), the read-only preview pane (`src/panel/`, `media/`), and commenting (`src/store/`, `media/src/{anchorSpace,selection,comments}.ts`) are implemented and tested — `npm run check` = typecheck (three tsconfig projects) + lint + 341 vitest tests. Phase 4 (prompt generation + change detection) is next.
+**Phases 1–3 are complete and green.** Anchoring core (`src/anchor/`, `src/render/`), the read-only preview pane (`src/panel/`, `media/`), and commenting (`src/store/`, `media/src/{anchorSpace,selection,comments}.ts`) are implemented and tested — `npm run check` = typecheck (three tsconfig projects) + lint + 344 vitest tests. Phase 4 (prompt generation + change detection) is next; its documented entry gate is the Phase 3 acceptance checklist, now mostly automated (see below) with a short scripted manual pass left in `docs/plans/03-acceptance-run.md`.
 
-Per-phase execution plans live under `docs/plans/` — start at `docs/plans/README.md` (phase map, shared conventions, contract-ownership table), then execute the plan for the current phase. Run the previous phase's acceptance checklist before starting a new phase.
+Per-phase execution plans live under `docs/plans/` — start at `docs/plans/README.md` (phase map, shared conventions, contract-ownership table, verification harnesses), then execute the plan for the current phase. Run the previous phase's acceptance checklist before starting a new phase.
 
-Commands: `npm run check` (the one command the definition-of-done maps to), `npm test`, `npm run test:watch`, `npm run typecheck`, `npm run lint`, `npm run build` (also runs the hardcoded-colour check). `PERF=0 npm test` skips the 5 MB performance suite. Tests are split into two vitest projects — `--project node` for `src/test/`, `--project webview` for the jsdom suites in `media/test/`.
+Commands: `npm run check` (the one command the definition-of-done maps to), `npm test`, `npm run test:watch`, `npm run typecheck`, `npm run lint`, `npm run build` (also runs the CSS colour + theme-variable checks). `PERF=0 npm test` skips the 5 MB performance suite. Tests are split into two vitest projects — `--project node` for `src/test/`, `--project webview` for the jsdom suites in `media/test/`.
+
+**Two verification harnesses sit outside `npm run check`**, because one launches VS Code and the other needs a browser. Extend them; don't rebuild them.
+
+- `npm run test:integration` — `@vscode/test-electron` against a real extension host (`src/test/integration/`). This is where store I/O, activation and panel lifecycle are actually verified; the vitest suites cannot import `vscode`. Plan 04 §8's change-detection scenario belongs here.
+- `dev/harness/` — the real webview bundle in a real layout engine, over markup from the real renderer, with three theme presets. `node dev/harness/generate.mjs`, then serve the repo root and open `/dev/harness/`. Card geometry has no other coverage: jsdom reports every rectangle as zero, which is why `media/test/comments.test.ts` can only test the pure `stackTops`. Both of the bugs found after Phase 3 merged were here.
 
 Two release-blocking PRD defects were found and fixed during Phase 1 — see `docs/plans/01-anchoring-core.md` §9 for the full list, and read it before touching `src/anchor/fuzzy.ts`. Phase 3 corrected its own plan the same way; read `docs/plans/03-commenting.md` §9 before touching anchor-space plumbing.
 

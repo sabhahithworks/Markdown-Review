@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markdown Review — layout harness</title>
+  <!--
+    The review pane's card layout has never been rendered by a layout engine: jsdom reports every
+    rectangle as zero, so `media/test/comments.test.ts` can only exercise the pure `stackTops`.
+    This page runs the real `media/webview.js` in a real browser, driven by real messages, over
+    markup produced by the real host renderer (see generate.mjs).
+
+    The body below reproduces `ReviewPanel.getHtmlForWebview` element for element. It deliberately
+    does NOT reproduce the CSP: a webview's CSP is enforced by VS Code, and nothing here can stand
+    in for that — the CSP check stays on the manual F5 list.
+
+    Serve it, do not open it as a file://:
+        python3 -m http.server 8901
+        http://localhost:8901/dev/harness/
+  -->
+  <link rel="stylesheet" href="themes.css">
+  <link rel="stylesheet" href="../../media/webview.css">
+  <style>
+    /*
+     * Harness chrome only. Hardcoded colours are fine here and nowhere else — this file is not
+     * scanned by scripts/check-css-colors.mjs and never ships.
+     */
+    #mr-harness {
+      position: fixed;
+      inset: auto 0 0 0;
+      z-index: 999;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 8px 12px;
+      font: 12px/1.5 ui-monospace, monospace;
+      color: #ddd;
+      background: #111;
+      border-top: 2px solid #444;
+    }
+    #mr-harness select,
+    #mr-harness button {
+      font: inherit;
+      color: #ddd;
+      background: #222;
+      border: 1px solid #555;
+      border-radius: 3px;
+      padding: 2px 6px;
+    }
+    #mr-log {
+      flex: 1;
+      max-height: 9em;
+      overflow: auto;
+      white-space: pre-wrap;
+      margin: 0;
+    }
+    #mr-log .fail { color: #ff8080; }
+    #mr-log .pass { color: #86e08a; }
+  </style>
+</head>
+<body>
+  <div id="front-matter-root"></div>
+  <main id="content"></main>
+  <div id="highlight-overlay" aria-hidden="true"></div>
+  <aside id="gutter" aria-label="Comments"></aside>
+  <div id="notice" hidden></div>
+
+  <div id="mr-harness" data-no-anchor>
+    <div>
+      <label>theme
+        <select id="mr-theme">
+          <option value="dark">Dark+</option>
+          <option value="light">Light+</option>
+          <option value="hc">HC Dark</option>
+        </select>
+      </label><br>
+      <label>scenario
+        <select id="mr-scenario"></select>
+      </label><br>
+      <button id="mr-check" type="button">Run checks</button>
+    </div>
+    <pre id="mr-log"></pre>
+  </div>
+
+  <script src="fixture.js"></script>
+  <script>
+    // ---- the vscode API the webview expects, before the bundle that calls it ------------------
+    window.__POSTED__ = [];
+    let state = null;
+    window.acquireVsCodeApi = () => ({
+      postMessage(message) { window.__POSTED__.push(message); },
+      getState() { return state; },
+      setState(next) { state = next; },
+    });
+
+    window.__ERRORS__ = [];
+    window.addEventListener('error', (event) => window.__ERRORS__.push(event.message));
+    window.addEventListener('unhandledrejection', (event) => window.__ERRORS__.push(String(event.reason)));
+  </script>
+  <script src="../../media/webview.js"></script>
+  <script>
+  (() => {
+    const fixture = window.__FIXTURE__;
+    const log = document.getElementById('mr-log');
+    const themeSelect = document.getElementById('mr-theme');
+    const scenarioSelect = document.getElementById('mr-scenario');
+
+    function write(line, kind) {
+      const span = document.createElement('span');
+      if (kind) span.className = kind;
+      span.textContent = `${line}\n`;
+      log.append(span);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    for (const [key, scenario] of Object.entries(fixture.scenarios)) {
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = scenario.label;
+      scenarioSelect.append(option);
+    }
+
+    function post(message) { window.postMessage(message, '*'); }
+
+    let currentKey = 'basic';
+
+    function loadScenario(key) {
+      currentKey = key;
+      const scenario = fixture.scenarios[key];
+      post({ type: 'setContent', html: fixture.html, frontMatterHtml: fixture.frontMatterHtml });
+      post({ type: 'reviewState', review: scenario.review, located: scenario.located });
+    }
+
+    // The webview posts `ready` synchronously as its bundle finishes, so by the time this script
+    // runs the message is already sitting in __POSTED__ — exactly as the host would find it.
+    post({ type: 'init', targetPath: fixture.targetPath, author: fixture.author });
+    loadScenario(currentKey);
+
+    themeSelect.addEventListener('change', () => {
+      document.documentElement.dataset.theme = themeSelect.value;
+      // Colour changes cannot move layout, but the reposition is free and keeps the two in step.
+      post({ type: 'reviewState', review: fixture.scenarios[currentKey].review, located: fixture.scenarios[currentKey].located });
+    });
+    scenarioSelect.addEventListener('change', () => loadScenario(scenarioSelect.value));
+
+    // ---- checks -------------------------------------------------------------------------------
+
+    // Laid-out cards only: `hidden` covers narrow mode, and a zero height covers the resolved cards
+    // sitting inside a collapsed <details>, which are in the DOM but occupy nothing.
+    function visibleCards() {
+      return [...document.querySelectorAll('#gutter .mr-card')].filter(
+        (card) => !card.hidden && card.getBoundingClientRect().height > 0,
+      );
+    }
+
+    const pass = (detail) => ({ verdict: 'PASS', detail });
+    const fail = (detail) => ({ verdict: 'FAIL', detail });
+    const skip = (detail) => ({ verdict: 'SKIP', detail });
+
+    const checks = {
+      'cards do not overlap'() {
+        const rects = visibleCards()
+          .map((card) => card.getBoundingClientRect())
+          .sort((a, b) => a.top - b.top);
+        for (let i = 1; i < rects.length; i++) {
+          const previous = rects[i - 1];
+          const current = rects[i];
+          if (current.top < previous.bottom - 0.5) {
+            return fail(`card ${i} starts at ${current.top.toFixed(1)} but the previous ends at ${previous.bottom.toFixed(1)}`);
+          }
+        }
+        return pass(`${rects.length} card(s), no overlap`);
+      },
+
+      'overlapping anchors actually displace cards'() {
+        // Without this, "cards do not overlap" would pass trivially on a scenario whose anchors
+        // were never close enough to collide — it has to be shown that `stackTops` did something.
+        if (currentKey !== 'stacking' || document.body.classList.contains('mr-narrow')) {
+          return skip('needs the stacking scenario at full width');
+        }
+        let pushed = 0;
+        for (const comment of fixture.scenarios.stacking.review.comments) {
+          const mark = document.querySelector(`#highlight-overlay .mr-highlight[data-comment-id="${comment.id}"]`);
+          const card = visibleCards().find((element) => element.textContent.includes(comment.body.slice(0, 20)));
+          if (!mark || !card) return fail(`no highlight or card for ${comment.id}`);
+          // Both rects are viewport-relative, so they compare directly.
+          if (card.getBoundingClientRect().top > mark.getBoundingClientRect().top + 1) pushed++;
+        }
+        if (pushed === 0) return fail('no card was pushed down, so the stacking pass never ran');
+        return pass(`${pushed} of 3 cards displaced below their anchor`);
+      },
+
+      'cards have a usable width'() {
+        // Deliberately not compared against `window.innerWidth`: narrow mode can be forced by
+        // overriding that getter when the window manager refuses a resize, and then it no longer
+        // describes the real layout. "Escapes the pane" above is the honest overflow check.
+        for (const card of visibleCards()) {
+          const width = card.getBoundingClientRect().width;
+          if (width < 40) return fail(`a card is only ${width.toFixed(1)}px wide`);
+        }
+        return pass(`${visibleCards().length} card(s) laid out`);
+      },
+
+      'nothing in the gutter escapes the pane'() {
+        // Measured against the body's border box, not its content box: in wide mode the gutter
+        // deliberately lives inside the right padding `body:not(.mr-narrow)` reserves for it. The
+        // real failure is escaping the *pane* — which is what happens in narrow mode when `#gutter`
+        // stops being a containing block and anything left `position: absolute; width: 100%` inside
+        // it resolves against the page instead.
+        const right = document.body.getBoundingClientRect().right;
+        for (const element of document.querySelectorAll('#gutter .mr-card, #gutter .mr-resolved-group')) {
+          const rect = element.getBoundingClientRect();
+          if (rect.height === 0) continue;
+          if (rect.right > right + 1) {
+            return fail(`${element.className} ends at ${rect.right.toFixed(1)}, past the pane edge at ${right.toFixed(1)}`);
+          }
+        }
+        return pass(`within ${right.toFixed(0)}px`);
+      },
+
+      'highlights have real geometry'() {
+        const marks = [...document.querySelectorAll('#highlight-overlay .mr-highlight')];
+        if (marks.length === 0) return fail('no highlights drawn');
+        for (const mark of marks) {
+          const rect = mark.getBoundingClientRect();
+          if (rect.width < 1 || rect.height < 1) return fail(`a highlight is ${rect.width}×${rect.height}`);
+        }
+        return pass(`${marks.length} highlight rect(s)`);
+      },
+
+      'highlights land on their anchored text'() {
+        // The strongest available alignment check: take the centre of each highlight, ask the
+        // document what is underneath it (the overlay is pointer-events:none, so this reaches the
+        // content), and require the text there to be part of the anchor it belongs to.
+        const scenario = fixture.scenarios[currentKey];
+        const byId = new Map(scenario.review.comments.map((comment) => [comment.id, comment]));
+        const scrollY = window.scrollY;
+        // The harness bar is `position: fixed`, so it would answer `elementFromPoint` for anything
+        // it happens to cover. It is chrome, not content — hide it for the duration.
+        const bar = document.getElementById('mr-harness');
+        bar.style.visibility = 'hidden';
+        let checked = 0;
+
+        try {
+          for (const mark of document.querySelectorAll('#highlight-overlay .mr-highlight')) {
+            const id = mark.getAttribute('data-comment-id');
+            const comment = byId.get(id);
+            if (!comment) return fail(`highlight for unknown comment ${id}`);
+
+            // Only what is on screen can be hit-tested, so bring each one into view. Highlights are
+            // positioned in the overlay's own coordinate space, so scrolling moves them with the
+            // text — which is itself the property being checked.
+            mark.scrollIntoView({ block: 'center' });
+            const rect = mark.getBoundingClientRect();
+            const element = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            if (!element) return fail(`nothing underneath the highlight for ${id}`);
+            // In narrow mode the pane's own inline marker sits on the anchor by design, and it is
+            // the one thing legitimately allowed to be on top of a highlight.
+            if (element.classList.contains('mr-marker')) continue;
+            if (!document.getElementById('content').contains(element)) {
+              return fail(`highlight for ${id} sits outside #content, over <${element.tagName.toLowerCase()}>`);
+            }
+
+            const under = (element.textContent || '').replace(/\s+/g, ' ').trim();
+            const exact = comment.anchor.exact.replace(/\s+/g, ' ').trim();
+            // Two directions, because what sits under the point depends on the markup. In prose it
+            // is the whole block, which should contain a word from the middle of the anchor (a word
+            // from the middle, so a near-miss of a few characters still fails). Inside a fence it
+            // is one of highlight.js's leaf spans, which should itself be part of the anchor.
+            const words = exact.split(' ').filter((word) => word.length > 3);
+            const probe = words[Math.floor(words.length / 2)];
+            const aligned = (probe && under.includes(probe)) || (under.length > 0 && exact.includes(under));
+            if (!aligned) {
+              return fail(`highlight for ${id} covers "${under.slice(0, 60)}…", which does not overlap "${exact.slice(0, 40)}…"`);
+            }
+            checked++;
+          }
+        } finally {
+          bar.style.visibility = '';
+          window.scrollTo({ top: scrollY });
+        }
+        return pass(`${checked} highlight(s) verified against the text underneath`);
+      },
+
+      'uncertain and orphaned render distinctly'() {
+        if (currentKey !== 'uncertain') return skip('other scenario');
+        const uncertain = document.querySelectorAll('.mr-highlight-uncertain').length;
+        const orphaned = document.querySelectorAll('.mr-card-orphaned').length;
+        if (uncertain === 0) return fail('no "position uncertain" highlight for the low-confidence anchor');
+        if (orphaned === 0) return fail('the orphaned comment has no distinct card state');
+        return pass(`${uncertain} uncertain highlight(s), ${orphaned} orphaned card(s)`);
+      },
+
+      'resolved comments collapse into a group'() {
+        if (currentKey !== 'mixed') return skip('other scenario');
+        const group = document.querySelector('#gutter .mr-resolved-group');
+        if (!group) return fail('no resolved group rendered');
+        return pass(`resolved group present (${group.querySelectorAll('.mr-card').length} inside)`);
+      },
+
+      'narrow mode matches the viewport'() {
+        const narrow = document.body.classList.contains('mr-narrow');
+        const expected = window.innerWidth < 700;
+        if (narrow !== expected) return fail(`body.mr-narrow is ${narrow} at ${window.innerWidth}px (expected ${expected})`);
+        if (narrow) {
+          const markers = document.querySelectorAll('#highlight-overlay .mr-marker').length;
+          if (markers === 0) return fail('narrow mode with no inline markers');
+          return pass(`collapsed to ${markers} inline marker(s)`);
+        }
+        return pass(`gutter shown at ${window.innerWidth}px`);
+      },
+
+      'no uncaught errors'() {
+        return window.__ERRORS__.length === 0 ? pass('clean') : fail(window.__ERRORS__.join(' | '));
+      },
+    };
+
+    function runChecks() {
+      log.replaceChildren();
+      write(`— ${fixture.scenarios[currentKey].label} @ ${window.innerWidth}×${window.innerHeight}, theme ${document.documentElement.dataset.theme || 'dark'}`);
+      let failed = 0;
+      for (const [name, check] of Object.entries(checks)) {
+        let result;
+        try {
+          result = check();
+        } catch (error) {
+          result = fail(`threw: ${String(error && error.stack || error)}`);
+        }
+        if (result.verdict === 'FAIL') failed++;
+        write(`${result.verdict}  ${name}: ${result.detail}`, result.verdict === 'FAIL' ? 'fail' : 'pass');
+      }
+      write(failed === 0 ? 'ALL CHECKS PASSED' : `${failed} CHECK(S) FAILED`, failed === 0 ? 'pass' : 'fail');
+    }
+
+    document.getElementById('mr-check').addEventListener('click', runChecks);
+    // Exposed so the browser automation can run them without clicking.
+    window.__RUN_CHECKS__ = runChecks;
+    window.addEventListener('resize', () => { window.__RESIZED__ = true; });
+
+    write('harness ready — pick a scenario, then Run checks');
+  })();
+  </script>
+</body>
+</html>

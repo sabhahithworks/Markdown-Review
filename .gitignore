@@ -1,8 +1,10 @@
 node_modules/
 dist/
+dist-test/
 media/webview.js
 media/webview.js.map
 *.vsix
 .vscode-test/
 coverage/
 .DS_Store
+dev/harness/fixture.js

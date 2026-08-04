@@ -634,6 +634,17 @@ body:not(.mr-narrow) {
   margin: 8px 0;
 }
 
+/*
+ * The resolved group has to come back into flow with everything else. Left absolute it would keep
+ * `width: 100%` while its `#gutter` parent is no longer a containing block, so it would resolve
+ * against the page — wider than the viewport, and pinned to the bottom of it rather than sitting
+ * after the content.
+ */
+.mr-narrow .mr-resolved-group {
+  position: static;
+  width: auto;
+}
+
 .mr-marker {
   position: absolute;
   padding: 0 2px;

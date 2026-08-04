@@ -8,6 +8,8 @@
 import esbuild from 'esbuild';
 
 const watch = process.argv.includes('--watch');
+/** Builds only the integration-test bundles. They are dev-only and never part of the `.vsix`. */
+const integration = process.argv.includes('--integration');
 
 /**
  * Emits the markers `.vscode/tasks.json`'s background problem matcher keys off, so F5 waits for
@@ -58,7 +60,42 @@ const builds = [
   },
 ];
 
+/**
+ * Two entry points again, for the same reason: `run.ts` is plain Node and drives the launcher,
+ * `suite/index.ts` runs inside the extension host. Never minified — a stack trace from a failing
+ * assertion is the entire point of the output.
+ */
+const integrationBuilds = [
+  {
+    ...common,
+    minify: false,
+    sourcemap: 'inline',
+    entryPoints: ['src/test/integration/run.ts'],
+    outfile: 'dist-test/run.js',
+    platform: 'node',
+    target: 'node20',
+    format: 'cjs',
+    external: ['vscode', '@vscode/test-electron'],
+  },
+  {
+    ...common,
+    minify: false,
+    sourcemap: 'inline',
+    entryPoints: ['src/test/integration/suite/index.ts'],
+    outfile: 'dist-test/suite.js',
+    platform: 'node',
+    target: 'node20',
+    format: 'cjs',
+    external: ['vscode'],
+  },
+];
+
 async function main() {
+  if (integration) {
+    await Promise.all(integrationBuilds.map((config) => esbuild.build(config)));
+    return;
+  }
+
   if (watch) {
     const contexts = await Promise.all(builds.map((config) => esbuild.context(config)));
     await Promise.all(contexts.map((context) => context.watch()));

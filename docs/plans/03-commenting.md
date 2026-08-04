@@ -122,18 +122,37 @@ module, two bundles.
 
 ## 8. Acceptance checklist
 
+Each item records *how* it is verified. The interactive remainder is scripted in
+[03-acceptance-run.md](03-acceptance-run.md) — run that before starting Phase 4 and date this
+section when it passes.
+
 - [ ] Full create flow works: select → button → popover → card appears, span highlighted
-- [ ] Selections < 3 or > 500 chars rejected with the exact messages in §4
-- [ ] Sidecar appears at the correct `.reviews/...` path, pretty-printed; hand-editing the body
+      — **manual**, acceptance run step 1 (the harness covers the resulting layout, not the gesture)
+- [x] Selections < 3 or > 500 chars rejected with the exact messages in §4
+      — `src/test/notices.test.ts` asserts the wording verbatim; "nothing persisted" is step 2
+- [x] Sidecar appears at the correct `.reviews/...` path, pretty-printed; hand-editing the body
       of a comment in the JSON while the panel is open updates the card
+      — `store.spec.ts` (placement, 2-space print, nested `__` flattening, external edit adopted);
+      the card re-render is step 3
 - [ ] Comments persist across window reload (serializer + sidecar)
-- [ ] Corrupt the sidecar by hand → warning shown, `.bak` created, panel functions with empty state
-- [ ] Loose file (no workspace) → globalStorage fallback + one-time warning
-- [ ] Two panels on the same file (split editor trick or second window against same store) stay in
-      sync through the shared store
-- [ ] Overlapping anchors stack cards without overlap; < 700 px pane collapses to inline markers
-- [ ] Edit / delete / resolve all round-trip through the sidecar
-- [ ] Windows-style path naming unit test passes; `npm test` green, no CSP regressions
+      — **manual**, step 4. No automated coverage: the serializer path needs a real window reload
+- [x] Corrupt the sidecar by hand → warning shown, `.bak` created, panel functions with empty state
+      — `store.spec.ts`, both the unparseable and the future-version case, asserting the backup is
+      byte-identical. The notification *text* is not observable from inside the host
+- [x] Loose file (no workspace) → globalStorage fallback + one-time warning
+      — `store.spec.ts`, including the hashed name and the once-per-machine `globalState` flag
+- [x] Two panels on the same file … stay in sync through the shared store
+      — restated per §9: `activation.spec.ts` asserts one pane per URI; the cross-*window* case is
+      the sidecar watcher, covered by `store.spec.ts` and confirmed by hand in step 5
+- [x] Overlapping anchors stack cards without overlap; < 700 px pane collapses to inline markers
+      — `dev/harness/`, in a real layout engine: cards measured non-overlapping *and* demonstrably
+      displaced, narrow collapse producing inline markers. Confirmed by dragging in step 8
+- [x] Edit / delete / resolve all round-trip through the sidecar
+      — `store.spec.ts`
+- [x] Windows-style path naming unit test passes; `npm test` green, no CSP regressions
+      — `sidecarPath.test.ts`; 344 unit tests + 18 integration tests green. **CSP is step 6** and
+      cannot be automated: it is enforced by VS Code, and the layout harness deliberately does not
+      reproduce it
 
 ## 9. Spec corrections applied in this phase
 
@@ -205,6 +224,30 @@ Phase 5's 500 KB budget instead of ~50 KB.
   the same value.
 - **`init` gained an `author` field**, so the popover can show whose name the comment will carry
   without the webview guessing.
+
+### Found by the layout harness, after the phase merged
+
+Both are in `media/`, both only reproduce with a real layout engine, and both were invisible to the
+jsdom suite because jsdom has neither `ResizeObserver` nor layout. They are the reason
+`dev/harness/` exists.
+
+- **The `ResizeObserver` callback mutated layout from inside the notification.** `reposition()`
+  toggles `body.mr-narrow` and writes every card's `top`, so running it directly in the observer
+  produced `ResizeObserver loop completed with undelivered notifications` every time the pane
+  crossed the 700 px breakpoint. That is not a silent browser warning in this codebase:
+  `webview.ts` forwards every `window.error` to the host, so narrowing the pane filed a spurious
+  error into the output channel the user is supposed to trust. The work is now deferred to the next
+  animation frame, which also coalesces a drag's burst of notifications into one rebuild.
+- **The resolved-comments group escaped the pane in narrow mode.** `.mr-narrow #gutter` drops to
+  `position: static`, which stops it being a containing block — but `.mr-resolved-group` kept
+  `position: absolute; width: 100%`, so it resolved against the page instead and hung 17 px past the
+  right edge of a 660 px pane. It now goes static alongside `.mr-narrow .mr-card`.
+
+**Left as a finding, not fixed:** `.mr-highlight` differentiates by `background-color` alone, which
+is the weakest signal a high-contrast theme can carry, and under Windows forced-colors mode the
+background is stripped by the OS entirely. Changing it to an outline is a design decision and could
+not be verified here (the harness cannot emulate forced-colors), so it is called out in the
+acceptance run's theme step instead of changed blind.
 
 ### Dependency decisions
 

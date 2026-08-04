@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Verification harnesses, closing out the Phase 3 acceptance checklist. Two of its ten items were
+  machine-checked before; eight are now. Neither harness ships in the `.vsix` and neither is in
+  `npm run check` — one launches VS Code, the other needs a browser.
+  - `src/test/integration/` — an `@vscode/test-electron` suite (18 assertions) against a real
+    extension host: sidecar placement and flattening, add/edit/resolve/delete round-trips, corrupt
+    and future-version quarantine, the globalStorage fallback, external hand-edits (adopted when
+    valid, ignored when mid-keystroke, not echoed when ours), shutdown flushing, lazy activation,
+    one pane per file, and a deleted target mid-review. `npm run test:integration`. Pulled forward
+    from Plan 04 §8, which extends it rather than starting over.
+  - `dev/harness/` — a page running the real webview bundle over markup from the real renderer, in
+    a real layout engine, with three theme presets and in-page geometry checks. Card stacking, the
+    < 700 px collapse and highlight alignment had no coverage at all before this: jsdom reports
+    every rectangle as zero.
+  - `scripts/check-theme-vars.mjs`, wired into `npm run lint:css` — every `--vscode-*` the pane uses
+    must exist and every colour must be overridden in all three presets. An unresolved `var()`
+    renders as nothing, silently.
+  - The rejection wording for over- and under-length selections moved to `src/panel/notices.ts`, so
+    the strings Plan 03 §4 specifies are asserted by a test rather than read off a notification.
+
+### Fixed
+
+- The review pane no longer files a spurious error into its output channel every time it is dragged
+  past the 700 px breakpoint. `reposition()` mutates layout, so calling it directly from the
+  `ResizeObserver` callback produced "ResizeObserver loop completed with undelivered notifications",
+  which `webview.ts` dutifully forwarded to the host. It now runs on the next animation frame, which
+  also coalesces a drag's notifications into one rebuild.
+- The resolved-comments group no longer hangs off the right edge of a narrow pane. In narrow mode
+  `#gutter` stops being a containing block, so the group's `position: absolute; width: 100%`
+  resolved against the page instead.
+
 - Phase 3 — commenting: select rendered text, leave a comment, and have it persist. Selections are
   captured in anchor space (`media/src/anchorSpace.ts`), turned into durable anchors host-side, and
   stored in a human-readable, hand-editable sidecar at `.reviews/<flattened-path>.json`

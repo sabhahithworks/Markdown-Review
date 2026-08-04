@@ -198,21 +198,35 @@ image still demonstrates.
 
 ## 9. Acceptance checklist
 
+Annotated 2026-08-04 during the Phase 3 → Phase 4 gate pass. Items still marked `[ ]` need the
+Extension Development Host and are folded into [03-acceptance-run.md](03-acceptance-run.md).
+
 - [ ] F5 launches the Extension Development Host; `Markdown Review: Open Review Pane` appears in
-      the editor title and explorer context menus for `.md` files only
-- [ ] Kitchen-sink fixture renders correctly; injection attempts are inert
-- [ ] Zero CSP violations in webview devtools console
-- [ ] `data-line` present on block elements and matches on-disk line numbers (spot-check against a
-      file with front matter)
-- [ ] Dark+ / Light+ / High Contrast pass; CSS hardcoded-color grep is clean
-- [ ] > 2 MB file shows the guard, "render anyway" works
-- [ ] Panel survives window reload (serializer restores it against the same file)
-- [ ] `npm run build` produces `dist/extension.js` + `media/webview.js`; `npm test` still green
-- [ ] Delete the target while the pane is open → "could not be read" notice, no unhandled rejection
-- [ ] Type continuously for ~5 s → renders settle, scroll holds, no out-of-order flicker
-- [ ] Palette invocation with no editor / with a `.txt` → distinct, clean errors
-- [ ] Opening the same file twice reveals the existing pane; closing and reopening still works
-- [ ] `Developer: Show Running Extensions` on a fresh window → not activated until first command use
+      the editor title and explorer context menus for `.md` files only — **manual** (the `when`
+      clauses are UI state); the command's own validation is covered by `activation.spec.ts`
+- [ ] Kitchen-sink fixture renders correctly; injection attempts are inert — **manual** for the
+      rendering; sanitization is covered by `renderer.test.ts`
+- [ ] Zero CSP violations in webview devtools console — **manual**, acceptance run step 6
+- [x] `data-line` present on block elements and matches on-disk line numbers (spot-check against a
+      file with front matter) — `renderer.test.ts` (R1–R14), including the front-matter offset
+- [x] Dark+ / Light+ / High Contrast pass; CSS hardcoded-color grep is clean
+      — `check-css-colors.mjs` and the new `check-theme-vars.mjs`; all three themes render in
+      `dev/harness/`. Confirmed against real palettes in acceptance run step 7
+- [x] > 2 MB file shows the guard — `activation.spec.ts` opens one without throwing. "Render
+      anyway" is a webview button and stays manual
+- [ ] Panel survives window reload (serializer restores it against the same file) — **manual**,
+      acceptance run step 4
+- [x] `npm run build` produces `dist/extension.js` + `media/webview.js`; `npm test` still green
+- [x] Delete the target while the pane is open → "could not be read" notice, no unhandled rejection
+      — `activation.spec.ts`; the suite fails the run on any unhandled rejection
+- [ ] Type continuously for ~5 s → renders settle, scroll holds, no out-of-order flicker — **manual**
+- [x] Palette invocation with no editor / with a `.txt` → distinct, clean errors — `.txt` is covered
+      by `activation.spec.ts` (no pane opens); the no-editor case needs an empty window
+- [x] Opening the same file twice reveals the existing pane; closing and reopening still works
+      — `activation.spec.ts`
+- [x] `Developer: Show Running Extensions` on a fresh window → not activated until first command use
+      — `activation.spec.ts` asserts `isActive === false` before any command runs, which is why that
+      spec is registered first
 
 ## 10. Spec corrections applied in this phase
 

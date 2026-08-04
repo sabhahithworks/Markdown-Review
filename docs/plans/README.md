@@ -20,6 +20,23 @@ reported, not silently resolved.
 plan) before writing any code. If it doesn't pass, stop and fix that first — do not layer new work
 on a broken foundation.
 
+## Verification harnesses
+
+Two harnesses exist so those checklists are mostly machine-checked rather than eyeballed. Both were
+built during the Phase 3 → Phase 4 gate pass; **extend them, do not rebuild them.**
+
+| | What it is | Run with |
+|---|---|---|
+| `src/test/integration/` | `@vscode/test-electron`: real extension host, real `workspace.fs`, real watchers. Pulled forward from Plan 04 §8, which extends it with the change-detection scenario. | `npm run test:integration` |
+| `dev/harness/` | A browser page running the real `media/webview.js` over markup from the real renderer, with three theme presets and in-page geometry checks. The only place card layout meets a layout engine — jsdom reports every rectangle as zero. | `node dev/harness/generate.mjs`, then serve the repo and open `/dev/harness/` |
+
+Neither is in `npm run check`: the first launches a VS Code window (and downloads one on first
+use), the second needs a browser. `npm run check` stays the fast inner loop.
+
+What remains genuinely manual is written down rather than remembered — see
+[03-acceptance-run.md](03-acceptance-run.md) for the current list, and keep it to things a machine
+cannot reach (CSP enforcement, window reload, real theme palettes, cross-window sync).
+
 ## Contract ownership — the no-duplication rule
 
 Every cross-cutting contract is specified in exactly one place. Other plans link to it and never

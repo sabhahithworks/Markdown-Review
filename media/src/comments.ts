@@ -204,8 +204,21 @@ export function initComments(options: CommentsOptions): CommentsView {
 
   // Layout-affecting changes that are not state changes still have to move the overlay. The
   // observer is also what drives the < 700 px collapse (PRD §6).
+  //
+  // The work is deferred to the next frame rather than done in the callback, because `reposition`
+  // mutates layout — it toggles `body.mr-narrow` and sets every card's `top` — and mutating layout
+  // from inside a resize notification is what produces "ResizeObserver loop completed with
+  // undelivered notifications". That is not a silent warning here: `webview.ts` forwards every
+  // `window.error` to the host's output channel, so crossing the 700 px breakpoint would file a
+  // spurious error report every time. Deferring also coalesces the burst of notifications a drag
+  // produces into one overlay rebuild per frame.
+  let repositionFrame = 0;
   const observer = new ResizeObserver(() => {
-    reposition();
+    if (repositionFrame !== 0) return;
+    repositionFrame = window.requestAnimationFrame(() => {
+      repositionFrame = 0;
+      reposition();
+    });
   });
   observer.observe(options.root);
   // Deliberately no scroll listener: the overlay and gutter scroll with the content, and every

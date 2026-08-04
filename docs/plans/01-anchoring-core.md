@@ -376,17 +376,22 @@ its 2 MB guard from that data. Skippable via `PERF=0`, runs by default locally.
 
 ## 8. Acceptance checklist
 
-- [ ] `npm run check` green — typecheck under `strict: true`, lint, and every PRD §5 matrix row
+Verified 2026-08-04, during the Phase 3 → Phase 4 gate pass.
+
+- [x] `npm run check` green — typecheck under `strict: true`, lint, and every PRD §5 matrix row
       plus the additions in §7
-- [ ] The `no-restricted-imports` rule enforces the no-`vscode` ban (no manual grep needed)
-- [ ] `@types/markdown-it` absent from `package.json`; `npm ls typescript` shows 5.9.x
-- [ ] Tier-4 regression test (0.3 at 20 KB from hint) passes; `fuzzyFind` on 600 KB returns
+- [x] The `no-restricted-imports` rule enforces the no-`vscode` ban (no manual grep needed)
+      — the rule now also covers `src/store/{sidecarPath,reviewFile}.ts` and `src/panel/notices.ts`
+- [x] `@types/markdown-it` absent from `package.json`; `npm ls typescript` shows 5.9.x — 5.9.3
+- [x] Tier-4 regression test (0.3 at 20 KB from hint) passes; `fuzzyFind` on 600 KB returns
       in <100 ms
-- [ ] Performance test passes on the dev machine: median <500 ms **and** the 10/40/0 status split
-- [ ] `src/anchor/types.ts` matches PRD §4 field-for-field
-- [ ] markdown-it config lives in `src/render/markdownIt.ts` (single factory, ready for Phase 2)
-- [ ] `docs/fixtures/kitchen-sink.md` covers everything Plan 02 §8 lists
-- [ ] `CHANGELOG.md` has an `Unreleased → Added` entry
+- [x] Performance test passes on the dev machine: median <500 ms **and** the 10/40/0 status split
+      — `src/test/perf.test.ts`, 3 tests, run as part of `npm test` (skipped only under `PERF=0`)
+- [x] `src/anchor/types.ts` matches PRD §4 field-for-field
+- [x] markdown-it config lives in `src/render/markdownIt.ts` (single factory, ready for Phase 2)
+- [x] `docs/fixtures/kitchen-sink.md` covers everything Plan 02 §8 lists — and is now also the
+      corpus the layout harness renders
+- [x] `CHANGELOG.md` has an `Unreleased → Added` entry
 
 ## 9. Spec corrections applied in this phase
 

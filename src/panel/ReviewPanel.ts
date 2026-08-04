@@ -13,13 +13,13 @@ import * as vscode from 'vscode';
 import { createAnchor } from '../anchor/create.js';
 import { createLocator } from '../anchor/locate.js';
 import type { Comment, Located, PlainTextDoc } from '../anchor/types.js';
-import { MAX_ANCHOR_LENGTH, MIN_ANCHOR_LENGTH } from '../anchor/types.js';
 import { renderPlainText } from '../render/plaintext.js';
 import type { ImageResolver } from '../render/renderer.js';
 import { renderMarkdown } from '../render/renderer.js';
 import { ReviewStore } from '../store/ReviewStore.js';
 import type { HostMessage } from './messages.js';
 import { REVIEW_VIEW_TYPE, isWebviewMessage } from './messages.js';
+import { anchorRejectionMessage } from './notices.js';
 
 /**
  * PRD §11 requires a warning before rendering a very large file. v1 degrades rather than
@@ -329,11 +329,7 @@ export class ReviewPanel {
     const result = createAnchor({ selectedText, offset, doc, hintLine });
     if (!result.ok) {
       // The pure layer returns a reason; the wording is the extension layer's job (Plan 01 §4).
-      void vscode.window.showWarningMessage(
-        result.reason === 'too-short'
-          ? `Select at least ${String(MIN_ANCHOR_LENGTH)} characters`
-          : `Selection too long to anchor — select under ${String(MAX_ANCHOR_LENGTH)} characters`,
-      );
+      void vscode.window.showWarningMessage(anchorRejectionMessage(result.reason));
       return;
     }
 
