@@ -1,0 +1,32 @@
+{
+  "name": "markdown-review",
+  "version": "0.1.0",
+  "description": "Google Docs-style commenting for local Markdown files, reviewable by any AI agent.",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "build": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint && npm run test"
+  },
+  "dependencies": {
+    "diff-match-patch": "^1.0.5",
+    "markdown-it": "^15.0.0",
+    "markdown-it-task-lists": "^2.1.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/diff-match-patch": "^1.0.36",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.8.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.66.0",
+    "vitest": "^4.1.10"
+  }
+}

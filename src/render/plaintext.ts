@@ -1,0 +1,274 @@
+/**
+ * **Anchor space.** This module is the normative definition (Plan 01 §3): every component that
+ * touches anchors — the webview's selection capture, `locate`, `reanchor`, Phase 4's baseline
+ * diffing — must produce or consume text that follows exactly these rules.
+ *
+ * `renderPlainText` turns a markdown document into (a) the normalized plain text the user
+ * effectively sees, and (b) a list of `BlockSpan`s mapping offsets in that text back to source
+ * lines. Anchors live in this space rather than in markdown source because the user selects
+ * *rendered* text — `**bold**` reads as `bold` — and inverse-mapping inline syntax would be
+ * fragile and unnecessary.
+ *
+ * **Block-span invariant:** spans are non-empty, ascending, and non-overlapping. Offsets falling
+ * between two spans are the `\n` (or `' '`, within a table row) joiners. Empty blocks contribute
+ * nothing at all — no span and no joiner. `offsetToSourceLine`'s binary search depends on this.
+ * Separators are emitted *before* their content, so `text` never ends with a joiner.
+ */
+
+import type MarkdownIt from 'markdown-it';
+import type { BlockKind, BlockSpan, PlainTextDoc } from '../anchor/types.js';
+import { splitFrontMatter } from './frontMatter.js';
+import { createMarkdownIt } from './markdownIt.js';
+
+const md = createMarkdownIt();
+
+/**
+ * Collapses every run of whitespace to a single space and trims. This expression is exactly the
+ * normalization contract — **do not widen it**.
+ *
+ * JS `\s` already covers NBSP, the U+2000–200A range, ideographic space and ZWNBSP. Critically it
+ * does *not* match ZWSP (U+200B), ZWNJ (U+200C) or ZWJ (U+200D), and it must not: ZWJ is
+ * structural inside emoji sequences (👨‍👩‍👧 is three people joined by ZWJ) and in Indic and Arabic
+ * joining behavior. Stripping it would change the grapheme the user selected. Bidi control
+ * characters pass through verbatim for the same reason.
+ */
+export function collapse(s: string): string {
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+/** The full anchor-space normalization for a free-standing string: NFC, then whitespace collapse. */
+export function normalizeAnchorText(s: string): string {
+  return collapse(s.normalize('NFC'));
+}
+
+interface Frame {
+  map: readonly [number, number];
+  kind: BlockKind;
+  headingLevel?: number;
+  isCell: boolean;
+}
+
+const EMPTY_MAP: readonly [number, number] = [0, 0];
+
+export function renderPlainText(markdown: string): PlainTextDoc {
+  const { body, lineOffset } = splitFrontMatter(markdown.normalize('NFC'));
+  const tokens = md.parse(body, {});
+
+  const pieces: string[] = [];
+  const blocks: BlockSpan[] = [];
+  let cursor = 0;
+
+  const frames: Frame[] = [];
+  let cellsEmittedInRow = 0;
+
+  const top = (): Frame | undefined => frames[frames.length - 1];
+
+  /**
+   * Appends one block. The separator is pushed as its own piece *before* the content, which is
+   * what makes "blocks joined by \n" and "table cells joined by a space" the same mechanism.
+   */
+  function emit(
+    content: string,
+    separator: string,
+    meta: { kind: BlockKind; lineStart: number; lineEnd: number; headingLevel?: number },
+  ): boolean {
+    if (content.length === 0) return false;
+
+    if (pieces.length > 0) {
+      pieces.push(separator);
+      cursor += separator.length;
+    }
+
+    const start = cursor;
+    pieces.push(content);
+    cursor += content.length;
+
+    const span: BlockSpan = {
+      start,
+      end: cursor,
+      // The one place `lineOffset` is applied, so it cannot be forgotten at a call site.
+      sourceLineStart: meta.lineStart + lineOffset,
+      sourceLineEnd: meta.lineEnd + lineOffset,
+      kind: meta.kind,
+    };
+    if (meta.headingLevel !== undefined) span.headingLevel = meta.headingLevel;
+    blocks.push(span);
+    return true;
+  }
+
+  for (const token of tokens) {
+    if (token.nesting === 1) {
+      // Push a frame for *every* opening token, inheriting the enclosing map when the token has
+      // none. `th_open`/`td_open` carry no map — the line info lives on the enclosing `tr_open` —
+      // and pushing unconditionally is also what keeps the stack balanced against every close.
+      const inherited = token.map ?? top()?.map ?? EMPTY_MAP;
+      const frame: Frame = {
+        map: token.map ? [token.map[0], token.map[1]] : inherited,
+        kind: token.type === 'heading_open' ? 'heading' : 'text',
+        isCell: token.type === 'th_open' || token.type === 'td_open',
+      };
+      if (token.type === 'heading_open') {
+        frame.headingLevel = headingLevelFromTag(token.tag);
+      }
+      frames.push(frame);
+
+      if (token.type === 'tr_open') cellsEmittedInRow = 0;
+      continue;
+    }
+
+    if (token.nesting === -1) {
+      frames.pop();
+      continue;
+    }
+
+    switch (token.type) {
+      case 'inline': {
+        // `token.content` is the raw markdown source; the parsed children are the rendered text.
+        const raw = token.children ? inlineText(token.children) : '';
+        const content = collapse(raw);
+        const frame = top();
+        const map = token.map ?? frame?.map ?? EMPTY_MAP;
+        const isCell = frame?.isCell ?? false;
+        const separator = isCell && cellsEmittedInRow > 0 ? ' ' : '\n';
+
+        const meta: { kind: BlockKind; lineStart: number; lineEnd: number; headingLevel?: number } =
+          {
+            kind: frame?.kind ?? 'text',
+            lineStart: map[0],
+            lineEnd: map[1],
+          };
+        if (frame?.headingLevel !== undefined) meta.headingLevel = frame.headingLevel;
+
+        if (emit(content, separator, meta) && isCell) cellsEmittedInRow += 1;
+        break;
+      }
+
+      case 'fence': {
+        // Content is preserved verbatim (PRD §5) — internal newlines and indentation intact.
+        const content = trimOneTrailingNewline(token.content);
+        const lineStart = (token.map?.[0] ?? 0) + 1; // the first *content* line, not the ``` marker
+        emit(content, '\n', {
+          kind: 'code',
+          lineStart,
+          // exclusive end; content spans `countLines + 1` lines
+          lineEnd: lineStart + countLines(content) + 1,
+        });
+        break;
+      }
+
+      case 'code_block': {
+        // Indented code: unlike a fence, content starts on the token's own first line.
+        const content = trimOneTrailingNewline(token.content);
+        const lineStart = token.map?.[0] ?? 0;
+        emit(content, '\n', {
+          kind: 'code',
+          lineStart,
+          lineEnd: token.map?.[1] ?? lineStart + countLines(content),
+        });
+        break;
+      }
+
+      default:
+        // `hr`, and any self-closing token with no user-visible text, contribute nothing.
+        break;
+    }
+  }
+
+  return { text: pieces.join(''), blocks, frontMatterLineOffset: lineOffset };
+}
+
+/**
+ * Concatenates the rendered text of an inline token's children.
+ *
+ * Links need no special case: markdown-it puts the label's `text` tokens in the same flat children
+ * array and keeps the URL on `link_open.attrs`, so `[auth guide](url)` yields `auth guide` for
+ * free. Images do need one — their alt tokens are nested, and their `content` is raw source.
+ */
+function inlineText(children: readonly MarkdownIt.Token[]): string {
+  let out = '';
+  for (const child of children) {
+    switch (child.type) {
+      case 'text':
+      case 'text_special':
+      case 'code_inline':
+        out += child.content;
+        break;
+      case 'softbreak':
+      case 'hardbreak':
+        out += ' ';
+        break;
+      case 'image':
+        out += child.children ? inlineText(child.children) : child.content;
+        break;
+      case 'html_inline':
+      case 'html_block':
+        // Dropped. `markdown-it-task-lists` injects a synthetic `<input …>` token here even with
+        // `html: false`; without this branch every task item leaks raw HTML into anchor space.
+        break;
+      default:
+        // em/strong/link/s open and close tokens carry no text of their own.
+        break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Maps an offset in `doc.text` to a 0-based source line in the original file.
+ *
+ * Returns `-1` for a document with no blocks. Offsets are clamped into range, so callers do not
+ * have to bounds-check a selection that ran past the end of a re-rendered document.
+ */
+export function offsetToSourceLine(doc: PlainTextDoc, offset: number): number {
+  const { blocks, text } = doc;
+  if (blocks.length === 0) return -1;
+
+  // `text` never ends with a joiner, so the last character is always inside a block.
+  const target = Math.min(Math.max(offset, 0), Math.max(text.length - 1, 0));
+
+  let lo = 0;
+  let hi = blocks.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const block = blocks[mid];
+    if (!block) break;
+
+    if (target < block.start) {
+      hi = mid - 1;
+    } else if (target >= block.end) {
+      lo = mid + 1;
+    } else {
+      // Inside a code block a single BlockSpan can cover hundreds of lines, so count the newlines
+      // we have passed; without this every offset in a long fence reports the same line.
+      if (block.kind === 'code') {
+        return block.sourceLineStart + countLines(text.slice(block.start, target));
+      }
+      return block.sourceLineStart;
+    }
+  }
+
+  // A joiner offset, belonging to no block: `lo` is the following block. A selection starting on a
+  // block boundary is entering that block.
+  const following = blocks[lo];
+  if (following) return following.sourceLineStart;
+
+  const last = blocks[blocks.length - 1];
+  return last ? last.sourceLineStart : -1;
+}
+
+function headingLevelFromTag(tag: string): number | undefined {
+  const level = Number.parseInt(tag.slice(1), 10);
+  return Number.isFinite(level) ? level : undefined;
+}
+
+function trimOneTrailingNewline(s: string): string {
+  if (s.endsWith('\r\n')) return s.slice(0, -2);
+  if (s.endsWith('\n')) return s.slice(0, -1);
+  return s;
+}
+
+function countLines(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) if (s[i] === '\n') n += 1;
+  return n;
+}
