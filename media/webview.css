@@ -1,0 +1,354 @@
+/*
+ * Review pane styling.
+ *
+ * PRD §6: every colour comes from a `--vscode-*` variable. Hardcoded colours are a bug, and
+ * `scripts/check-css-colors.mjs` fails the build on one. Layout values (spacing, radii, measure)
+ * are plain numbers — those are not themed.
+ *
+ * Typography matters as much as colour here: a webview inherits none of VS Code's fonts, so
+ * without the declarations below the pane renders in the browser default serif in every theme.
+ *
+ * Verify against Dark+, Light+ and a High Contrast theme. Every variable used is defined by the
+ * VS Code colour registry for all three.
+ */
+
+:root {
+  --mr-measure: 72ch;
+  --mr-gap: 16px;
+  --mr-radius: 4px;
+  --mr-code-pad: 12px;
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  font-weight: var(--vscode-font-weight);
+  line-height: 1.6;
+  color: var(--vscode-editor-foreground);
+  background-color: var(--vscode-editor-background);
+  margin: 0;
+  padding: 24px 32px 64px;
+}
+
+#content {
+  max-width: var(--mr-measure);
+}
+
+/* ---------- Front matter ---------- */
+
+/*
+ * Collapsed by default and marked non-anchorable: front matter is excluded from anchor space by
+ * construction, so Phase 3 must never build a selection out of it.
+ */
+.front-matter {
+  max-width: var(--mr-measure);
+  margin-bottom: var(--mr-gap);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-editorWidget-background);
+}
+
+.front-matter > summary {
+  cursor: pointer;
+  padding: 6px 12px;
+  color: var(--vscode-descriptionForeground);
+  user-select: none;
+}
+
+.front-matter > summary:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.front-matter pre {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--vscode-panel-border);
+  border-radius: 0;
+}
+
+/* ---------- Block rhythm ---------- */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  line-height: 1.3;
+  margin: 1.6em 0 0.6em;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 1.8em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+h2 {
+  font-size: 1.4em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+h3 {
+  font-size: 1.2em;
+}
+
+h1:first-child,
+h2:first-child {
+  margin-top: 0;
+}
+
+p,
+ul,
+ol,
+blockquote,
+table,
+pre {
+  margin: 0 0 var(--mr-gap);
+}
+
+ul,
+ol {
+  padding-left: 1.6em;
+}
+
+li > ul,
+li > ol {
+  margin-bottom: 0;
+}
+
+hr {
+  height: 1px;
+  border: 0;
+  margin: 2em 0;
+  background-color: var(--vscode-panel-border);
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---------- Links ---------- */
+
+a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--vscode-textLink-activeForeground);
+  text-decoration: underline;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* ---------- Code ---------- */
+
+code,
+kbd,
+samp {
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+/* Inline code only — fenced code is styled by the `pre > code` rule below. */
+:not(pre) > code {
+  padding: 0.15em 0.35em;
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-textPreformat-background);
+  color: var(--vscode-textPreformat-foreground);
+}
+
+pre {
+  overflow-x: auto;
+  padding: var(--mr-code-pad);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-textCodeBlock-background);
+}
+
+pre > code {
+  display: block;
+  padding: 0;
+  background: none;
+  color: var(--vscode-editor-foreground);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+/* ---------- Blockquotes ---------- */
+
+blockquote {
+  padding: 0.4em var(--mr-gap);
+  border-left: 4px solid var(--vscode-textBlockQuote-border);
+  background-color: var(--vscode-textBlockQuote-background);
+}
+
+blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- Tables ---------- */
+
+table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+th,
+td {
+  padding: 6px 12px;
+  border: 1px solid var(--vscode-panel-border);
+  text-align: left;
+}
+
+th {
+  background-color: var(--vscode-editorWidget-background);
+  font-weight: 600;
+}
+
+/* ---------- Task lists ---------- */
+
+/* The pane is read-only, so checkboxes render as state, never as controls. */
+input[type='checkbox'] {
+  margin-right: 0.5em;
+  vertical-align: middle;
+  pointer-events: none;
+}
+
+li:has(> input[type='checkbox']) {
+  list-style: none;
+  margin-left: -1.4em;
+}
+
+/* ---------- Notices (too large / unreadable target) ---------- */
+
+#notice[hidden] {
+  display: none;
+}
+
+#notice {
+  max-width: var(--mr-measure);
+  margin-bottom: var(--mr-gap);
+  padding: var(--mr-gap);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-editorWidget-background);
+}
+
+#notice h2 {
+  margin: 0 0 0.5em;
+  padding: 0;
+  border: 0;
+  font-size: 1.1em;
+}
+
+#notice p {
+  margin: 0 0 var(--mr-gap);
+  color: var(--vscode-descriptionForeground);
+}
+
+#notice p:last-child {
+  margin-bottom: 0;
+}
+
+#notice button {
+  font-family: inherit;
+  font-size: inherit;
+  padding: 4px 14px;
+  border: 1px solid var(--vscode-button-border);
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--vscode-button-foreground);
+  background-color: var(--vscode-button-background);
+}
+
+#notice button:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+/* ---------- Syntax highlighting ---------- */
+
+/*
+ * highlight.js ships stylesheets full of hardcoded hex, which PRD §6 forbids and the colour lint
+ * rejects. These map its token classes onto variables the colour registry defines for every theme
+ * kind, including High Contrast, so highlighting follows the user's theme instead of fighting it.
+ */
+.hljs {
+  color: var(--vscode-editor-foreground);
+  background: none;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-built_in,
+.hljs-meta {
+  color: var(--vscode-debugTokenExpression-boolean);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-char.escape_,
+.hljs-meta .hljs-string {
+  color: var(--vscode-debugTokenExpression-string);
+}
+
+.hljs-number,
+.hljs-symbol {
+  color: var(--vscode-debugTokenExpression-number);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-property,
+.hljs-template-variable,
+.hljs-selector-attr {
+  color: var(--vscode-debugTokenExpression-name);
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-title.function_,
+.hljs-selector-id {
+  color: var(--vscode-charts-blue);
+}
+
+.hljs-type,
+.hljs-title.class_,
+.hljs-tag {
+  color: var(--vscode-charts-purple);
+}
+
+.hljs-addition {
+  color: var(--vscode-charts-green);
+}
+
+.hljs-deletion {
+  color: var(--vscode-charts-red);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+  <!-- Two overlapping speech bubbles: a document under review. Drawn for this project, so there is
+       no third-party icon licence to attribute. Panel icons are not themed by VS Code, hence the
+       light/dark pair; these two files are the only place a literal colour is correct. -->
+  <path d="M1.5 2.5h9a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6l-3 2.5V9.5h-1.5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z" stroke="#424242" stroke-width="1.1" stroke-linejoin="round"/>
+  <path d="M13 5.5h1.5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H14v2l-2.5-2H9" stroke="#424242" stroke-width="1.1" stroke-linejoin="round"/>
+</svg>

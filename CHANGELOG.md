@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Phase 2 — read-only review pane: extension manifest and a two-bundle esbuild pipeline,
+  `markdownReview.open` opening a themed, CSP-locked webview beside the editor, `data-line`
+  injection and front-matter rendering (`src/render/renderer.ts`), the extension⇄webview message
+  contract (`src/panel/messages.ts`), webview-side sanitization and syntax highlighting, a 2 MB
+  size guard, and reload survival via `WebviewPanelSerializer`. The other three commands are
+  declared with honest placeholders until commenting ships.
+  - `highlight.js` is added as a runtime dependency: mandated by PRD §6 but absent from the PRD §3
+    table, so it is recorded as an approved exception alongside `markdown-it-task-lists`. Measured
+    at 70.6 KB of the 102.9 KB `media/webview.js` (34.4 KB gzipped); the whole gzipped payload is
+    ≈ 88 KB against Phase 5's 500 KB budget.
 - Phase 1 — anchoring core: repo toolchain (TypeScript, vitest, ESLint), plain-text rendering with
   a source-line offset map (`src/render/`), and anchor create / locate / reanchor (`src/anchor/`).
   Pure logic, no VS Code dependency. `docs/fixtures/kitchen-sink.md` is shared with Phase 2's
@@ -16,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `docs/plans/02-preview-pane.md` §10 records the corrections Phase 2 applied to its own plan. The
+  release-blocking one: a fenced block's `data-line` must be `token.map[0] + 1`, matching the first
+  content line `plaintext.ts` anchors its `BlockSpan` to — as originally specified it pointed at the
+  ``` ``` ``` marker, desyncing the DOM from anchor space on every code block. Also a missing scheme
+  allowlist on `openExternal`, which was arbitrary command execution from file content.
 - `MARKDOWN_REVIEW_PRD.md` §5 amended for two release-blocking defects found during
   implementation: the tier-4 fuzzy search's `Match_Distance` (as specified it could only see the
   first ~300 characters of any document) and the `addressed` comparison basis, which now reads

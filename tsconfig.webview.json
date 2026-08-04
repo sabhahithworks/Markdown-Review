@@ -1,0 +1,21 @@
+{
+  // The webview bundle is browser code: it gets the DOM and must NOT get node types, so it needs
+  // its own project. `include` is overridden explicitly — `extends` inherits the base `include`,
+  // which would otherwise drag all of `src` (and its node imports) into a DOM-only compilation.
+  //
+  // `src/panel/messages.ts` is deliberately compiled by BOTH projects. It is bundled into the
+  // webview, so typechecking it here proves it carries no node and no vscode dependency.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": [],
+    // esbuild bundles this entry point, so bundler-style resolution is the honest model. It also
+    // avoids node16's brittle handling of `highlight.js/lib/languages/*` subpath exports.
+    "module": "esnext",
+    "moduleResolution": "bundler"
+  },
+  // `exclude` is inherited too, and the base excludes `media` — clear it or this project has no
+  // inputs at all.
+  "exclude": [],
+  "include": ["media/src", "src/panel/messages.ts"]
+}

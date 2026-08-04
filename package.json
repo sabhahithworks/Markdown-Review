@@ -1,22 +1,100 @@
 {
   "name": "markdown-review",
+  "displayName": "Markdown Review",
   "version": "0.1.0",
-  "description": "Google Docs-style commenting for local Markdown files, reviewable by any AI agent.",
+  "description": "Comment on markdown documents and hand your review to any AI agent.",
   "license": "MIT",
   "private": true,
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "review",
+    "comments",
+    "ai",
+    "agent"
+  ],
   "engines": {
+    "vscode": "^1.90.0",
     "node": ">=20"
+  },
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "markdownReview.open",
+        "title": "Markdown Review: Open Review Pane",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "markdownReview.copyPrompt",
+        "title": "Markdown Review: Copy Review Prompt"
+      },
+      {
+        "command": "markdownReview.clearAddressed",
+        "title": "Markdown Review: Clear Addressed Comments"
+      },
+      {
+        "command": "markdownReview.clearAll",
+        "title": "Markdown Review: Clear All Comments"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "markdownReview.open",
+          "when": "resourceLangId == markdown",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "markdownReview.open",
+          "when": "resourceLangId == markdown",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Markdown Review",
+      "properties": {
+        "markdownReview.author": {
+          "type": "string",
+          "default": "",
+          "description": "Name attached to your comments. Defaults to your system username."
+        },
+        "markdownReview.storageLocation": {
+          "type": "string",
+          "enum": [
+            "workspace",
+            "global"
+          ],
+          "default": "workspace",
+          "markdownDescription": "`workspace` writes to `.reviews/` (shareable via git). `global` keeps comments private to your machine."
+        },
+        "markdownReview.autoDetectResolution": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mark comments as addressed when their anchored text changes."
+        }
+      }
+    }
   },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit",
     "lint": "eslint .",
-    "build": "tsc --noEmit",
+    "lint:css": "node scripts/check-css-colors.mjs",
+    "build": "node esbuild.mjs && npm run lint:css",
+    "watch": "node esbuild.mjs --watch",
     "check": "npm run typecheck && npm run lint && npm run test"
   },
   "dependencies": {
     "diff-match-patch": "^1.0.5",
+    "dompurify": "^3.4.13",
+    "highlight.js": "^11.11.1",
     "markdown-it": "^15.0.0",
     "markdown-it-task-lists": "^2.1.1"
   },
@@ -24,6 +102,9 @@
     "@eslint/js": "^10.0.1",
     "@types/diff-match-patch": "^1.0.36",
     "@types/node": "^22.0.0",
+    "@types/vscode": "~1.90.0",
+    "@vscode/test-electron": "^3.1.0",
+    "esbuild": "^0.28.1",
     "eslint": "^10.8.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.66.0",

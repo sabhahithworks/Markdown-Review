@@ -20,7 +20,14 @@ export default tseslint.config(
     // core can be tested without a VS Code host. This rule is the mechanical enforcement of that
     // constraint — it matters most from Phase 2 on, when `vscode` is a legitimate import one
     // directory over.
-    files: ['src/anchor/**/*.ts', 'src/render/**/*.ts', 'src/prompt/**/*.ts'],
+    // `panel/messages.ts` joins the list from Phase 2 on: it is bundled into the *webview*, where
+    // `vscode` does not exist, so an import there fails at bundle time with a confusing error.
+    files: [
+      'src/anchor/**/*.ts',
+      'src/render/**/*.ts',
+      'src/prompt/**/*.ts',
+      'src/panel/messages.ts',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -29,11 +36,24 @@ export default tseslint.config(
             {
               name: 'vscode',
               message:
-                'Pure modules (anchor/, render/, prompt/) must not import vscode — see PRD §10 Phase 1.',
+                'Pure modules (anchor/, render/, prompt/) and the webview-bundled message contract must not import vscode — see PRD §10 Phase 1.',
             },
           ],
         },
       ],
+    },
+  },
+  {
+    // Build scripts are plain ESM JavaScript, so `no-undef` is active (typescript-eslint only
+    // disables it for .ts) and the globals it needs must be declared. Inline rather than adding
+    // the `globals` package for four names.
+    files: ['esbuild.mjs', 'scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly', URL: 'readonly', Buffer: 'readonly' },
+    },
+    rules: {
+      // Build tooling reports to the terminal; that is its interface.
+      'no-console': 'off',
     },
   },
   {

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+  <!-- Dark-theme twin of icon-light.svg. Same geometry, lighter stroke. -->
+  <path d="M1.5 2.5h9a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6l-3 2.5V9.5h-1.5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z" stroke="#C5C5C5" stroke-width="1.1" stroke-linejoin="round"/>
+  <path d="M13 5.5h1.5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H14v2l-2.5-2H9" stroke="#C5C5C5" stroke-width="1.1" stroke-linejoin="round"/>
+</svg>

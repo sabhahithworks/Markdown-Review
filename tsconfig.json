@@ -20,5 +20,7 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src", "vitest.config.mts"]
+  // `media/` is browser code with a different lib/types set — see tsconfig.webview.json.
+  "include": ["src", "vitest.config.mts"],
+  "exclude": ["media"]
 }
