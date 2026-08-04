@@ -165,6 +165,102 @@ async function main() {
         comment('mix00003', PASSAGES.tableCell, { status: 'resolved', body: 'Fixed in the table.' }),
       ]),
     },
+    addressed: {
+      label: 'Addressed',
+      description:
+        'Two comments the extension believes were addressed, showing before/after. One carries a long rewrite, to check the diff wraps inside the card instead of overflowing it.',
+      review: review([
+        comment('addr0001', PASSAGES.paragraph, {
+          status: 'addressed',
+          body: 'Say what happens when the key set cannot be fetched.',
+          resolution: {
+            previousText: PASSAGES.paragraph,
+            currentText: `${PASSAGES.paragraph} If the key set cannot be fetched the request fails closed, and the previous set is never reused.`,
+            detectedAt: '2026-08-01T10:15:00.000Z',
+          },
+        }),
+        comment('addr0002', PASSAGES.emphasis, {
+          status: 'addressed',
+          body: 'Does "structured" mean JSON here?',
+          resolution: {
+            previousText: PASSAGES.emphasis,
+            currentText: 'JSON',
+            detectedAt: '2026-08-01T10:16:00.000Z',
+          },
+        }),
+      ]),
+    },
+    orphans: {
+      label: 'Orphans',
+      description:
+        'Three orphaned comments. Before Phase 4b these all rendered at the same point in the gutter, because an orphan never reached the stacking pass and so never got a `top` (Plan 04 §9 D6). This scenario is the regression guard.',
+      review: review([
+        comment('orphA001', PASSAGES.paragraph, {
+          status: 'orphaned',
+          body: 'The sentence this was attached to has been deleted.',
+          anchor: { exact: 'a sentence that appears nowhere in this document at all' },
+        }),
+        comment('orphA002', PASSAGES.emphasis, {
+          status: 'orphaned',
+          body: 'This whole section was rewritten.',
+          anchor: { exact: 'another string that is definitely not present anywhere' },
+        }),
+        comment('orphA003', PASSAGES.tableCell, {
+          status: 'orphaned',
+          body: 'And the table it referred to is gone too.',
+          anchor: { exact: 'a third absent passage, also nowhere to be found here' },
+        }),
+      ]),
+    },
+    filtered: {
+      label: 'One of each status',
+      description:
+        'One comment per status, for the header counts and the filter chips. Toggling `open` should remove both its card and its highlight.',
+      review: review([
+        comment('filt0001', PASSAGES.paragraph, { body: 'Still open.' }),
+        comment('filt0002', PASSAGES.emphasis, {
+          status: 'addressed',
+          body: 'Reworded already.',
+          resolution: {
+            previousText: PASSAGES.emphasis,
+            currentText: 'JSON',
+            detectedAt: '2026-08-01T10:16:00.000Z',
+          },
+        }),
+        comment('filt0003', PASSAGES.tableCell, {
+          status: 'orphaned',
+          body: 'Anchor is gone.',
+          anchor: { exact: 'a passage that no longer exists in the document' },
+        }),
+        comment('filt0004', PASSAGES.fence, { status: 'resolved', body: 'Dealt with.' }),
+      ]),
+    },
+    rewrite: {
+      label: 'Rewritten document',
+      description:
+        'Every comment orphaned in one pass, with a baseline recorded — the banner case. The page posts `rewriteDetected` directly, since only the host can detect the transition.',
+      rewriteDetected: 3,
+      review: {
+        ...review([
+          comment('rewr0001', PASSAGES.paragraph, {
+            status: 'orphaned',
+            body: 'This point still stands.',
+            anchor: { exact: 'none of this survived the rewrite, first' },
+          }),
+          comment('rewr0002', PASSAGES.emphasis, {
+            status: 'orphaned',
+            body: 'So does this one.',
+            anchor: { exact: 'none of this survived the rewrite, second' },
+          }),
+          comment('rewr0003', PASSAGES.tableCell, {
+            status: 'orphaned',
+            body: 'And this.',
+            anchor: { exact: 'none of this survived the rewrite, third' },
+          }),
+        ]),
+        baselineAt: '2026-08-01T09:00:00.000Z',
+      },
+    },
   };
 
   // `located` is computed the same way `ReviewPanel.postReviewState` computes it, per scenario.

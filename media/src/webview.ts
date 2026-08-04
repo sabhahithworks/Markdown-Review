@@ -25,10 +25,20 @@ import sql from 'highlight.js/lib/languages/sql';
 import typescript from 'highlight.js/lib/languages/typescript';
 import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
-import type { HostMessage, PanelState, WebviewMessage } from '../../src/panel/messages.js';
+import type {
+  CommentStatus,
+  HostMessage,
+  PanelState,
+  WebviewMessage,
+} from '../../src/panel/messages.js';
 import { resetBlockMaps } from './anchorSpace.js';
 import type { CommentsView } from './comments.js';
 import { initComments } from './comments.js';
+import type { HeaderView } from './header.js';
+import { FILTERABLE, initHeader } from './header.js';
+import type { OrphansView } from './orphans.js';
+import { initOrphans } from './orphans.js';
+import type { SelectionController } from './selection.js';
 import { initSelection } from './selection.js';
 
 /**
@@ -73,14 +83,21 @@ const frontMatterRoot = requireElement('front-matter-root');
 const noticeRoot = requireElement('notice');
 const gutterRoot = requireElement('gutter');
 const overlayRoot = requireElement('highlight-overlay');
+const headerRoot = requireElement('header');
+const orphansRoot = requireElement('orphans');
 
 /** Built on `init`, because the popover shows the author the host will attribute the comment to. */
 let comments: CommentsView | undefined;
+let header: HeaderView | undefined;
+let orphans: OrphansView | undefined;
+let selection: SelectionController | undefined;
 
 let targetPath = '';
 /** A `data-line` value, not a pixel offset, so it survives a re-render that changes layout. */
 let scrollLine: number | undefined;
 let scrollFrame = 0;
+/** Active status chips, persisted through `setState` so a reload keeps the user's view (PRD §6). */
+let filter: CommentStatus[] | undefined;
 
 function requireElement(id: string): HTMLElement {
   const element = document.getElementById(id);
@@ -112,6 +129,10 @@ const restored: unknown = vscode.getState();
 if (isPanelStateShape(restored)) {
   targetPath = restored.targetPath;
   scrollLine = restored.scrollLine;
+  // Filtered defensively: the local shape check only vouches for `targetPath`, and an unknown
+  // status here would hide every comment rather than fail visibly.
+  const saved = restored.filter;
+  if (Array.isArray(saved)) filter = FILTERABLE.filter((status) => saved.includes(status));
 }
 
 /** Local shape check — the guard in `messages.ts` is host-side and not worth bundling for one call. */
@@ -124,7 +145,9 @@ function isPanelStateShape(value: unknown): value is PanelState {
 }
 
 function saveState(): void {
-  const state: PanelState = scrollLine === undefined ? { targetPath } : { targetPath, scrollLine };
+  const state: PanelState = { targetPath };
+  if (scrollLine !== undefined) state.scrollLine = scrollLine;
+  if (filter !== undefined) state.filter = filter;
   vscode.setState(state);
 }
 
@@ -179,14 +202,48 @@ function highlightAll(): void {
  * from `markdownReview.author` or the system username).
  */
 function startCommenting(author: string): CommentsView {
-  initSelection({
+  selection = initSelection({
     root: contentRoot,
     author,
     onSubmit: ({ selectedText, offset, hintLine, body }) => {
       vscode.postMessage({ type: 'addComment', selectedText, offset, hintLine, body });
     },
+    onReanchor: ({ id, selectedText, offset, hintLine }) => {
+      vscode.postMessage({ type: 'reanchorComment', id, selectedText, offset, hintLine });
+    },
+    onArmChange: (id) => orphans?.setArmed(id),
     onWarning: report,
   });
+
+  orphans = initOrphans({
+    root: orphansRoot,
+    onDelete: (id) => {
+      vscode.postMessage({ type: 'deleteComment', id });
+    },
+    onReanchor: (id) => selection?.armReanchor(id),
+    onCancelReanchor: () => selection?.disarm(),
+  });
+
+  header = initHeader({
+    root: headerRoot,
+    onCopyPrompt: () => {
+      vscode.postMessage({ type: 'copyPrompt' });
+    },
+    onClearAddressed: () => {
+      vscode.postMessage({ type: 'clearAddressed' });
+    },
+    onFilterChange: (statuses) => {
+      filter = statuses;
+      saveState();
+      comments?.setFilter(statuses);
+    },
+  });
+
+  // A filter restored from a previous session applies before the first state arrives, so the pane
+  // does not flash every comment and then hide half of them.
+  if (filter) {
+    header.setFilter(filter);
+  }
 
   return initComments({
     root: contentRoot,
@@ -200,6 +257,9 @@ function startCommenting(author: string): CommentsView {
     },
     onResolve: (id) => {
       vscode.postMessage({ type: 'resolveComment', id });
+    },
+    onReopen: (id) => {
+      vscode.postMessage({ type: 'reopenComment', id });
     },
   });
 }
@@ -324,7 +384,27 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
       break;
 
     case 'reviewState':
+      // Order matters, and not cosmetically. `#header` and `#orphans` are both in normal flow
+      // *above* `#content`, so showing or resizing either one moves every block below it. Cards and
+      // highlights are placed from measured rectangles, so they have to be measured last — updating
+      // them first left every highlight offset by the height of whatever appeared above it, which
+      // showed up as highlights landing on the wrong line.
+      header?.setState(message.review);
+      orphans?.setState(message.review.comments, message.located);
       comments?.setState(message.review, message.located);
+      break;
+
+    case 'rewriteDetected':
+      showNotice(
+        'The document was rewritten',
+        `${String(message.orphaned)} comments could not be relocated. Their original text is listed above, and nothing has been deleted.`,
+        {
+          label: 'Review the diff',
+          run: () => {
+            vscode.postMessage({ type: 'showRewriteDiff' });
+          },
+        },
+      );
       break;
 
     case 'setContent':
@@ -350,6 +430,14 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
       showNotice(
         'This file could not be read',
         `It may have been moved, renamed or deleted. The pane is still open, and nothing has been lost. (${message.reason})`,
+        {
+          // PRD §11's "offer to re-link". The comments survive the file, so this is a way back
+          // rather than a dead end.
+          label: 'Locate file…',
+          run: () => {
+            vscode.postMessage({ type: 'relinkTarget' });
+          },
+        },
       );
       break;
   }

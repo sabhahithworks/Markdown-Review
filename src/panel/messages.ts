@@ -102,7 +102,19 @@ export type WebviewMessage =
   | { type: 'addComment'; selectedText: string; offset: number; hintLine: number; body: string }
   | { type: 'editComment'; id: string; body: string }
   | { type: 'deleteComment'; id: string }
+  /** Also the "Looks good" button on an addressed card — same host action, different label. */
   | { type: 'resolveComment'; id: string }
+  /** The user disagrees with an inference: `addressed` back to `open` (PRD §8). */
+  | { type: 'reopenComment'; id: string }
+  /**
+   * Re-attach an orphan to a fresh selection (PRD §6). Carries the selection rather than arming a
+   * mode host-side, so the "pick some text" state lives entirely in the webview and cannot be left
+   * stuck by a reload. The payload mirrors `addComment` so both go through the same validation.
+   */
+  | { type: 'reanchorComment'; id: string; selectedText: string; offset: number; hintLine: number }
+  /** Header actions. The palette commands are the same code paths. */
+  | { type: 'copyPrompt' }
+  | { type: 'clearAddressed' }
   /** The rewrite banner's action: open baseline ↔ current as a diff (PRD §11). */
   | { type: 'showRewriteDiff' }
   /** "Locate file…" on the unreadable notice: point this review at a file that still exists. */
@@ -136,6 +148,8 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
     case 'renderAnyway':
     case 'showRewriteDiff':
     case 'relinkTarget':
+    case 'copyPrompt':
+    case 'clearAddressed':
       return true;
     case 'openExternal':
       return typeof value['url'] === 'string';
@@ -154,7 +168,15 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
       return typeof value['id'] === 'string' && typeof value['body'] === 'string';
     case 'deleteComment':
     case 'resolveComment':
+    case 'reopenComment':
       return typeof value['id'] === 'string';
+    case 'reanchorComment':
+      return (
+        typeof value['id'] === 'string' &&
+        typeof value['selectedText'] === 'string' &&
+        isFiniteNumber(value['offset']) &&
+        isFiniteNumber(value['hintLine'])
+      );
     default:
       return false;
   }

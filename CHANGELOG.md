@@ -34,6 +34,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `baselineText` is capped at 256 KB. PRD §4 puts the whole snapshot in the sidecar, which on a
     2 MB document means a multi-megabyte JSON file rewritten on every save and committed to git.
     Over the cap the baseline is skipped and only the rewrite diff is unavailable.
+- **The review pane's status UI (Phase 4b).** Everything Phase 4a inferred is now visible and
+  actionable.
+  - A sticky header bar with per-status counts that double as filter chips, a primary **Copy review
+    prompt** button (disabled at zero open comments) and **Clear addressed**. The active filter
+    persists through `getState`/`setState`, so a window reload keeps the view you were working in.
+  - Addressed cards show the before/after the extension inferred, with **Looks good** and
+    **Reopen**. `addressed` is a suggestion the user confirms (PRD §8), and without the evidence on
+    the card "Looks good" would be asking for trust in an inference nobody can see.
+  - Orphaned comments moved out of the gutter into a section of their own (PRD §6), each quoting the
+    text it was attached to, with **Delete** and **Re-anchor**. Re-anchoring arms the pane; the next
+    selection re-attaches the comment, keeping its id, body, author and creation time.
+  - A banner when a single pass orphans every located comment, offering a diff of the review
+    baseline against the document now.
+  - "Locate file…" on the unreadable-file notice, for a target that was renamed or deleted.
 - Verification harnesses, closing out the Phase 3 acceptance checklist. Two of its ten items were
   machine-checked before; eight are now. Neither harness ships in the `.vsix` and neither is in
   `npm run check` — one launches VS Code, the other needs a browser.
@@ -55,6 +69,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Orphaned comments no longer stack on top of each other. Cards are absolutely positioned from their
+  anchor's rectangle, and an orphan has no rectangle — so every one of them was skipped before the
+  stacking pass ran, never got a `top`, and they all landed at the same point. They now live in a
+  section in normal flow, where the problem cannot occur. Placement is decided by *position* rather
+  than status, because the two legitimately disagree: an externally hand-edited sidecar reaches the
+  pane saying `open` with an anchor that cannot be found.
+- Anchor highlights no longer land on the wrong line. The header and orphan sections sit above the
+  content, so showing either one moves every block below it — and they were being updated *after*
+  the highlights had been measured. Long paragraphs absorbed the offset; short blocks did not.
+- The rewrite banner is no longer rendered below the entire document. Its container was the last
+  element in the pane, which suited the two states that clear the document first but not this one.
 - The review pane no longer files a spurious error into its output channel every time it is dragged
   past the 700 px breakpoint. `reposition()` mutates layout, so calling it directly from the
   `ResizeObserver` callback produced "ResizeObserver loop completed with undelivered notifications",

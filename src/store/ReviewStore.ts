@@ -185,6 +185,25 @@ export class ReviewStore {
   }
 
   /**
+   * Returns an `addressed` comment to `open` — the user disagrees with the inference (PRD §8).
+   *
+   * The before/after goes with it: `resolution` is the evidence for a claim the user has just
+   * rejected, and leaving it would render a diff on a card that no longer says anything changed.
+   *
+   * Note this does not stop the next re-anchor pass inferring `addressed` again from the same text,
+   * and that is correct — the comparison basis is `anchor.exact`, so re-inferring means the text
+   * still differs from what was commented on. Reopening says "not done yet", not "stop looking".
+   */
+  reopen(id: string): void {
+    this.mapComment(id, (comment) => {
+      if (comment.status !== 'addressed') return comment;
+      const next: Comment = { ...comment, status: 'open' };
+      delete next.resolution;
+      return next;
+    });
+  }
+
+  /**
    * Re-attaches an orphaned comment to a selection the user picked by hand (PRD §6).
    *
    * The comment keeps its id, body, author and creation time — it is the same remark about the same

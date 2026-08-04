@@ -8,9 +8,10 @@
  * ranges that cross element boundaries for free.
  */
 
-import type { Comment, Located, ReviewFile } from '../../src/panel/messages.js';
-import { UNCERTAIN_BELOW } from '../../src/panel/messages.js';
+import type { Comment, CommentStatus, Located, ReviewSummary } from '../../src/panel/messages.js';
+import { UNCERTAIN_BELOW, truncateQuote } from '../../src/panel/messages.js';
 import { domRangeFor } from './anchorSpace.js';
+import { FILTERABLE } from './header.js';
 
 /** Below this width the margin cannot hold a readable card, so it collapses (PRD §6). */
 const NARROW_BREAKPOINT_PX = 700;
@@ -24,12 +25,39 @@ export interface CommentsOptions {
   overlay: HTMLElement;
   onEdit(id: string, body: string): void;
   onDelete(id: string): void;
+  /** Also "Looks good" on an addressed card — the same terminal `resolved` either way. */
   onResolve(id: string): void;
+  /** The user rejects an `addressed` inference (PRD §8). */
+  onReopen(id: string): void;
 }
 
 export interface CommentsView {
-  setState(review: ReviewFile, located: Record<string, Located | null>): void;
+  setState(review: ReviewSummary, located: Record<string, Located | null>): void;
+  setFilter(statuses: readonly CommentStatus[]): void;
   reposition(): void;
+}
+
+/** Before/after text is truncated to keep a reworded paragraph from filling the gutter. */
+const DIFF_QUOTE_LENGTH = 160;
+
+/**
+ * Whether a comment belongs in the orphan section rather than the gutter.
+ *
+ * **Position decides, not status.** A gutter card is placed by its anchor's rectangle, so a comment
+ * with no position has nothing to be placed against — it would keep `position: absolute` with no
+ * `top`, land at the container origin, and pile up on every other one (Plan 04 §9 D6).
+ *
+ * Status alone is not enough, because the two can disagree: `applyReanchor` is what sets
+ * `orphaned`, and it runs on a re-render, while `postReviewState` also fires on any store change.
+ * An externally hand-edited sidecar (PRD §11 invites one) therefore reaches the webview saying
+ * `open` with an anchor that cannot be found, and that is exactly the case this predicate catches.
+ *
+ * `resolved` is exempt: it is terminal and never re-anchored, so an unlocatable resolved comment is
+ * normal and belongs in the collapsed group, not in a triage list asking the user to act on it.
+ */
+function belongsInOrphans(comment: Comment, located: Record<string, Located | null>): boolean {
+  if (comment.status === 'resolved') return false;
+  return comment.status === 'orphaned' || !located[comment.id];
 }
 
 /**
@@ -38,6 +66,8 @@ export interface CommentsView {
  * Pure and exported so the geometry is testable without a layout engine — jsdom reports every
  * rectangle as zero, so this is the only part of the layout that *can* be asserted.
  */
+export { belongsInOrphans };
+
 export function stackTops(desired: number[], heights: number[], gap: number): number[] {
   const tops: number[] = [];
   let floor = Number.NEGATIVE_INFINITY;
@@ -53,6 +83,8 @@ export function stackTops(desired: number[], heights: number[], gap: number): nu
 export function initComments(options: CommentsOptions): CommentsView {
   let comments: Comment[] = [];
   let located: Record<string, Located | null> = {};
+  /** Statuses currently shown. Everything, until the header says otherwise. */
+  let filter: CommentStatus[] = [...FILTERABLE];
   /** Card element per comment id, for the positioning pass. */
   const cards = new Map<string, HTMLElement>();
   let expanded: string | undefined;
@@ -87,9 +119,15 @@ export function initComments(options: CommentsOptions): CommentsView {
     return options.root.clientWidth > 0 && window.innerWidth < NARROW_BREAKPOINT_PX;
   }
 
-  function setState(review: ReviewFile, next: Record<string, Located | null>): void {
-    comments = review.comments;
+  function setState(review: ReviewSummary, next: Record<string, Located | null>): void {
     located = next;
+    // The gutter takes only what it can place. `orphans.ts` takes the rest.
+    comments = review.comments.filter((comment) => !belongsInOrphans(comment, next));
+    render();
+  }
+
+  function setFilter(next: readonly CommentStatus[]): void {
+    filter = [...next];
     render();
   }
 
@@ -98,8 +136,9 @@ export function initComments(options: CommentsOptions): CommentsView {
     options.gutter.replaceChildren();
     options.overlay.replaceChildren();
 
-    const live = comments.filter((comment) => comment.status !== 'resolved');
-    const resolved = comments.filter((comment) => comment.status === 'resolved');
+    const shown = comments.filter((comment) => filter.includes(comment.status));
+    const live = shown.filter((comment) => comment.status !== 'resolved');
+    const resolved = shown.filter((comment) => comment.status === 'resolved');
 
     // Document order, so stacking never reorders the conversation. Comments whose anchor is gone
     // sort last — they have no position to sort by.
@@ -150,11 +189,12 @@ export function initComments(options: CommentsOptions): CommentsView {
 
     for (const comment of comments) {
       const card = cards.get(comment.id);
+      // Filtered out, or orphaned and therefore living in `#orphans` instead. Either way there is
+      // no card to place and no highlight to draw.
+      if (!card) continue;
+
       const position = located[comment.id];
-      if (!position) {
-        card?.classList.add('mr-card-orphaned');
-        continue;
-      }
+      if (!position) continue;
 
       const range = domRangeFor(options.root, position.start, position.end);
       if (!range) continue;
@@ -181,7 +221,7 @@ export function initComments(options: CommentsOptions): CommentsView {
           buildMarker(comment, first, overlayOrigin, () => toggleExpanded(comment.id)),
         );
       }
-      if (card) placed.push({ card, top: first.top - gutterOrigin.top });
+      placed.push({ card, top: first.top - gutterOrigin.top });
     }
 
     if (narrow) {
@@ -238,7 +278,7 @@ export function initComments(options: CommentsOptions): CommentsView {
     setActive(undefined);
   });
 
-  return { setState, reposition };
+  return { setState, setFilter, reposition };
 }
 
 // ---------------------------------------------------------------- elements
@@ -312,15 +352,42 @@ function buildCard(
 
   header.append(author, time);
 
-  if (comment.status === 'orphaned') header.append(badge('anchor lost'));
+  if (comment.status === 'addressed') header.append(badge('addressed'));
 
   const body = document.createElement('p');
   body.className = 'mr-card-body';
   body.textContent = comment.body;
 
-  card.append(header, body, buildMenu(comment, options, card, body));
+  card.append(header, body);
+
+  // `addressed` is a suggestion the user confirms (PRD §8), so the evidence for it has to be on the
+  // card: without the before/after, "Looks good" is a button asking the user to trust an inference
+  // they cannot see.
+  const diff = buildDiff(comment);
+  if (diff) card.append(diff);
+
+  card.append(buildMenu(comment, options, card, body));
   card.addEventListener('click', onToggle);
   return card;
+}
+
+function buildDiff(comment: Comment): HTMLElement | undefined {
+  const resolution = comment.resolution;
+  if (comment.status !== 'addressed' || !resolution) return undefined;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'mr-diff';
+
+  const before = document.createElement('del');
+  before.className = 'mr-diff-before';
+  before.textContent = truncateQuote(resolution.previousText, DIFF_QUOTE_LENGTH);
+
+  const after = document.createElement('ins');
+  after.className = 'mr-diff-after';
+  after.textContent = truncateQuote(resolution.currentText, DIFF_QUOTE_LENGTH);
+
+  wrapper.append(before, after);
+  return wrapper;
 }
 
 function badge(label: string): HTMLElement {
@@ -352,6 +419,20 @@ function buildMenu(
   });
 
   actions.append(edit, remove);
+
+  if (comment.status === 'addressed') {
+    // "Looks good" rather than "Resolve" (PRD §8): the user is confirming an inference the
+    // extension made, not making a judgement from scratch. Same terminal status either way.
+    actions.append(
+      action('Looks good', `Accept the change and resolve ${comment.author}'s comment`, () => {
+        options.onResolve(comment.id);
+      }),
+      action('Reopen', `Reject the change and reopen ${comment.author}'s comment`, () => {
+        options.onReopen(comment.id);
+      }),
+    );
+    return actions;
+  }
 
   if (comment.status !== 'resolved') {
     actions.append(

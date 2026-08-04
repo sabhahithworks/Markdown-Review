@@ -190,6 +190,21 @@ export class ReviewPanel {
           case 'relinkTarget':
             void this.relink();
             break;
+          case 'reopenComment':
+            // The inference was wrong, or the agent's change did not actually address the point.
+            // Clearing `resolution` too, so the card stops showing a before/after that no longer
+            // describes anything the user agrees happened.
+            this.store.reopen(raw.id);
+            break;
+          case 'reanchorComment':
+            this.reanchor(raw.id, raw.selectedText, raw.offset, raw.hintLine);
+            break;
+          case 'copyPrompt':
+            void vscode.commands.executeCommand('markdownReview.copyPrompt', this.target);
+            break;
+          case 'clearAddressed':
+            void vscode.commands.executeCommand('markdownReview.clearAddressed', this.target);
+            break;
         }
       },
       null,
@@ -357,6 +372,24 @@ export class ReviewPanel {
   }
 
   /**
+   * Re-attaches an orphaned comment to the text the user just selected (PRD §6).
+   *
+   * Identical validation to `addComment` — same `-1` sentinel, same rejection wording — because the
+   * webview sends the same payload shape for both. The only difference is what happens on success.
+   */
+  private reanchor(id: string, selectedText: string, offset: number, hintLine: number): void {
+    const doc = this.doc;
+    if (!doc) return;
+
+    const result = createAnchor({ selectedText, offset, doc, hintLine });
+    if (!result.ok) {
+      void vscode.window.showWarningMessage(anchorRejectionMessage(result.reason));
+      return;
+    }
+    this.store.reattach(id, result.anchor);
+  }
+
+  /**
    * Points this review at a different file (PRD §11).
    *
    * The panel and its store are both keyed by target URI, so re-linking cannot be done in place:
@@ -497,13 +530,22 @@ export class ReviewPanel {
   <link rel="stylesheet" href="${styleUri.toString()}">
 </head>
 <body>
+  <!-- Counts, status filters and the primary actions. Sticky, so "Copy review prompt" is reachable
+       without scrolling back to the top of a long document. -->
+  <header id="header" hidden></header>
+  <!-- Above the content, not after it. Two of its three uses clear the document first, but the
+       rewrite banner fires over a full one — at the end of the body it would sit below everything
+       and never be seen. -->
+  <div id="notice" hidden></div>
+  <!-- Orphans live outside the gutter: they have no anchor to align to, so they cannot be
+       positioned like a card, and PRD §6 asks for them in a section of their own. -->
+  <section id="orphans" hidden aria-label="Comments that lost their anchor"></section>
   <div id="front-matter-root"></div>
   <main id="content"></main>
   <!-- Highlights are absolutely-positioned rectangles over the content, never wrappers around it:
        wrapping would split the text nodes anchor offsets are measured against. -->
   <div id="highlight-overlay" aria-hidden="true"></div>
   <aside id="gutter" aria-label="Comments"></aside>
-  <div id="notice" hidden></div>
   <script nonce="${nonce}" src="${scriptUri.toString()}"></script>
 </body>
 </html>`;
