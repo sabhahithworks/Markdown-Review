@@ -8,3 +8,7 @@ media/webview.js.map
 coverage/
 .DS_Store
 dev/harness/fixture.js
+# Sidecars written by the dev host during an acceptance run. A real `.reviews/` is meant to be
+# committed (PRD §11 — shareable through git); this one is scratch, and the Phase 3 acceptance run
+# asks for it to be deleted between passes.
+docs/fixtures/.reviews/

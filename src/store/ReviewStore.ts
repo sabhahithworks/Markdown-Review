@@ -12,8 +12,15 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { Comment, CommentStatus, ReviewFile } from '../anchor/types.js';
-import { emptyReviewFile, parseReviewFile, serializeReviewFile } from './reviewFile.js';
+import type { ReanchorOptions } from '../anchor/reanchor.js';
+import { reanchor } from '../anchor/reanchor.js';
+import type { Anchor, Comment, CommentStatus, PlainTextDoc, ReviewFile } from '../anchor/types.js';
+import {
+  BASELINE_MAX_CHARS,
+  emptyReviewFile,
+  parseReviewFile,
+  serializeReviewFile,
+} from './reviewFile.js';
 import {
   REVIEWS_DIR,
   backupFileName,
@@ -27,6 +34,15 @@ const WRITE_DEBOUNCE_MS = 250;
 
 /** Shown once per machine, not once per file — the point is made the first time (PRD §11). */
 const LOOSE_FILE_WARNING_KEY = 'markdownReview.looseFileWarningShown';
+
+/**
+ * The outcome of a bulk clear.
+ *
+ * `backup-failed` is a distinct outcome rather than a thrown error because it is the *expected*
+ * failure the caller must report honestly: nothing was removed, and the user needs to be told that
+ * rather than left assuming their comments are gone.
+ */
+export type ClearResult = { ok: true; removed: number } | { ok: false; reason: 'backup-failed' };
 
 export class ReviewStore {
   private static readonly stores = new Map<string, ReviewStore>();
@@ -77,6 +93,52 @@ export class ReviewStore {
     return store;
   }
 
+  /**
+   * Moves a review onto a different file (PRD §11's "offer to re-link").
+   *
+   * Not a field update, which is what "update `targetPath`" sounds like: stores are keyed by target
+   * URI and the sidecar *filename* is derived from the target path, so re-linking is a migration
+   * between two stores. Comments and the baseline move across; the old sidecar is emptied, never
+   * deleted, and only after the new one is safely on disk — so a failure at any point leaves the
+   * comments somewhere rather than nowhere.
+   *
+   * Anchors are carried over untouched. They are relocated by the next `applyReanchor` against the
+   * new document, which is exactly the "did this text survive?" question re-linking asks.
+   */
+  static async relink(
+    context: vscode.ExtensionContext,
+    from: vscode.Uri,
+    to: vscode.Uri,
+    output: vscode.OutputChannel,
+  ): Promise<{ ok: true; moved: number } | { ok: false; reason: 'same-file' | 'write-failed' }> {
+    if (from.toString() === to.toString()) return { ok: false, reason: 'same-file' };
+
+    const source = ReviewStore.for(context, from, output);
+    const previous = await source.ensureLoaded();
+
+    const destination = ReviewStore.for(context, to, output);
+    await destination.ensureLoaded();
+
+    destination.commit({
+      ...destination.getState(),
+      comments: [...destination.getState().comments, ...previous.comments],
+      ...(previous.baselineText === undefined ? {} : { baselineText: previous.baselineText }),
+      ...(previous.baselineAt === undefined ? {} : { baselineAt: previous.baselineAt }),
+    });
+    await destination.flush();
+
+    if (destination.lastWritten === undefined) {
+      // The new sidecar never reached disk; leave the old one exactly as it was.
+      output.appendLine(`[store] relink aborted: could not write ${destination.sidecar.fsPath}`);
+      return { ok: false, reason: 'write-failed' };
+    }
+
+    source.commit(emptyReviewFile(source.getState().targetPath));
+    await source.flush();
+
+    return { ok: true, moved: previous.comments.length };
+  }
+
   /** Flushes and disposes every live store. Called from `deactivate()`. */
   static async disposeAll(): Promise<void> {
     const stores = [...ReviewStore.stores.values()];
@@ -86,6 +148,11 @@ export class ReviewStore {
 
   getState(): ReviewFile {
     return this.state;
+  }
+
+  /** Where this review is stored. Used to name the backup in a user-facing message. */
+  get sidecarPath(): string {
+    return this.sidecar.fsPath;
   }
 
   /** Reads the sidecar on first call; later calls await the same read. */
@@ -117,6 +184,126 @@ export class ReviewStore {
     this.mapComment(id, (comment) => ({ ...comment, status }));
   }
 
+  /**
+   * Re-attaches an orphaned comment to a selection the user picked by hand (PRD §6).
+   *
+   * The comment keeps its id, body, author and creation time — it is the same remark about the same
+   * concern, pointed somewhere new — and returns to `open` with any stale before/after cleared,
+   * since the resolution described a relocation that no longer applies.
+   */
+  reattach(id: string, anchor: Anchor): void {
+    this.mapComment(id, (comment) => {
+      const next: Comment = { ...comment, anchor, status: 'open' };
+      delete next.resolution;
+      return next;
+    });
+  }
+
+  /**
+   * Records the rendered plain text as the diff baseline (PRD §7).
+   *
+   * Called at the moment the prompt is copied, which is what makes "the document was rewritten"
+   * answerable later. Deliberately does not notify: nothing renders the baseline, so a `reviewState`
+   * round-trip carrying a quarter of a megabyte would buy nothing.
+   */
+  snapshotBaseline(plainText: string, now: () => string = () => new Date().toISOString()): void {
+    if (plainText.length > BASELINE_MAX_CHARS) {
+      this.output.appendLine(
+        `[store] ${this.state.targetPath}: rendered text is ${String(plainText.length)} chars, ` +
+          `over the ${String(BASELINE_MAX_CHARS)} baseline limit — skipping the snapshot ` +
+          '(the rewrite diff will be unavailable for this file)',
+      );
+      return;
+    }
+
+    this.commit(
+      { ...this.state, baselineText: plainText, baselineAt: now() },
+      { notify: false },
+    );
+  }
+
+  /**
+   * Relocates every comment against `doc` and infers status (Plan 01 §6). Returns whether any
+   * status or resolution actually changed.
+   *
+   * The result is *always* adopted in memory, because hints must keep tracking edits, but it is
+   * persisted only when something meaningful changed. That asymmetry is deliberate and load-bearing:
+   * `ReanchorResult.changed` excludes hint drift precisely so a burst of keystrokes does not turn
+   * into a burst of disk writes. In between, `this.state` legitimately runs ahead of the sidecar by
+   * the drifted hints, and the next real change serializes them for free.
+   */
+  applyReanchor(doc: PlainTextDoc, options: ReanchorOptions = {}): boolean {
+    if (this.loaded === undefined) {
+      // Re-anchoring before the sidecar has been read would relocate an empty placeholder and then
+      // persist it over real comments.
+      this.output.appendLine(`[store] applyReanchor before ensureLoaded for ${this.state.targetPath}`);
+      return false;
+    }
+
+    const result = reanchor(this.state, doc, {
+      ...options,
+      inferAddressed: options.inferAddressed ?? this.inferAddressedSetting(),
+    });
+
+    this.commit(result.reviewFile, { persist: result.changed, notify: result.changed });
+    return result.changed;
+  }
+
+  /**
+   * `markdownReview.autoDetectResolution`, scoped to this target so a folder-level
+   * `.vscode/settings.json` wins in a multi-root workspace.
+   */
+  private inferAddressedSetting(): boolean {
+    return vscode.workspace
+      .getConfiguration('markdownReview', this.target)
+      .get<boolean>('autoDetectResolution', true);
+  }
+
+  /**
+   * Removes every `addressed` comment (PRD §6). A user action, so deletion is allowed — only
+   * *automatic* deletion is forbidden (PRD §4) — but only because it is recoverable, which is why a
+   * failed backup abandons the whole operation rather than proceeding.
+   */
+  async clearAddressed(): Promise<ClearResult> {
+    const remaining = this.state.comments.filter((comment) => comment.status !== 'addressed');
+    return this.clearTo(remaining, this.state.comments.length - remaining.length);
+  }
+
+  /**
+   * Removes every comment, and the baseline with them — a baseline with nothing left to relocate
+   * would arm the rewrite banner against an empty review. The file itself is never touched.
+   */
+  async clearAll(): Promise<ClearResult> {
+    const removed = this.state.comments.length;
+    if (removed === 0) return { ok: true, removed: 0 };
+    if (!(await this.backup())) return { ok: false, reason: 'backup-failed' };
+
+    this.commit(emptyReviewFile(this.state.targetPath));
+    await this.flush();
+    return { ok: true, removed };
+  }
+
+  private async clearTo(comments: Comment[], removed: number): Promise<ClearResult> {
+    if (removed === 0) return { ok: true, removed: 0 };
+    if (!(await this.backup())) return { ok: false, reason: 'backup-failed' };
+
+    this.commit({ ...this.state, comments });
+    await this.flush();
+    return { ok: true, removed };
+  }
+
+  /**
+   * Copies the current comments to `<name>.json.bak`, returning where they landed.
+   *
+   * Public because a destructive user action has to be undoable by hand. Backs up what is *in
+   * memory* rather than re-reading the sidecar: a write may still be sitting in the 250 ms debounce,
+   * and this also works before the sidecar has ever been written.
+   */
+  async backup(): Promise<vscode.Uri | undefined> {
+    await this.flush();
+    return this.writeBackup(serializeReviewFile(this.state));
+  }
+
   private mapComment(id: string, update: (comment: Comment) => Comment): void {
     let hit = false;
     const comments = this.state.comments.map((comment) => {
@@ -127,11 +314,21 @@ export class ReviewStore {
     if (hit) this.commit({ ...this.state, comments });
   }
 
-  /** Applies new state, notifies subscribers immediately, and schedules the disk write. */
-  private commit(next: ReviewFile): void {
+  /**
+   * Applies new state, notifies subscribers immediately, and schedules the disk write.
+   *
+   * Both effects are optional because Phase 4 has changes that legitimately want only one of them:
+   * a re-anchor pass that moved nothing but hints must be adopted in memory *without* a write (see
+   * `ReanchorResult.changed` — making hint drift persist turns every keystroke into disk I/O), and
+   * a baseline snapshot must persist *without* a notify, because nothing renders the baseline and a
+   * `reviewState` round-trip for it would be pure waste. The defaults are the Phase 3 behaviour, so
+   * existing callers are unaffected.
+   */
+  private commit(next: ReviewFile, options: { persist?: boolean; notify?: boolean } = {}): void {
+    const { persist = true, notify = true } = options;
     this.state = next;
-    this.emitter.fire(next);
-    this.scheduleWrite();
+    if (notify) this.emitter.fire(next);
+    if (persist) this.scheduleWrite();
   }
 
   private scheduleWrite(): void {
@@ -186,15 +383,12 @@ export class ReviewStore {
    * state is adopted, so a failure here leaves the original sidecar untouched rather than losing it.
    */
   private async quarantine(raw: string, reason: string, detail: string): Promise<void> {
-    const backup = this.sidecar.with({ path: backupFileName(this.sidecar.path) });
     this.output.appendLine(`[store] ${this.sidecar.fsPath}: ${reason} — ${detail}`);
 
-    try {
-      await vscode.workspace.fs.writeFile(backup, new TextEncoder().encode(raw));
-    } catch (error) {
+    const backup = await this.writeBackup(raw);
+    if (!backup) {
       // Could not back up — do not touch the original either. The user keeps their data; the panel
       // just starts empty for this session.
-      this.output.appendLine(`[store] could not write ${backup.fsPath}: ${String(error)}`);
       void vscode.window.showWarningMessage(
         `Markdown Review could not read the comments for ${this.state.targetPath}, and could not back the file up either. Nothing has been changed on disk.`,
       );
@@ -217,6 +411,27 @@ export class ReviewStore {
       .then((choice) => {
         if (choice === 'Show backup') void vscode.window.showTextDocument(backup);
       });
+  }
+
+  /**
+   * Copies `text` to `<name>.json.bak`, returning where it landed — or `undefined` when it could
+   * not be written, which is always a reason to abandon whatever destructive step wanted it.
+   *
+   * Logged rather than thrown: every caller has to keep working after a failed backup, and each has
+   * its own wording for what it then declined to do.
+   */
+  private async writeBackup(text: string): Promise<vscode.Uri | undefined> {
+    const backup = this.sidecar.with({ path: backupFileName(this.sidecar.path) });
+    try {
+      await vscode.workspace.fs.createDirectory(
+        this.sidecar.with({ path: path.posix.dirname(this.sidecar.path) }),
+      );
+      await vscode.workspace.fs.writeFile(backup, new TextEncoder().encode(text));
+      return backup;
+    } catch (error) {
+      this.output.appendLine(`[store] could not write ${backup.fsPath}: ${String(error)}`);
+      return undefined;
+    }
   }
 
   private async write(): Promise<void> {
@@ -305,8 +520,11 @@ function resolveSidecar(
   target: vscode.Uri,
 ): { sidecar: vscode.Uri; targetPath: string; loose: boolean } {
   const folder = vscode.workspace.getWorkspaceFolder(target);
+  // Scoped to the target: in a multi-root workspace one folder may keep its reviews in git while
+  // another keeps them private, and an unscoped read would silently apply the first folder's answer
+  // to both.
   const mode = vscode.workspace
-    .getConfiguration('markdownReview')
+    .getConfiguration('markdownReview', target)
     .get<'workspace' | 'global'>('storageLocation', 'workspace');
 
   if (folder && mode === 'workspace') {

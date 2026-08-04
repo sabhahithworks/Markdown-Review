@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The review loop, host side (Phase 4a).** Copy a prompt, let any agent edit the prose, and the
+  extension works out which comments were addressed. Nothing is visible in the pane yet — the
+  header bar, before/after cards, orphan section and rewrite banner are Phase 4b.
+  - `markdownReview.copyPrompt` builds the PRD §7 prompt from the open comments, copies it, and
+    snapshots the rendered text as the diff baseline. The format is asserted byte-for-byte against
+    the PRD's own worked example, in a unit test and again on the real clipboard in the integration
+    suite. Comments are re-anchored first, so a sentence the agent already deleted is never quoted
+    back at it.
+  - Change detection (PRD §8): `onDidChangeTextDocument` and a `FileSystemWatcher` on the target
+    feed one 400 ms coalescer, so an editor edit, a direct write to disk, and a save that is both
+    all cost exactly one pass. Statuses flip to `addressed` (with before/after) or `orphaned` on
+    their own, and `markdownReview.autoDetectResolution: false` suppresses the inference without
+    suppressing orphaning.
+  - `markdownReview.clearAddressed` and `markdownReview.clearAll`, each behind a modal naming the
+    count. Both write a `.json.bak` first and abandon the whole operation if that backup cannot be
+    written — a destructive user action is only defensible while it stays recoverable.
+  - Re-linking a review onto a different file (PRD §11), for a target that was renamed or deleted.
+    Comments move to the new file's sidecar before the old one is emptied, so a failure leaves them
+    somewhere rather than nowhere. The old sidecar is emptied, never deleted.
+  - A read-only `markdown-review:` diff behind the rewrite banner, with **both sides rendered as
+    plain text**. Plan 04 §6 had it comparing the stored baseline against the Markdown source, which
+    would have made every line differ — the baseline is plain text and the file is not.
+  - `baselineText` is capped at 256 KB. PRD §4 puts the whole snapshot in the sidecar, which on a
+    2 MB document means a multi-megabyte JSON file rewritten on every save and committed to git.
+    Over the cap the baseline is skipped and only the rewrite diff is unavailable.
 - Verification harnesses, closing out the Phase 3 acceptance checklist. Two of its ten items were
   machine-checked before; eight are now. Neither harness ships in the `.vsix` and neither is in
   `npm run check` — one launches VS Code, the other needs a browser.

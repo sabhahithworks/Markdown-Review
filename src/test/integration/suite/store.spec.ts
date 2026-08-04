@@ -13,8 +13,11 @@
 import * as assert from 'node:assert/strict';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { Comment, ReviewFile } from '../../../anchor/types.js';
+import { createAnchor } from '../../../anchor/create.js';
+import type { Anchor, Comment, ReviewFile } from '../../../anchor/types.js';
+import { renderPlainText } from '../../../render/plaintext.js';
 import { ReviewStore } from '../../../store/ReviewStore.js';
+import { BASELINE_MAX_CHARS } from '../../../store/reviewFile.js';
 import { REVIEWS_DIR } from '../../../store/sidecarPath.js';
 import {
   GLOBAL_STORAGE_DIR,
@@ -330,6 +333,320 @@ describe('storage location', () => {
     } finally {
       await config.update('storageLocation', undefined, vscode.ConfigurationTarget.Workspace);
     }
+  });
+});
+
+// --------------------------------------------------------------- Phase 4 store extensions
+
+const DETECT_MARKDOWN = `# Detect
+
+The client retries failed requests up to three times before giving up.
+
+It processes requests in parallel across the worker pool.
+`;
+
+/** A store over a document of our own, with real anchors built by the real `createAnchor`. */
+async function storeOn(
+  name: string,
+  markdown: string,
+): Promise<{
+  store: ReviewStore;
+  target: vscode.Uri;
+  sidecar: vscode.Uri;
+  lines: string[];
+  anchorOn: (needle: string) => Anchor;
+}> {
+  const target = workspaceUri(name);
+  await writeText(target, markdown);
+
+  const lines: string[] = [];
+  const store = ReviewStore.for(stubContext().context, target, stubOutput(lines));
+  await store.ensureLoaded();
+
+  const doc = renderPlainText(markdown);
+  return {
+    store,
+    target,
+    sidecar: workspaceUri(REVIEWS_DIR, `${name}.json`),
+    lines,
+    anchorOn: (needle) => {
+      const result = createAnchor({ selectedText: needle, offset: doc.text.indexOf(needle), doc });
+      if (!result.ok) throw new Error(`createAnchor rejected ${needle}: ${result.reason}`);
+      return result.anchor;
+    },
+  };
+}
+
+async function readSidecar(sidecar: vscode.Uri): Promise<ReviewFile> {
+  return JSON.parse(await readText(sidecar)) as ReviewFile;
+}
+
+describe('baseline snapshots (PRD §7)', () => {
+  it('persists the rendered text and a timestamp without notifying', async () => {
+    const { store, sidecar } = await storeOn('baseline.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'base0001' }));
+
+    let notified = 0;
+    const subscription = store.onDidChange(() => (notified += 1));
+    try {
+      store.snapshotBaseline('the rendered plain text', () => '2026-08-04T10:00:00.000Z');
+      await store.flush();
+    } finally {
+      subscription.dispose();
+    }
+
+    const parsed = await readSidecar(sidecar);
+    assert.equal(parsed.baselineText, 'the rendered plain text');
+    assert.equal(parsed.baselineAt, '2026-08-04T10:00:00.000Z');
+    // Nothing renders the baseline, so a state round-trip for it would be pure waste.
+    assert.equal(notified, 0, 'snapshotBaseline must not fire onDidChange');
+  });
+
+  it('skips a baseline larger than the cap and says so, rather than bloating the sidecar', async () => {
+    const { store, sidecar, lines } = await storeOn('baseline-huge.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'huge0001' }));
+
+    store.snapshotBaseline('x'.repeat(BASELINE_MAX_CHARS + 1));
+    await store.flush();
+
+    const parsed = await readSidecar(sidecar);
+    assert.equal(parsed.baselineText, undefined, 'an oversized baseline must not be stored');
+    assert.ok(
+      lines.some((line) => line.includes('over the') && line.includes('baseline limit')),
+      `expected a skip explanation in the output channel, got: ${lines.join(' | ')}`,
+    );
+  });
+});
+
+describe('applyReanchor', () => {
+  it('infers addressed with a before/after and persists it', async () => {
+    const { store, target, sidecar, anchorOn } = await storeOn('reanchor-addressed.md', DETECT_MARKDOWN);
+    store.addComment(
+      comment({ id: 'addr0001', anchor: anchorOn('retries failed requests up to three times') }),
+    );
+    await store.flush();
+
+    const edited = DETECT_MARKDOWN.replace(
+      'retries failed requests up to three times',
+      'retries failed requests up to five times',
+    );
+    await writeText(target, edited);
+
+    const changed = store.applyReanchor(renderPlainText(edited));
+    await store.flush();
+
+    assert.equal(changed, true);
+    const [addressed] = (await readSidecar(sidecar)).comments;
+    assert.equal(addressed?.status, 'addressed');
+    assert.equal(addressed?.resolution?.previousText, 'retries failed requests up to three times');
+    assert.equal(addressed?.resolution?.currentText, 'retries failed requests up to five times');
+    // The original selection is the durable record and must survive for the before/after.
+    assert.equal(addressed?.anchor.exact, 'retries failed requests up to three times');
+  });
+
+  it('orphans an anchor whose text is gone, and reports no change when nothing moved', async () => {
+    const { store, sidecar, anchorOn } = await storeOn('reanchor-orphan.md', DETECT_MARKDOWN);
+    store.addComment(
+      comment({ id: 'orph0001', anchor: anchorOn('processes requests in parallel') }),
+    );
+    await store.flush();
+
+    // Re-anchoring against the unchanged document must be a no-op, not a write.
+    assert.equal(store.applyReanchor(renderPlainText(DETECT_MARKDOWN)), false);
+
+    const gutted = '# Detect\n\nSomething else entirely now.\n';
+    assert.equal(store.applyReanchor(renderPlainText(gutted)), true);
+    await store.flush();
+
+    assert.equal((await readSidecar(sidecar)).comments[0]?.status, 'orphaned');
+  });
+
+  it('honours autoDetectResolution: false — no addressed, but still orphans (Plan 04 §9 D12)', async () => {
+    const { store, sidecar, anchorOn } = await storeOn('reanchor-setting.md', DETECT_MARKDOWN);
+    store.addComment(
+      comment({ id: 'setg0001', anchor: anchorOn('retries failed requests up to three times') }),
+    );
+    store.addComment(
+      comment({ id: 'setg0002', anchor: anchorOn('processes requests in parallel') }),
+    );
+    await store.flush();
+
+    const config = vscode.workspace.getConfiguration('markdownReview');
+    await config.update('autoDetectResolution', false, vscode.ConfigurationTarget.Workspace);
+    try {
+      // First anchor reworded, second deleted outright.
+      const edited = `# Detect
+
+The client retries failed requests up to five times before giving up.
+`;
+      store.applyReanchor(renderPlainText(edited));
+      await store.flush();
+
+      const parsed = await readSidecar(sidecar);
+      const byId = new Map(parsed.comments.map((entry) => [entry.id, entry]));
+      assert.equal(byId.get('setg0001')?.status, 'open', 'must not infer addressed when disabled');
+      assert.equal(byId.get('setg0001')?.resolution, undefined);
+      assert.equal(byId.get('setg0002')?.status, 'orphaned', 'a gone anchor orphans regardless');
+    } finally {
+      await config.update('autoDetectResolution', undefined, vscode.ConfigurationTarget.Workspace);
+    }
+  });
+
+  it('refuses to run before the sidecar has been read', async () => {
+    const target = workspaceUri('reanchor-unloaded.md');
+    await writeText(target, DETECT_MARKDOWN);
+    const lines: string[] = [];
+    const store = ReviewStore.for(stubContext().context, target, stubOutput(lines));
+
+    // Deliberately no ensureLoaded: relocating a placeholder would persist it over real comments.
+    assert.equal(store.applyReanchor(renderPlainText(DETECT_MARKDOWN)), false);
+    assert.ok(lines.some((line) => line.includes('applyReanchor before ensureLoaded')));
+  });
+});
+
+describe('reattach (manual re-anchor, PRD §6)', () => {
+  it('returns an orphan to open on a new anchor, keeping its identity and dropping any resolution', async () => {
+    const { store, sidecar, anchorOn } = await storeOn('reattach.md', DETECT_MARKDOWN);
+    store.addComment(
+      comment({
+        id: 'reat0001',
+        body: 'still the same concern',
+        createdAt: '2026-02-02T00:00:00.000Z',
+        status: 'orphaned',
+        resolution: {
+          previousText: 'gone text',
+          currentText: 'other text',
+          detectedAt: '2026-03-03T00:00:00.000Z',
+        },
+      }),
+    );
+
+    store.reattach('reat0001', anchorOn('processes requests in parallel'));
+    await store.flush();
+
+    const [reattached] = (await readSidecar(sidecar)).comments;
+    assert.equal(reattached?.status, 'open');
+    assert.equal(reattached?.id, 'reat0001');
+    assert.equal(reattached?.body, 'still the same concern');
+    assert.equal(reattached?.createdAt, '2026-02-02T00:00:00.000Z');
+    assert.equal(reattached?.anchor.exact, 'processes requests in parallel');
+    assert.equal(reattached?.resolution, undefined, 'a stale before/after would render as a phantom diff');
+  });
+});
+
+describe('bulk clears (PRD §6)', () => {
+  it('clearAddressed backs up first and removes only addressed comments', async () => {
+    const { store, sidecar } = await storeOn('clear-addressed.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'keep0001', status: 'open' }));
+    store.addComment(comment({ id: 'drop0001', status: 'addressed' }));
+    store.addComment(comment({ id: 'drop0002', status: 'addressed' }));
+    store.addComment(comment({ id: 'keep0002', status: 'resolved' }));
+    await store.flush();
+
+    const result = await store.clearAddressed();
+
+    assert.deepEqual(result, { ok: true, removed: 2 });
+    const remaining = (await readSidecar(sidecar)).comments.map((entry) => entry.id);
+    assert.deepEqual(remaining, ['keep0001', 'keep0002']);
+
+    // The whole justification for a destructive user action is that it is recoverable.
+    const backup = workspaceUri(REVIEWS_DIR, 'clear-addressed.md.json.bak');
+    assert.ok(await exists(backup), 'expected a .bak before the clear');
+    assert.equal((await readSidecar(backup)).comments.length, 4);
+  });
+
+  it('clearAll empties the comments and drops the baseline, leaving the file alone', async () => {
+    const { store, target, sidecar } = await storeOn('clear-all.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'gone0001' }));
+    store.snapshotBaseline('the baseline text');
+    await store.flush();
+
+    const result = await store.clearAll();
+
+    assert.deepEqual(result, { ok: true, removed: 1 });
+    const parsed = await readSidecar(sidecar);
+    assert.deepEqual(parsed.comments, []);
+    // A baseline with nothing left to relocate would arm the rewrite banner against an empty review.
+    assert.equal(parsed.baselineText, undefined);
+    assert.ok(await exists(target), 'clearing comments must never touch the document');
+  });
+
+  it('reports a zero-count clear without writing a backup', async () => {
+    const { store } = await storeOn('clear-empty.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'open0001', status: 'open' }));
+    await store.flush();
+
+    assert.deepEqual(await store.clearAddressed(), { ok: true, removed: 0 });
+    assert.equal(
+      await exists(workspaceUri(REVIEWS_DIR, 'clear-empty.md.json.bak')),
+      false,
+      'nothing was removed, so nothing needed backing up',
+    );
+  });
+
+  it('removes nothing when the backup cannot be written', async () => {
+    const { store, sidecar } = await storeOn('clear-nobackup.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'safe0001', status: 'addressed' }));
+    await store.flush();
+
+    // A directory where the .bak file wants to go: writeFile fails, so the clear must abandon.
+    await vscode.workspace.fs.createDirectory(
+      workspaceUri(REVIEWS_DIR, 'clear-nobackup.md.json.bak'),
+    );
+
+    const result = await store.clearAddressed();
+
+    assert.deepEqual(result, { ok: false, reason: 'backup-failed' });
+    assert.equal((await readSidecar(sidecar)).comments.length, 1, 'the comment must survive');
+  });
+});
+
+describe('relink (PRD §11 — target renamed or deleted)', () => {
+  it('migrates comments and the baseline to the new file, emptying the old sidecar', async () => {
+    const { store, target } = await storeOn('relink-from.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'move0001', body: 'still relevant' }));
+    store.addComment(comment({ id: 'move0002', body: 'also relevant' }));
+    store.snapshotBaseline('the baseline text');
+    await store.flush();
+
+    const renamed = workspaceUri('relink-to.md');
+    await writeText(renamed, DETECT_MARKDOWN);
+
+    const result = await ReviewStore.relink(
+      stubContext().context,
+      target,
+      renamed,
+      stubOutput([]),
+    );
+
+    assert.deepEqual(result, { ok: true, moved: 2 });
+
+    const destination = JSON.parse(
+      await readText(workspaceUri(REVIEWS_DIR, 'relink-to.md.json')),
+    ) as ReviewFile;
+    assert.deepEqual(
+      destination.comments.map((entry) => entry.id),
+      ['move0001', 'move0002'],
+    );
+    assert.equal(destination.targetPath, 'relink-to.md');
+    assert.equal(destination.baselineText, 'the baseline text');
+    // Anchors ride across untouched; the next re-anchor decides whether they still fit.
+    assert.equal(destination.comments[0]?.anchor.exact, 'the anchored sentence');
+
+    // PRD §11: the old sidecar is emptied, never deleted — the comments now live elsewhere.
+    const origin = JSON.parse(
+      await readText(workspaceUri(REVIEWS_DIR, 'relink-from.md.json')),
+    ) as ReviewFile;
+    assert.deepEqual(origin.comments, []);
+  });
+
+  it('refuses to re-link a file onto itself', async () => {
+    const { target } = await storeOn('relink-same.md', DETECT_MARKDOWN);
+
+    assert.deepEqual(
+      await ReviewStore.relink(stubContext().context, target, target, stubOutput([])),
+      { ok: false, reason: 'same-file' },
+    );
   });
 });
 

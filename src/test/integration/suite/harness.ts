@@ -4,7 +4,12 @@
  * `@vscode/test-electron` launches VS Code and calls one exported `run()`; it ships no test
  * framework, and mocha — the usual answer — is a dependency and a config file for what is currently
  * a dozen assertions. This is that dozen assertions' worth of framework: registration, a per-test
- * timeout, and a report. If the suite outgrows it in Phase 4, swap in mocha then.
+ * timeout, teardown, and a report.
+ *
+ * Phase 4 asked whether the suite had outgrown this. It had not: it grew by roughly six tests, and
+ * the one capability it genuinely lacked was `afterEach`, which is the block below. Mocha would have
+ * meant a devDependency, a config file and a rewritten runner entry in exchange for that — so the
+ * bar for switching stays where it was, just further away. Revisit at Phase 5 if the suite doubles.
  *
  * Deliberately not vitest: these tests must run *inside* the extension host, against the real
  * `vscode` module, which is exactly what the vitest suites cannot do.
@@ -23,13 +28,14 @@ interface Test {
 interface Suite {
   readonly name: string;
   readonly tests: Test[];
+  readonly teardown: (() => Promise<void> | void)[];
 }
 
 const suites: Suite[] = [];
 let current: Suite | undefined;
 
 export function describe(name: string, body: () => void): void {
-  const suite: Suite = { name, tests: [] };
+  const suite: Suite = { name, tests: [], teardown: [] };
   suites.push(suite);
   current = suite;
   try {
@@ -44,6 +50,20 @@ export function it(name: string, fn: () => Promise<void> | void, timeoutMs = DEF
   current.tests.push({ name, fn, timeoutMs });
 }
 
+/**
+ * Runs after every test in the enclosing `describe`, pass or fail.
+ *
+ * The reason this exists: cleanup written as the last statement of a test is skipped exactly when
+ * it matters most — a failing assertion leaves the panel open, the setting overridden or the file
+ * on disk, and the *next* test fails for a reason that has nothing to do with what it is testing.
+ * A teardown that itself throws is reported against the test that triggered it rather than
+ * swallowed, since a failed cleanup poisons everything after it.
+ */
+export function afterEach(fn: () => Promise<void> | void): void {
+  if (!current) throw new Error('afterEach() was called outside describe()');
+  current.teardown.push(fn);
+}
+
 /** Runs every registered test in registration order, and throws if any of them failed. */
 export async function runAll(): Promise<void> {
   let passed = 0;
@@ -52,13 +72,32 @@ export async function runAll(): Promise<void> {
   for (const suite of suites) {
     console.log(`\n  ${suite.name}`);
     for (const test of suite.tests) {
+      let failed = false;
       try {
         await withTimeout(test.fn(), test.timeoutMs, test.name);
-        passed++;
-        console.log(`    ✓ ${test.name}`);
       } catch (error) {
+        failed = true;
         failures.push({ name: `${suite.name} › ${test.name}`, error });
         console.log(`    ✗ ${test.name}`);
+      }
+
+      try {
+        for (const teardown of suite.teardown) {
+          await withTimeout(teardown(), test.timeoutMs, `afterEach for ${test.name}`);
+        }
+      } catch (error) {
+        // Only report a teardown failure once — a test that already failed is usually why cleanup
+        // could not run, and two entries for one cause reads as two separate problems.
+        if (!failed) {
+          failed = true;
+          failures.push({ name: `${suite.name} › ${test.name} (afterEach)`, error });
+          console.log(`    ✗ ${test.name} (afterEach)`);
+        }
+      }
+
+      if (!failed) {
+        passed++;
+        console.log(`    ✓ ${test.name}`);
       }
     }
   }

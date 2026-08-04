@@ -20,6 +20,7 @@ describe('isWebviewMessage', () => {
     { type: 'editComment', id: 'abc12345', body: 'reworded' },
     { type: 'deleteComment', id: 'abc12345' },
     { type: 'resolveComment', id: 'abc12345' },
+    { type: 'showRewriteDiff' },
   ];
 
   it.each(valid.map((message) => [JSON.stringify(message), message] as const))(
@@ -37,6 +38,9 @@ describe('isWebviewMessage', () => {
     ['an array', []],
     ['an empty object', {}],
     ['an unknown type', { type: 'nope' }],
+    // Host -> webview messages must never be accepted coming back the other way.
+    ['a rewriteDetected host message travelling the wrong way', { type: 'rewriteDetected', orphaned: 3 }],
+    ['a reviewState host message travelling the wrong way', { type: 'reviewState', review: {}, located: {} }],
     ['openExternal without url', { type: 'openExternal' }],
     ['openExternal with a non-string url', { type: 'openExternal', url: 42 }],
     ['openExternal with a null url', { type: 'openExternal', url: null }],

@@ -45,6 +45,13 @@ export default tseslint.config(
       // vscode-facing half.
       'src/store/sidecarPath.ts',
       'src/store/reviewFile.ts',
+      // Phase 4: the debounce behind change detection. `changeWatcher.ts` is deliberately *not* on
+      // this list — it is the `vscode` half — but the timing rules are pulled out here so they can
+      // be asserted with fake timers instead of a stopwatch in the integration suite.
+      'src/detect/coalesce.ts',
+      // The rewrite trigger rule, kept pure so it is a unit test rather than something only
+      // reproducible by wrecking a file in a dev host.
+      'src/detect/rewrite.ts',
     ],
     rules: {
       'no-restricted-imports': [
