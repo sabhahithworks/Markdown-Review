@@ -18,8 +18,22 @@ rm -rf docs/fixtures/.reviews
 All three were green and `.reviews/` was cleared when this document was written; re-run them if
 anything has changed since.
 
-Then <kbd>F5</kbd>. The dev host opens `docs/fixtures/` as its folder, so **the workspace root is
-`docs/fixtures/`, not the repo root** — paths in messages and sidecars are relative to it.
+Then either:
+
+- <kbd>F5</kbd> — the dev host opens `docs/fixtures/` as its folder, so **the workspace root is
+  `docs/fixtures/`**. Messages say `review-run.md` and the sidecar lands at
+  `docs/fixtures/.reviews/review-run.md.json`.
+- **An installed build** — `~/.mdcm-local-build/reinstall.sh` rebuilds and installs into VS Code and
+  Cursor, then *Developer: Reload Window*. Open the **repo root** as usual, so messages say
+  `docs/fixtures/review-run.md` and the sidecar lands at
+  `.reviews/docs__fixtures__review-run.md.json` — the flattened name, which the F5 route never
+  exercises by hand.
+
+The second is the better route for B1: the agent you paste into is already rooted at the repo, and
+you are running the same bytes a user would install. Use it unless a step below says otherwise —
+**A2 and A3's CSP step want the dev host**, where the webview developer tools are reachable.
+
+Whichever you pick, note which one, because every path in this document is relative to that root.
 
 Two documents, and the difference matters:
 
@@ -77,10 +91,11 @@ Leave three comments, deliberately varied:
 Then click **Copy review prompt (3)** in the header bar.
 
 - [ ] **B1a** — the confirmation reads `3 comments copied. Paste into your agent and @-mention
-      review-run.md.` Paste the prompt somewhere first and eyeball it: numbered items, each with an
-      `On:` or `On the section:` line, bodies indented three spaces and quoted with `> `.
-- [ ] **B1b** — paste into a real agent and let it edit the file. If the agent is rooted at the repo
-      rather than at `docs/fixtures/`, give it the path `docs/fixtures/review-run.md`.
+      <path>.`, where `<path>` is relative to whichever root you opened. Paste the prompt somewhere
+      first and eyeball it: numbered items, each with an `On:` or `On the section:` line, bodies
+      indented three spaces and quoted with `> `.
+- [ ] **B1b** — paste into a real agent and let it edit the file. The path in the message is the one
+      to give the agent, unless the agent is rooted somewhere else again.
       > Expect: within ~400 ms of the agent's write, cards flip to **addressed** with a before/after
       > on the card, and the header counts follow. Check the before/after is actually the change the
       > agent made, not a neighbouring sentence.
