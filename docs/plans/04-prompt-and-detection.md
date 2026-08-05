@@ -212,7 +212,14 @@ this phase's entry gate. Date this section when it passes.
 - [ ] Real-agent manual run: comments flip to `addressed` with correct before/after; "Looks good"
       resolves; "Reopen" reverts
       — **manual, and the one item nothing else can stand in for.** PRD §10 names it as the
-      acceptance for this phase. Every automated case uses synthetic edits
+      acceptance for this phase. Every automated case uses synthetic edits.
+      **Run 2026-08-05: the first two thirds hold.** A comment flipped to `addressed` with a
+      before/after that was genuinely the agent's edit, and a heading-anchored comment correctly
+      declined to (§10 D17's fix, working). Still open before this can be ticked: **"Looks good"
+      and "Reopen" have not been exercised** — two clicks, see
+      [04-acceptance-run.md](04-acceptance-run.md) B1d/B1e. Two qualifications also stand: a third
+      comment orphaned rather than flipping (§10 D21, a real defect this run found), and B1c was
+      verified by an agent that had read the expectation, so it wants one blind re-run
 - [x] Deleting an anchored sentence orphans exactly that comment; orphan section shows the quote
       — `detection.spec.ts` for the status, `dev/harness/` `orphans` scenario for the section
 - [x] Manual re-anchor re-attaches an orphan
@@ -497,6 +504,43 @@ nothing on the wire and loses the sharper word in the case where "section" is ex
 
 No status, no persistence and no sidecar field is involved, so nothing downstream depends on which
 way it goes.
+
+**D21 — an anchor that states an absence can only be addressed by deleting it, so it orphans.**
+*Recorded, not yet fixed.* Found 2026-08-05 by the scripted B1 run, on comment 3: *"What is the
+ordering?"*, anchored to *"The exact ordering has not been written down anywhere"*. The agent wrote
+the ordering down, which necessarily removed the sentence saying it was unwritten — once the
+ordering is recorded, that claim is false. The comment came back `orphaned`.
+
+This is **not** the case the acceptance run tells the reader to triage as a prompt problem. That
+rule assumes a paragraph-level rewrite where a clause-level edit would have done, and the fix is
+PRD §7's wording. Here no edit at any granularity preserves the anchor: replacing only the clause
+still deletes it, because the clause is the thing the comment asked to be made untrue.
+
+It is the same family as D17, and the mirror of it. D17 covered anchors that **label** the thing to
+fix — a heading, a list's intro line — where the fix lands outside the selection. D21 is anchors
+that **negate** it, where the fix lands on top of the selection by erasing it. In both, `exact` is
+being asked to serve as reference and as evidence at once, and the two come apart.
+
+D21 lands harder than D17, though. D17's comment stayed `open` — accurate, if unhelpful. D21's
+becomes `orphaned`, which is the triage state: it tells the user something may have been lost and
+asks them to go and look, for a comment that was answered completely and correctly. The one status
+that means "come and check this by hand" is being spent on the outcome the user wanted.
+
+The machinery for a fix already exists and needs no new status. `changedRanges` knows that region
+of the document changed; `postReviewState` already intersects it with each comment's scope to raise
+the D17 note. It is not applied to orphans because an orphan has no located span to intersect
+against — but the *baseline* offsets of its last known position are exactly what the diff is
+expressed in. Carrying the same weaker signal onto the orphan row in `media/src/orphans.ts` —
+"the text this pointed at was rewritten since you copied the prompt" — would separate *deleted
+because you asked for it* from *deleted by accident*, which is the distinction the row cannot
+currently draw. Nothing persisted, no sidecar change, same shape as D17's fix.
+
+Observed in the same run and worth deciding alongside it: the `fuzzy.verify` under-report recorded
+above is user-visible on the `addressed` card, and it truncates **mid-word** — comment 1's "after"
+read `Counters live in memory, so they do no` against a 46-character "before". The status is right
+and the clipping is known, but on screen it reads as corrupted text rather than as a shortened
+quote. Snapping the span to a word boundary, or marking it with an ellipsis, would cost nothing and
+is independent of fixing the under-report itself.
 
 ### Noted, not changed
 

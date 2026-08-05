@@ -156,7 +156,12 @@ of the machinery. Select the text exactly as written; the anchor is the selectio
 **Step 2 — copy the prompt.** Click **Copy review prompt (3)** in the header bar (or
 *Markdown Review: Copy Review Prompt*).
 
-- [ ] **B1a** — the toast reads exactly `3 comments copied. Paste into your agent and @-mention
+- [x] **B1a** — **passed 2026-08-05.** Items numbered in document order, item 2 reading `On the
+      section "## Failure modes"` against `On: "…"` for 1 and 3, three-space `> ` bodies, and
+      nothing schema-shaped. A later round also exercised the long-quote `…` truncation (§10 D11),
+      and confirmed the prompt carries **only `open` comments** — an `addressed` one is not quoted
+      back at the agent.
+      the toast reads exactly `3 comments copied. Paste into your agent and @-mention
       <path>.` — `docs/fixtures/review-run.md` from the repo root, `review-run.md` from the F5 host.
       Paste the prompt into a scratch buffer and read it before sending it anywhere:
       - a preamble, then numbered items `1.` `2.` `3.` in the order the comments appear in the
@@ -173,7 +178,14 @@ of the machinery. Select the text exactly as written; the anchor is the selectio
 **Step 3 — hand it to a real agent.** Paste into whichever agent you like, `@`-mention the path from
 the toast, and let it edit. Do not tell it anything the prompt does not. Keep the pane visible.
 
-- [ ] **B1b** — within ~400 ms of the agent's write (the `onDidChangeTextDocument` debounce; a
+- [~] **B1b** — **partial, 2026-08-05.** Comment 1 flipped to `addressed` with a real before/after
+      — the plain inference path demonstrated for the first time, and the clipping was the known
+      `fuzzy.verify` under-report (`Counters live in memory, so they do no` against a 46-character
+      before), not a wrong sentence. Comment 3 **orphaned instead of flipping**, so the header read
+      `1 open, 1 addressed, 1 orphaned` rather than `1 open, 2 addressed`. That is **§10 D21**, not
+      a run failure: its anchor stated an absence, and answering the comment necessarily deleted it.
+      Re-run this box once D21 is fixed.
+      Within ~400 ms of the agent's write (the `onDidChangeTextDocument` debounce; a
       write from outside the editor comes via the `FileSystemWatcher` instead and can take a beat
       longer):
       - **comments 1 and 3 flip to `addressed`**, each card showing a before/after;
@@ -182,7 +194,12 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
         one thing to look at closely: §10 records a known `fuzzy.verify` under-report where the
         status is right but the "after" text is clipped short. Clipped is expected; *a different
         sentence entirely* is a new defect.
-- [ ] **B1c** — **comment 2 is still `open`**, and carries the note "This section changed since you
+- [x] **B1c** — **passed 2026-08-05**, by an agent that had read this expectation beforehand (see
+      the note under B1e). Comment 2 stayed `open`, carried the note, and offered **Looks good**;
+      `## Failure modes` was untouched while its body was rewritten. The note's wording is
+      imprecise at block scope — §10 D19 — but fired correctly here, where the scope really is a
+      section.
+      Comment 2 is still `open`, and carries the note "This section changed since you
       copied the prompt" with a **Looks good** button in place of **Resolve**.
       > This is the headline assertion of the whole step. `addressed` means *the text you selected*
       > changed; the agent rewrote the section under the heading and left the heading alone, so the
@@ -194,8 +211,17 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
       > Both suppress the signal by design.
 - [ ] **B1d** — **Looks good** on comment 2 → it resolves, drops into the resolved group, header
       goes to `0 open`, and the primary action greys out to **Copy review prompt** with no count.
+      > Use **comment 1** in the 2026-08-05 run: it is the one that carries **Looks good** and
+      > **Reopen**, because it reached `addressed`. This box names comment 2 only because the
+      > script assumed the section comment would be the one to resolve.
 - [ ] **B1e** — **Reopen** it → back to `open`, header back to `1 open`, button back to **Copy
       review prompt (1)**.
+
+> **Agent caveat for the 2026-08-05 run.** The stand-in agent had read B1c's expected outcome in the
+> same session before editing, so it knew that rewriting the section while leaving the heading alone
+> was the behaviour under test. B1c is therefore verified by an *informed* agent, not the naive one
+> PRD §10 asks for. B1a, B1b and B1d/B1e do not depend on the agent's knowledge; B1c should be
+> re-run against a genuinely blind agent before the phase is called done.
 
 > **If a comment orphans instead of any of the above**, that is a finding, and *which* one matters.
 > Note the comment number and what the agent did to that passage. A paragraph-level rewrite where a
