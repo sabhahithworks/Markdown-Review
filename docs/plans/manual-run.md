@@ -1,0 +1,684 @@
+# The manual run — one sitting at a time
+
+Everything left that a machine cannot do, in the order to do it, as a single linear list.
+
+**This file is the running order, not the record.** The canonical boxes live in
+`docs/plans/03-acceptance-run.md`, `04-acceptance-run.md` and `05-acceptance-run.md`, and each step
+below names the box it closes. Tick both: here so you know where you are, and there so the phase
+docs stay the record. Where this file and a phase doc disagree, **the phase doc wins** — it carries
+the reasoning, and this one only carries the sequence.
+
+The steps are grouped into four sittings by *which VS Code you need*, because the phase docs' own
+order makes you switch hosts repeatedly. Within a sitting the order is theirs and it matters: each
+step leaves the state the next one needs.
+
+Roughly 70 minutes of work, plus however long an agent takes to think in M3 and M9.
+
+**When something fails**, do not fix it here. Write it into the owning phase doc's defect ledger
+first, in the same numbered form the neighbours use (`04-prompt-and-detection.md` §10 for D-numbers,
+`05-ship.md` §13 for E-numbers, `06-production-hardening.md` §4 for H-numbers), and *then* fix it. A
+finding that exists only in a commit message is one the next phase re-derives from scratch.
+
+**A skipped box left blank is indistinguishable from a failed one.** If you cannot reach a step,
+write one line saying so next to it.
+
+---
+
+## Preflight — once, before sitting 1
+
+```sh
+npm run check              # typecheck ×3 + lint + unit tests
+npm run test:integration   # host-side assertions in a real VS Code
+npm run build              # both bundles + CSS colour/theme guards + the bundle guard
+```
+
+All three must be green. They were at commit `bdd3c63`; re-run them anyway, because you are about to
+spend an hour attributing behaviour to the build.
+
+Then confirm exactly one Markdown Review is installed — two extensions contributing the same four
+commands is a confusing hour, and a "working" result may be the *old* build answering:
+
+```sh
+code --list-extensions | grep markdown-review     # expect only sabhahithworks.markdown-review
+```
+
+If `local-dev.markdown-review` is there, `code --uninstall-extension local-dev.markdown-review`.
+
+The packaged archive in the repo root is the one to test against:
+
+```sh
+ls -la markdown-review-0.1.0.vsix     # 142,889 bytes, the H35–H36 layout build
+code --install-extension markdown-review-0.1.0.vsix --force
+```
+
+Then *Developer: Reload Window*.
+
+---
+
+# Sitting 1 — Extension Development Host, `kitchen-sink.md`
+
+Press <kbd>F5</kbd>. The launch config opens `docs/fixtures/` as the workspace root, so the pane's
+messages say `kitchen-sink.md` and sidecars land in `docs/fixtures/.reviews/`.
+
+**Nothing in this sitting may edit `kitchen-sink.md`.** Unit tests and `dev/harness/fixture.js` both
+assert its exact bytes. Commenting only ever writes the sidecar, so you are safe as long as you do
+not type into the document itself.
+
+Clear any sidecar a previous run left behind:
+
+```sh
+rm -rf docs/fixtures/.reviews
+```
+
+---
+
+### Step 1 — A2 step 5: reload with the pane as the only editor
+
+*Closes: `04-acceptance-run.md` A2 step 5 — the last piece of that box.*
+
+**This is the step that is currently failing.** Work through the diagnostic below rather than just
+re-observing it.
+
+1. Open `kitchen-sink.md` → *Markdown Review: Open Review Pane*.
+2. Leave two comments on different paragraphs.
+3. **Close `kitchen-sink.md`'s text editor tab**, leaving the review pane as the only editor open.
+4. <kbd>Cmd/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> → **Developer: Reload Window**.
+   - Not <kbd>F5</kbd> again. Relaunching the dev host starts a new debug session and a new
+     extension host, which is a different path from the one the serializer contract covers.
+
+**Expected:** the pane is still there, on the same tab, against `kitchen-sink.md`, with both
+comments and roughly the same scroll position.
+
+**The moment the window is back, before touching anything else**, collect these two:
+
+- [ ] *Developer: Show Running Extensions* — is **Markdown Review** in the list?
+- [ ] *View → Output*, dropdown top-right — does a **Markdown Review** channel exist, and what is
+      in it?
+
+The output channel is created in `activate()`. **If the channel does not exist, the extension never
+activated**, and that is the whole finding.
+
+Then classify what you saw — three different bugs wear the same word "empty":
+
+| What you see | What it means |
+| --- | --- |
+| The pane tab is **gone entirely** | The serializer never ran, or `isPanelState` rejected the stored state and `deserializeWebviewPanel` disposed the panel deliberately (`src/extension.ts:48`). An `[extension] not reviving …` line in the output channel means `resolveTarget` rejected the path instead. |
+| The tab is **there, pane blank/white** | `revive` ran but rendering failed. Open *Developer: Open Webview Developer Tools* and read the console. |
+| The tab is there, **document renders, comments missing** | Not a restore problem at all — a store problem, and a much more interesting one. |
+
+**The likely cause, stated so you can disprove it.** `package.json` has no `activationEvents` at all
+(`node -e "console.log(require('./package.json').activationEvents)"` → `undefined`). Commands get
+their activation inferred from `contributes.commands`, but `onWebviewPanel:markdownReview.panel` is
+registered at *runtime* by `registerWebviewPanelSerializer` — nothing in the manifest tells VS Code
+to wake the extension for a restore. With the text editor open in A2 steps 1–4 something else may
+have activated it; with the pane as the only editor, nothing does. This is precisely why step 5 is a
+separate step. The serializer path has **zero automated coverage** — there is no `revive` or
+`deserialize` test anywhere in `src/test/`, because `@vscode/test-electron` cannot reload its own
+window.
+
+**The fix, if confirmed** (already written down at `04-acceptance-run.md:102`): declare
+`"activationEvents": ["onWebviewPanel:markdownReview.panel"]`. It does *not* break lazy activation —
+that event fires only when a panel is actually being restored, unlike `onStartupFinished`.
+
+It is not a one-line change to the repo, though. Four places currently assert the manifest carries
+**no** `activationEvents`, and all four have to change from "none" to "one, and here is why it is
+still lazy":
+
+- `docs/plans/05-acceptance-run.md:121` — C3's static half
+- `src/test/integration/suite/activation.spec.ts:47`
+- `src/extension.ts:5` — the file header
+- `CLAUDE.md` — the lazy-activation hard constraint
+
+And it means **step 12 (C3) must be re-run afterwards**, not trusted from its static half.
+
+Record it as a new D-number in `04-prompt-and-detection.md` §10 before changing anything.
+
+---
+
+### Step 2 — A3: the six remaining Phase 3 steps
+
+*Closes: `04-acceptance-run.md` A3, which is `03-acceptance-run.md` steps 2, 3, 5, 6, 7, 8.*
+
+Same dev host, same document. Steps 1 and 4 of that doc are already covered by the gesture harness
+and by step 1 above.
+
+- [ ] **2a — Rejections** (`03-acceptance-run.md` step 2)
+
+  Select a single two-character word, try to comment. Then select the whole **Fenced code** section
+  (line 57 onward — well over 500 characters), try to comment.
+
+  > Expect `Select at least 3 characters` and `Selection too long to anchor — select under 500
+  > characters`, and **no** new card and no new sidecar entry either time. The wording itself is
+  > asserted by `src/test/notices.test.ts`; what you are checking here is that nothing was
+  > persisted. Open `docs/fixtures/.reviews/kitchen-sink.md.json` and count.
+
+- [ ] **2b — Hand-edit the sidecar** (step 3)
+
+  Open `docs/fixtures/.reviews/kitchen-sink.md.json` in an editor beside the pane. Change a
+  comment's `body` and save.
+
+  > Expect the card text to update without you touching the pane. The store half is covered by
+  > `store.spec.ts`; what is manual is that the card re-renders.
+
+- [ ] **2c — Two windows** (step 5)
+
+  Open `docs/fixtures/` in a second window and open the review pane there too. Add a comment in one
+  window.
+
+  > Expect it to appear in the other within a second or two. This goes through the sidecar's
+  > `FileSystemWatcher`, not shared memory — two windows are two extension hosts. Two panes in *one*
+  > window is not reachable by design.
+  >
+  > This is also the step that would expose the write-race and temp-file-collision fixes (H4)
+  > regressing. If a comment made in one window disappears from the other, or a `.tmp` file is left
+  > on disk, that is the finding.
+
+- [ ] **2d — CSP** (step 6)
+
+  *Developer: Open Webview Developer Tools* on the pane, then reload it.
+
+  > Expect **zero** Content Security Policy violations in the console. Nothing else can check this —
+  > the CSP is enforced by VS Code and the layout harness deliberately does not reproduce it.
+  >
+  > **New this phase (H6):** `https:` was removed from `img-src`, so a document containing a remote
+  > image now renders a placeholder instead of fetching it. A CSP violation logged for a **blocked
+  > image** is that fix working, not a failure. A violation on a **script or a style** is real.
+  > `kitchen-sink.md` line 81's *Images and relative paths* section is where to look.
+
+- [ ] **2e — Themes** (step 7)
+
+  Switch between Dark+, Light+ and a High Contrast theme with at least one comment on screen.
+
+  > Expect card, popover, highlight and the *position uncertain* badge to stay legible; nothing
+  > disappears into its background.
+  >
+  > Known weak spot to look at specifically: `.mr-highlight` differentiates by `background-color`
+  > alone, which is what high-contrast themes tolerate least. A `@media (forced-colors: active)`
+  > outline was added this phase for exactly this — but forced-colors itself is a Windows mode and
+  > cannot be checked here.
+
+- [ ] **2f — Narrow pane** (step 8)
+
+  Drag the pane's edge until it is under 700 px wide, then back.
+
+  > Expect the margin to collapse to small inline markers next to each anchored passage; clicking
+  > one expands its card inline. Nothing overflows the right edge in either state, and *View →
+  > Output → Markdown Review* stays empty.
+  >
+  > Both of the bugs the layout harness ever found lived exactly here, and so did H1 and H16. Go
+  > slowly. In narrow mode the markers now live in their own layer rather than inside the
+  > `aria-hidden` overlay (H16) — they should be reachable by <kbd>Tab</kbd>, which is new.
+
+**Then:** tick A3 in `04-acceptance-run.md`, and tick and **date** `03-commenting.md` §8.
+
+Close the dev host.
+
+---
+
+# Sitting 2 — installed build, repo root, `review-run.md`
+
+Open the **repo root** in normal VS Code — not `docs/fixtures/`. Paths now read
+`docs/fixtures/review-run.md` and the sidecar is `.reviews/docs__fixtures__review-run.md.json`, the
+flattened name, which the F5 route never exercises by hand.
+
+Reset before you start:
+
+```sh
+git checkout docs/fixtures/review-run.md
+rm -f .reviews/docs__fixtures__review-run.md.json
+```
+
+Delete **that file**, not the directory. `.reviews/` at the repo root also holds a real review of
+`kitchen-sink.md`, and `rm -rf` there throws away comments the extension is specified never to
+delete.
+
+---
+
+### Step 3 — B1: the real-agent run
+
+*Closes: `04-acceptance-run.md` B1b (re-run) and B1c (blind re-run). B1a, B1d, B1e are already
+green and only need to not regress.*
+
+The one item nothing else can stand in for. Every automated case in the repo writes the "after" text
+itself, which tests the detection machinery but not what the product actually bets on: that a real
+agent, given nothing but prose and no schema, edits in a way the anchor cascade can still follow.
+
+**Precondition:** open `docs/fixtures/review-run.md` → *Markdown Review: Open Review Pane*. Header
+must read `0 open` before you start.
+
+- [ ] **3a — leave three comments.** Select the text exactly as written; the anchor *is* the
+      selection.
+
+  | # | Select | Line | Type roughly | Why this one |
+  | --- | --- | --- | --- | --- |
+  | 1 | `Counters live in memory. This is fine for now.` (both sentences) | 14 | "What happens to the counters on restart or redeploy?" | Anchored **to** the thing that must change → the plain `addressed` path |
+  | 2 | `Failure modes` (heading text only, no `##`) | 28 | "This section needs to say what the client should actually do." | Anchored to a **label**, not to the thing that changes → the D17 section signal |
+  | 3 | `The exact ordering has not been written down anywhere` | 37–38 | "What is the ordering?" | Spans a source line break → exercises whitespace collapsing in anchor space |
+
+  > Sanity check: header reads `3 open`, three cards in the right margin, three highlights in the
+  > text, and `.reviews/docs__fixtures__review-run.md.json` has three entries.
+
+- [ ] **3b — copy the prompt.** Click **Copy review prompt (3)** in the header bar.
+
+  > Toast reads exactly `3 comments copied. Paste into your agent and @-mention
+  > docs/fixtures/review-run.md.`
+  >
+  > Paste into a scratch buffer and read it before sending it anywhere. Expect: a preamble, then
+  > items `1.` `2.` `3.` **in document order, not creation order**; item 2 reading `On the section
+  > "## Failure modes"` while 1 and 3 read `On: "…"`; each body indented three spaces and quoted
+  > with `> `; and **no** ids, JSON, status words or instructions to report back. Anything
+  > schema-shaped in there is a PRD §1 violation, and the whole agent-agnostic bet rests on its
+  > absence.
+  >
+  > This is also the moment `baselineText` is snapshotted. Everything below is measured against it,
+  > so **do not edit the file between here and 3c.**
+
+- [ ] **3c — hand it to a real agent.**
+
+  > **Use an agent that has not read this file.** B1c is currently ticked by an agent that had read
+  > the expected outcome in the same session, which makes it verified by an *informed* agent rather
+  > than the naive one PRD §10 asks for. That is the specific reason this box is being re-run.
+  >
+  > Paste the prompt, `@`-mention the path from the toast, tell it nothing the prompt does not, and
+  > keep the pane visible.
+
+  Within ~400 ms of the agent's write (the `onDidChangeTextDocument` debounce; a write from outside
+  the editor comes via the `FileSystemWatcher` and can take a beat longer):
+
+  - **Comment 1** flips to `addressed` with a before/after. Two things to look at closely: the
+    before/after must be **the agent's actual edit**, not a neighbouring sentence — and it must
+    **no longer end mid-word**. That clipping was the known `fuzzy.verify` under-report, fixed this
+    phase as H8. A different sentence entirely is a new defect.
+  - **Comment 2** stays `open` and gains the note "The text around this changed since you copied the
+    prompt" with a **Looks good** button in place of **Resolve**. *This is the headline assertion of
+    the whole step.* `addressed` means the text **you selected** changed; the agent rewrote the
+    section and left the heading alone, so the weaker signal is the correct answer and `addressed`
+    would be a lie.
+  - **Comment 3** will most likely **orphan**, and that is expected — its anchor states an absence,
+    so answering the comment necessarily deletes it. What is being checked is the new part: its
+    orphan row must carry **"The text around this changed since you copied the prompt — it may have
+    been addressed rather than lost"**, so it reads as *verify this* rather than as loss. That is
+    the D21/H0 fix, and this is its first real-world exercise.
+
+  > If the note on comment 2 is **missing**, check that `markdownReview.autoDetectResolution` is
+  > still `true` (step 7 turns it off) and that the comment was created *before* you copied the
+  > prompt. Both suppress the signal by design.
+  >
+  > **If a different comment orphans**, that is a finding and *which one* matters. A paragraph-level
+  > rewrite where a clause-level edit would have done is a **prompt** problem — the fix is PRD §7's
+  > wording, not `src/anchor/`. An anchor that survived a light rewording and still orphaned is an
+  > **anchoring** problem. Note the comment number and what the agent did to that passage.
+
+- [ ] **3d — confirm and reopen.** **Looks good** on comment 1 → it resolves, drops into the
+      resolved group, the header count falls and the primary action greys out to **Copy review
+      prompt** with no count. Then **Reopen** → back to `open`, header back up, button back to
+      **Copy review prompt (1)**.
+
+**Then reset**, and do not commit the agent's rewrite — the fixture's value is that it starts
+imperfect every time:
+
+```sh
+git checkout docs/fixtures/review-run.md
+```
+
+---
+
+### Step 4 — B2a: orphan on deletion
+
+*Closes: `04-acceptance-run.md` B2a. B2b–B2d are machine-checked by the gesture harness.*
+
+- [ ] With a comment on an anchored sentence, delete that sentence from the document and save.
+
+  > Expect exactly that comment to orphan. It leaves the gutter and appears in the **orphaned**
+  > section above the content, quoting the text it *used* to be attached to. **Nothing else moves.**
+
+---
+
+### Step 5 — B3: full rewrite and the diff
+
+*Closes: `04-acceptance-run.md` B3a, B3b, B3c.*
+
+With at least two located comments in place:
+
+- [ ] **5a** — replace the **entire** contents of `review-run.md` with unrelated prose and save.
+
+  > Expect a banner **at the top of the pane and on screen without scrolling**, reading "The
+  > document was rewritten". Every non-resolved comment is in the orphan section. **Nothing was
+  > deleted.**
+
+- [ ] **5b** — click **Review the diff**.
+
+  > Expect a two-pane diff with **both sides readable prose**. If one side shows `#`, `**` and table
+  > pipes and the other does not, that is §10 D1 regressing — the whole point of that correction is
+  > that both sides are rendered plain text.
+
+- [ ] **5c** — click **Dismiss**, then edit the document again.
+
+  > Expect the banner **not** to come back for a document that was already wrecked.
+  >
+  > The **Dismiss** button this step has always asked for did not exist until H7 — the banner had
+  > only **Review the diff** and cleared itself on the next render. If it is missing again, that is
+  > the fix regressing.
+
+**Then:** `git checkout docs/fixtures/review-run.md` and re-open the pane before continuing.
+
+---
+
+### Step 6 — B4: rename and re-link
+
+*Closes: `04-acceptance-run.md` B4a, B4b, B4c.*
+
+**This has never once been exercised.** Both 2026-08-05 attempts reached for **Re-anchor** on an
+orphan card instead of **Locate file…** on the unreadable notice — two recovery actions were visible
+at once and the wrong one was the more discoverable. That was D22, a finding about the UI rather
+than about the tester, and it is fixed. This step is where the fix gets checked.
+
+The picker is `vscode.window.showOpenDialog`, a native OS dialog, which is exactly why no test
+process can answer it (D9).
+
+Run this with real comments in place, so there is something to migrate.
+
+- [ ] **6a — break the link.** With the pane open and showing its comments, rename
+      `docs/fixtures/review-run.md` to `docs/fixtures/renamed.md` **from a terminal**:
+
+  ```sh
+  mv docs/fixtures/review-run.md docs/fixtures/renamed.md
+  ```
+
+  > **From a terminal, not from VS Code's explorer.** Renaming inside VS Code now migrates the
+  > review automatically (H30) and re-points the pane, which skips the manual path this box is
+  > about. A terminal rename fires no rename event.
+  >
+  > Expect, within a second: the pane replaces its content with a notice headed **"This file could
+  > not be read"**, body "It may have been moved, renamed or deleted. The pane is still open, and
+  > nothing has been lost. (…)", and a **Locate file…** button which **takes focus**, so
+  > <kbd>Enter</kbd> alone activates it.
+  >
+  > Check specifically: **no rendered prose underneath, no gutter cards, and no orphan section**.
+  > **Locate file…** must be the only action on screen. An orphan card visible under the notice is
+  > the D22 fix regressing — that is a defect, not a tester error.
+  >
+  > Also check the pane **did not close**, and `.reviews/docs__fixtures__review-run.md.json` is
+  > still on disk with all its comments. Losing either is a PRD §11 violation — the comments outlive
+  > the file.
+
+- [ ] **6b — open the picker.** Click **Locate file…**.
+
+  > Expect a native dialog titled **"Re-link review-run.md"**, whose confirm button reads **"Re-link
+  > review"** and whose filter offers Markdown only (`md`, `markdown`, `mdown`, `mkd`, `mdx`).
+  > Multi-select is off.
+  >
+  > Press <kbd>Esc</kbd> first: **nothing at all** should happen — no error, no state change. Then
+  > reopen it.
+
+- [ ] **6c — re-link.** Pick `renamed.md`.
+
+  > Expect a toast `Re-linked 3 comments to renamed.md.` (or however many survived step 3), and a
+  > **new pane** on `renamed.md` with every comment present, located, and in the status it had. The
+  > old pane closes itself — re-linking cannot happen in place, because panel and store are both
+  > keyed by target URI.
+  >
+  > On disk: `.reviews/docs__fixtures__renamed.md.json` now holds the comments, **and**
+  > `.reviews/docs__fixtures__review-run.md.json` still **exists and still parses** — emptied, never
+  > deleted. Open both and confirm.
+  >
+  > This is also where the H2/H3 relink fixes get their only real exercise: an id collision would
+  > show as a sidecar that quarantines itself on next load, and a failed-flush would show as
+  > comments vanishing from both files.
+
+- [ ] **6d — restore.** `mv docs/fixtures/renamed.md docs/fixtures/review-run.md`, then re-link the
+      pane back onto it the same way, so the comments end under the original sidecar name again.
+
+---
+
+### Step 7 — B6: inference off
+
+*Closes: `04-acceptance-run.md` B6.*
+
+- [ ] Set `markdownReview.autoDetectResolution` to `false`. Leave two comments. Edit one anchored
+      passage and delete the other's anchored text. Save.
+
+  > Expect **nothing** to become `addressed`, and the deleted one to **still orphan**. Orphaning is
+  > not inference — it is the anchor genuinely being gone — and suppressing it would lose comments
+  > silently.
+
+**Reset the setting when done.**
+
+**Then:** tick items 2, 8 and 9 in `04-prompt-and-detection.md` §9 and date the section. Part A is
+now green, which is what gates everything below.
+
+---
+
+# Sitting 3 — the packaged build's listing and themes
+
+Same window, normal VS Code, repo root. Nothing to reset.
+
+---
+
+### Step 8 — C1: install and identity
+
+*Closes: `05-acceptance-run.md` C1.*
+
+- [ ] Open the Extensions view and find Markdown Review in the installed list.
+
+  > Expect the 128×128 icon to render in the list **at 16 px and still read as two speech bubbles**.
+  > That is the size the icon actually gets seen at, and the one a 128 px preview flatters. Title
+  > "Markdown Review", publisher line "Sabhahith Works", description the manifest's one-liner.
+  >
+  > Then switch to a **light** theme and look again. The Marketplace renders it on both dark and
+  > light chrome, and an icon with no background of its own disappears on one of them.
+  >
+  > Nothing automated reaches any of this: the icon is a binary asset and its legibility is a
+  > judgement. The icon is unchanged this phase, so this is a re-confirmation rather than a first
+  > look.
+
+---
+
+### Step 9 — C2: the full loop, on a real document
+
+*Closes: `05-acceptance-run.md` C2.*
+
+**The box that exercises the code this phase changed most.** Open a Markdown file **of your own** —
+not a fixture — that you are willing to have an agent rewrite. Note which file; cleanup needs the
+name.
+
+- [ ] Run the whole loop end to end: *Open Review Pane* → comment on two or three passages → *Copy
+      Review Prompt* → paste at an agent → let it edit → confirm one card with **Looks good**.
+
+  > Expect the sidecar at `.reviews/<path-with-__>.json` with the flattened name, comments to
+  > survive, at least one to flip to `addressed` with a before/after that is genuinely the agent's
+  > edit, and **Looks good** to move it into the resolved group.
+  >
+  > What this checks that step 3 did not: these are the **packaged bytes**, the workspace is a real
+  > one with a real relative path, and `dist/extension.js` came out of an archive rather than a
+  > build directory.
+  >
+  > **If the pane opens blank**, check the webview developer tools for a **404 on `webview.js`**
+  > before anything else — an over-eager `.vscodeignore` line is the one way to reach this step with
+  > a stripped archive. (The opposite mistake, an archive with too much in it, fails at
+  > `vsce package` on size and never gets this far.)
+
+---
+
+### Step 10 — C4: the listing, as VS Code renders it
+
+*Closes: `05-acceptance-run.md` C4.*
+
+Click Markdown Review in the Extensions view to open its detail pane, and read all three tabs.
+
+- [ ] **10a — Details.** First line is the positioning sentence — *any* markdown file, *any* agent.
+      **Every image loads**; a broken image here is a relative URL that will break identically on
+      the Marketplace. The "how detection works" paragraph is present and says plainly that
+      `addressed` is inferred and never authoritative.
+
+- [ ] **10b — Changelog.** `0.1.0` with a date, and a short summary before the detail rather than a
+      reader landing straight in per-phase churn. There is a new `[Unreleased]` section above it.
+
+- [ ] **10c — Feature Contributions.** Four commands, and three settings.
+
+  > Open Settings, search `markdownReview`, and compare the three descriptions against the README
+  > table **word for word**. The README table and the Settings UI drifting apart is a documentation
+  > bug that only this comparison catches — it caught one on 2026-08-05, where
+  > `markdownReview.author` read "Name attached to your comments." in the README against "…Defaults
+  > to your system username." in the manifest.
+  >
+  > **Two sections are new this phase:** a **Keybinding** row for
+  > <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> bound to *Open Review Pane* when the editor
+  > language is Markdown, and a **Walkthrough** — "Review markdown with any AI agent", three steps.
+
+- [ ] **10d — the walkthrough.** Open it once from *Get Started* on the Welcome page and confirm all
+      **three steps render their markdown body**.
+
+  > Those three files ship inside the `.vsix` from `media/walkthrough/`, and a wrong path shows as
+  > an **empty step rather than an error** — which is why this has to be looked at rather than
+  > inferred.
+
+This tab set is the closest local proxy for the Marketplace listing that exists, which is why it is
+worth doing carefully **before** publishing rather than after.
+
+---
+
+### Step 11 — C5: themes on the installed bytes
+
+*Closes: `05-acceptance-run.md` C5.*
+
+With the pane open and one comment, one `addressed` card and one resolved card on screen:
+
+- [ ] Switch between Dark+, Light+ and a High Contrast theme.
+
+  > Expect cards, popover, highlight, status badges and the header bar all to stay legible; nothing
+  > disappears into its background.
+
+Four things are new since this box was last ticked and **have never been seen in a real theme**:
+
+- [ ] the **forced-colors** block — Windows only, so it stays unverified here; note it rather than
+      tick it
+- [ ] the **position uncertain** badge — needs a comment whose confidence fell below 0.5, which step
+      3's comment 3 or step 5's rewrite will produce
+- [ ] the **armed-delete** state — click a card's Delete once; it should ask before acting rather
+      than delete
+- [ ] the **empty-state panel** — open the pane on a Markdown file with no comments at all
+
+  > `dev/harness/` renders approximations of the three themes and `scripts/check-theme-vars.mjs`
+  > proves every `var(--vscode-*)` used is defined and overridden in all three presets, so this is a
+  > confirmation against the real palette rather than a first look. What makes it worth repeating is
+  > that this is the **packaged** `media/webview.css` — the CSS is committed rather than built, so a
+  > `.vscodeignore` that dropped it would show as an unstyled pane rather than an error.
+
+---
+
+# Sitting 4 — a fresh profile
+
+### Step 12 — C3: lazy activation
+
+*Closes: `05-acceptance-run.md` C3.*
+
+```sh
+code --profile mdcm-fresh
+code --profile mdcm-fresh --install-extension markdown-review-0.1.0.vsix
+```
+
+- [ ] **Reload the window between installing and looking.** Installing into an already-open profile
+      does not leave you with the cold start this box is about.
+- [ ] Open a folder containing Markdown, and **without running any command**, open *Developer: Show
+      Running Extensions*.
+
+  > Expect Markdown Review to be **absent**. Then run *Markdown Review: Open Review Pane* and look
+  > again — now present, with an activation reason naming the command.
+
+**Do not try to automate this by reading `exthost.log`.** An isolated `--extensions-dir` /
+`--user-data-dir` instance was tried on 2026-08-05: it installed and launched but wrote no
+extension-host log and did not answer `code --status`. Four attempts, no evidence. The profile route
+plus a human takes two minutes.
+
+The static half is already re-verified on the shipped bytes: no `activationEvents`, `main` present,
+four commands, `engines.vscode` `^1.90.0`. That establishes the precondition; only the Running
+Extensions view establishes the behaviour — which is why it is worth repeating rather than assuming,
+now that a **walkthrough** contribution exists and walkthroughs are a documented way to get pulled
+in early.
+
+> **If step 1 ends in the `activationEvents` fix**, this step must be re-run against the rebuilt
+> `.vsix` *and* its expectation rewritten from "no `activationEvents`" to "exactly
+> `onWebviewPanel:markdownReview.panel`, and the extension is still absent from Running Extensions
+> until a command is run".
+
+**Then:** tick C1–C5 in `05-ship.md` §12 and date the section. Leave the Windows box (PRD §12 item
+8) **deliberately unticked with its note** — do not tick it on the strength of the substitute tests.
+
+---
+
+# Part C — publish day
+
+Deliberately outside 0.1.0's definition of done. Every step here is yours; none of it can be done
+from this repo.
+
+- [ ] **13** — Confirm `https://marketplace.visualstudio.com/items?itemName=sabhahithworks.markdown-review`
+      returns **404**. Do this *before* claiming anything.
+- [ ] **14** — Claim publisher `sabhahithworks` at
+      [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage), display
+      name "Sabhahith Works". **This is the one irreversible step in the entire plan.**
+- [ ] **15** — Create an Azure DevOps PAT scoped **Marketplace: Manage**, "all accessible
+      organizations".
+- [ ] **16** — Push the repo and make it **public**, so the README's raw GitHub image URLs resolve
+      off-GitHub. Until this is done, every image in step 10a will be broken on the Marketplace even
+      though it renders locally.
+- [ ] **17** — Publish. Then open the listing and confirm it renders as step 10 predicted.
+- [ ] **18** — On a clean machine or profile, install **from the Marketplace** and run the loop once.
+- [ ] **19** — Tag `v0.1.0`. Open tracking issues for the deferred set: **E7** (no Windows pass) and
+      **D22** (second observation of the competing-recovery-actions finding).
+
+---
+
+# Cleanup
+
+```sh
+git checkout docs/fixtures/review-run.md
+git status --short docs/fixtures/      # expect clean; .vscode/settings.json if step 7 wrote one
+ls docs/fixtures/renamed.md            # step 6d should have renamed this back — expect "No such file"
+```
+
+Sidecars. `docs/fixtures/.reviews/` is sitting 1's own directory and can go wholesale. The
+repo-root `.reviews/` holds reviews of real documents, so **name the files**:
+
+```sh
+rm -rf docs/fixtures/.reviews
+rm -f .reviews/docs__fixtures__review-run.md.json*     # includes any .bak
+rm -f .reviews/docs__fixtures__renamed.md.json*        # left emptied by step 6
+```
+
+Then the review step 9 created in your own project — **name that file too, do not `rm -rf
+.reviews/`**:
+
+```sh
+rm -f .reviews/<the__flattened__name>.json*
+git status --short                                     # the agent's rewrite: reverted or committed deliberately
+```
+
+Profiles and installs:
+
+```sh
+code --profile mdcm-fresh --uninstall-extension sabhahithworks.markdown-review
+```
+
+Reinstall the local dev build if you want it back:
+
+```sh
+~/.mdcm-local-build/reinstall.sh
+```
+
+---
+
+# Recording the outcome
+
+| Steps | Tick here, and in |
+| --- | --- |
+| 1, 2 | `04-acceptance-run.md` A2/A3, then `03-commenting.md` §8 — **date it** |
+| 3–7 | `04-acceptance-run.md` B1–B6, then `04-prompt-and-detection.md` §9 items 2, 8, 9 — **date it** |
+| 8–12 | `05-acceptance-run.md` C1–C5, then `05-ship.md` §12 — **date it** |
+| 13–19 | `05-acceptance-run.md` Part C |
+
+New defects go in the owning ledger **before** they get fixed:
+
+- anchoring, prompt, baseline, status inference → `04-prompt-and-detection.md` §10, next **D**-number
+- packaging, manifest, listing → `05-ship.md` §13, next **E**-number
+- anything from this phase's audit → `06-production-hardening.md`, next **H**-number

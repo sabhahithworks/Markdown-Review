@@ -42,6 +42,11 @@ document). The Phase 4 run subsumes the Phase 3 one, which is still that phase's
 [05-acceptance-run.md](05-acceptance-run.md) adds the one thing none of them touch: the installed
 `.vsix` in stable VS Code, rather than the working tree in a dev host.
 
+[manual-run.md](manual-run.md) is those three flattened into one linear runsheet — every open box
+that is left, in the order to do it, grouped by which VS Code each needs. It is the **running order,
+not the record**: outcomes are still ticked into the phase docs above, and where the two disagree
+the phase doc wins, because it carries the reasoning.
+
 ## Contract ownership — the no-duplication rule
 
 Every cross-cutting contract is specified in exactly one place. Other plans link to it and never
