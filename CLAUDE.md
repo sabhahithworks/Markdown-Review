@@ -12,7 +12,9 @@ A VS Code extension (working name `markdown-review`) that renders any Markdown f
 
 ## Current state
 
-**Phases 1–3 are complete and green.** Anchoring core (`src/anchor/`, `src/render/`), the read-only preview pane (`src/panel/`, `media/`), and commenting (`src/store/`, `media/src/{anchorSpace,selection,comments}.ts`) are implemented and tested — `npm run check` = typecheck (three tsconfig projects) + lint + 344 vitest tests. Phase 4 (prompt generation + change detection) is next; its documented entry gate is the Phase 3 acceptance checklist, now mostly automated (see below) with a short scripted manual pass left in `docs/plans/03-acceptance-run.md`.
+**Phases 1–4 are built.** Anchoring core (`src/anchor/`, `src/render/`), the read-only preview pane (`src/panel/`, `media/`), commenting (`src/store/`, `media/src/{anchorSpace,selection,comments}.ts`) and the review loop (`src/prompt/`, `src/detect/`, `src/commands/`) are implemented and tested — `npm run check` = typecheck (three tsconfig projects) + lint + 465 vitest tests, plus 40 host-side assertions in `npm run test:integration`.
+
+**Phase 5 (ship) is next, and its entry gate is not yet green.** Four items in the Phase 4 acceptance checklist are still open — see `docs/plans/05-ship.md` §1 for the table, and `docs/plans/04-acceptance-run.md` for the scripted manual pass that closes them. Phase 5 is scoped to *package, not publish*: it ends at a verified `.vsix` under 500 KB, with the Marketplace publish written down but deliberately outside its definition of done.
 
 Per-phase execution plans live under `docs/plans/` — start at `docs/plans/README.md` (phase map, shared conventions, contract-ownership table, verification harnesses), then execute the plan for the current phase. Run the previous phase's acceptance checklist before starting a new phase.
 
@@ -20,10 +22,10 @@ Commands: `npm run check` (the one command the definition-of-done maps to), `npm
 
 **Two verification harnesses sit outside `npm run check`**, because one launches VS Code and the other needs a browser. Extend them; don't rebuild them.
 
-- `npm run test:integration` — `@vscode/test-electron` against a real extension host (`src/test/integration/`). This is where store I/O, activation and panel lifecycle are actually verified; the vitest suites cannot import `vscode`. Plan 04 §8's change-detection scenario belongs here.
+- `npm run test:integration` — `@vscode/test-electron` against a real extension host (`src/test/integration/`). This is where store I/O, activation and panel lifecycle are actually verified; the vitest suites cannot import `vscode`. Plan 04 §8's change-detection scenario lives here.
 - `dev/harness/` — the real webview bundle in a real layout engine, over markup from the real renderer, with three theme presets. `node dev/harness/generate.mjs`, then serve the repo root and open `/dev/harness/`. Card geometry has no other coverage: jsdom reports every rectangle as zero, which is why `media/test/comments.test.ts` can only test the pure `stackTops`. Both of the bugs found after Phase 3 merged were here.
 
-Two release-blocking PRD defects were found and fixed during Phase 1 — see `docs/plans/01-anchoring-core.md` §9 for the full list, and read it before touching `src/anchor/fuzzy.ts`. Phase 3 corrected its own plan the same way; read `docs/plans/03-commenting.md` §9 before touching anchor-space plumbing.
+Two release-blocking PRD defects were found and fixed during Phase 1 — see `docs/plans/01-anchoring-core.md` §9 for the full list, and read it before touching `src/anchor/fuzzy.ts`. Phase 3 corrected its own plan the same way; read `docs/plans/03-commenting.md` §9 before touching anchor-space plumbing. Phase 4's `docs/plans/04-prompt-and-detection.md` §10 is the longest of these lists (D1–D21) and is required reading before touching the prompt, the baseline snapshot or status inference; two of its entries (D19, D21) are recorded as not yet fixed.
 
 **The load-bearing invariant added in Phase 3:** `walkSpans` in `src/render/plaintext.ts` is called by *both* `renderPlainText` and `renderer.ts`'s core rule, which is what makes the `data-ap-start` / `data-ap-end` offsets on rendered blocks agree with anchor space by construction. The webview reads those attributes and never re-derives block boundaries. Do not give the webview its own opinion about where blocks begin — that was the design Phase 3 removed, and `media/test/anchorSpace.test.ts` exists to keep it removed.
 

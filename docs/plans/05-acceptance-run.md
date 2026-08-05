@@ -1,0 +1,193 @@
+# Phase 5 acceptance — the manual run
+
+Everything Plan 05 §12 claims that no harness can reach. It is short, because Phase 5 adds almost no
+behaviour — what it adds is a *package*, and the only way to check a package is to install it.
+
+The point of this run is the one thing every earlier run deliberately avoided: **stable VS Code, not
+the Extension Development Host, against the exact bytes a user would install.** Every previous
+acceptance run exercised the working tree. This one exercises the archive, which is the only place
+`.vscodeignore` mistakes, a missing icon and a stale `dist/` can exist.
+
+Part A is the entry gate and lives elsewhere. Part B closes the `[ ]` items in Plan 05 §12. Part C is
+publish day, deliberately outside 0.1.0's definition of done. Date the sections when they pass.
+
+## Before you start
+
+```sh
+npm run check                      # typecheck + lint + unit tests
+npm run test:integration           # host-side assertions in a real VS Code
+npm run build                      # both bundles + the CSS guards + check-bundles.mjs
+npx --yes @vscode/vsce ls          # expect the ten files in Plan 05 §7 — empty output is a FAILURE
+npx --yes @vscode/vsce package     # → markdown-review-0.1.0.vsix; record the size in §12
+```
+
+**Uninstall the local build first.** `~/.mdcm-local-build/reinstall.sh` installs
+`local-dev.markdown-review`, and two extensions contributing the same four commands and the same
+editor-title button is a confusing hour. It also means a "working" result may be the *old* build
+answering.
+
+```sh
+code --uninstall-extension local-dev.markdown-review
+code --install-extension markdown-review-0.1.0.vsix --force
+```
+
+Then *Developer: Reload Window*, and confirm in the Extensions view that exactly one **Markdown
+Review** is installed.
+
+Two documents, and the difference matters — the same rule as Plan 04's run:
+
+- **`docs/fixtures/kitchen-sink.md`** — unit tests and `dev/harness/fixture.js` assert its exact
+  bytes. Nothing here may edit it.
+- **A real project of your own** — C2 wants one, because PRD §12 asks for the loop on a real
+  document and because it is the only way the flattened sidecar name
+  (`.reviews/docs__specs__auth.md.json`) gets exercised by hand. Pick something you can afford to
+  have an agent rewrite, and note which file, because Cleanup needs the name.
+
+---
+
+## Part A — the Phase 4 gate
+
+Run `docs/plans/04-acceptance-run.md` end to end. Its open boxes — **B1d**, **B1e**, **B1c**'s blind
+re-run, **B4a–B4c**, **B5a–B5e**, and **A3** — are Plan 05 §1's prerequisite table, and Plan 04 §10
+D21 must be fixed before B1b can be re-run without a caveat.
+
+This document does not restate them. If Part A is not green, stop: everything below tests packaging,
+and packaging a product whose loop is unverified just produces a verified archive of an unverified
+product.
+
+---
+
+## Part B — the packaged build
+
+Run C1 → C5 in order; each leaves the state the next needs. About twenty minutes.
+
+### C1 — install and identity — §12 items 3, 4
+
+- [ ] **C1** — with the `.vsix` installed, open the Extensions view and find **Markdown Review**.
+
+> Expect: the 128×128 icon renders in the list **at 16 px and still reads as two speech bubbles** —
+> this is the size the icon actually gets seen at, and the one a 128 px preview flatters. The title
+> is "Markdown Review", the publisher line reads "Sabhahith Works", and the description is the
+> manifest's one-liner.
+>
+> Then switch to a light theme and look at the icon again. The Marketplace renders it on both dark
+> and light chrome, and an icon with no background of its own disappears on one of them (Plan 05 §4).
+>
+> Nothing automated reaches any of this: the icon is a binary asset and its legibility is a judgement.
+
+### C2 — the full loop, on a real document — §12 item 13, PRD §12 item 7
+
+- [ ] **C2** — open a real project (not `docs/fixtures/`), open a Markdown file you are willing to
+      have rewritten, and run the whole loop: *Open Review Pane* → comment on two or three passages →
+      *Copy Review Prompt* → paste at an agent → let it edit → confirm one card with **Looks good**.
+
+> Expect: the sidecar lands at `.reviews/<path-with-__>.json` with the flattened name, comments
+> survive, at least one flips to `addressed` with a before/after that is genuinely the agent's edit,
+> and **Looks good** moves it into the resolved group.
+>
+> What is being checked here that Plan 04's B1 did not: these are the packaged bytes, the workspace
+> is a real one with a real relative path, and `dist/extension.js` came out of an archive rather than
+> a build directory.
+>
+> **If the pane opens blank**, check the webview developer tools for a 404 on `webview.js` before
+> anything else — an over-eager `.vscodeignore` line is the one way to reach this step with a
+> stripped archive. Plan 05 §13 E1 covers the opposite and far likelier mistake, an archive with
+> *too much* in it, but that one fails at `vsce package` on size and never gets this far.
+
+### C3 — lazy activation on a fresh profile — §12 item 14, PRD §9
+
+- [ ] **C3** — `code --profile mdcm-fresh`, install the `.vsix` into it, open a folder containing
+      Markdown, and **without running any command** open *Developer: Show Running Extensions*.
+
+> Expect: Markdown Review is **not** in the list. Then run *Markdown Review: Open Review Pane* and
+> look again — now it is, with an activation reason naming the command.
+>
+> The manifest has no `activationEvents` and no `onStartupFinished`; VS Code infers activation from
+> `contributes.commands`. This is the only check that the inference actually held in a packaged
+> build, and a fresh profile is what makes it meaningful — an existing profile may have the
+> extension already activated by a restored webview from a previous session.
+
+### C4 — the listing, as VS Code renders it — §12 items 5, 7, 15
+
+- [ ] **C4** — in the Extensions view, click Markdown Review to open its detail pane, and read all
+      three tabs.
+
+> Expect, on **Details**: the first line is the PRD §1 positioning sentence — *any* markdown file,
+> *any* agent. Every image loads; a broken image here is a relative URL that will break identically
+> on the Marketplace (PRD §12). The "how detection works" paragraph is present and says plainly that
+> `addressed` is inferred and never authoritative.
+>
+> On **Changelog**: `0.1.0` with a date at the top, and a short summary before the detail rather than
+> a reader landing straight in per-phase churn.
+>
+> On **Feature Contributions**: four commands, and three settings whose descriptions match Plan 05
+> §5's README table word for word. Open Settings and search `markdownReview` to compare — the README
+> table and the Settings UI drifting apart is a documentation bug that only this comparison catches.
+>
+> This tab set is the closest local proxy for the Marketplace listing that exists, which is why it is
+> worth doing carefully before publishing rather than after.
+
+### C5 — themes on the installed bytes — §12 item 15
+
+- [ ] **C5** — with the pane open and at least one comment, one `addressed` card and one resolved
+      card on screen, switch between Dark+, Light+ and a High Contrast theme.
+
+> Expect: cards, popover, highlight, status badges and the header bar all stay legible; nothing
+> disappears into its background.
+>
+> `dev/harness/` renders approximations of these three and `scripts/check-theme-vars.mjs` proves
+> every `var(--vscode-*)` used is defined and overridden in all three presets, so this is a
+> confirmation against the real palette rather than a first look. What makes it worth repeating here
+> is that it is the packaged `media/webview.css` — the CSS is committed rather than built, so a
+> `.vscodeignore` that dropped it would show as an unstyled pane rather than an error.
+
+---
+
+## Part C — deferred to publish day
+
+Not part of 0.1.0's definition of done. Recorded here so publish day is a checklist rather than a
+research session (Plan 05 §10).
+
+- [ ] Publisher `sabhahithworks` claimed at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage),
+      display name "Sabhahith Works". Irreversible — see Plan 05 §2.
+- [ ] `items?itemName=sabhahithworks.markdown-review` returned 404 before publishing.
+- [ ] Azure DevOps PAT scoped **Marketplace: Manage**, "all accessible organizations".
+- [ ] Repo pushed and public, so the README's raw image URLs resolve off-GitHub.
+- [ ] Published; the listing renders as C4 predicted.
+- [ ] Clean machine or profile: install from the Marketplace and run the loop once.
+- [ ] `v0.1.0` tagged; issues opened for D19 and E7.
+
+---
+
+## Cleanup
+
+```sh
+code --uninstall-extension sabhahithworks.markdown-review
+code --profile mdcm-fresh --uninstall-extension sabhahithworks.markdown-review   # C3's profile
+```
+
+Then the review C2 created, in your real project. **Name the file — do not `rm -rf .reviews/`**: that
+directory also holds reviews of real documents, and throwing it away destroys comments the extension
+is specified never to delete.
+
+```sh
+rm -f .reviews/<the__flattened__name>.json*    # includes any .bak
+git status --short                             # confirm the agent's rewrite is reverted or committed deliberately
+```
+
+Reinstall the local build if you want it back:
+
+```sh
+~/.mdcm-local-build/reinstall.sh
+```
+
+## Recording the outcome
+
+- Plan 05 §12 — tick C1–C5's items and date the section. The Windows box (PRD §12 item 8) is
+  **deliberately left unticked with its note**; do not tick it on the strength of §9's substitute
+  tests.
+- Tick the boxes in **this** document as you go, and leave a one-line note next to anything you
+  skipped or could not reach. A skipped box left blank is indistinguishable from one that failed.
+- Anything that failed goes in Plan 05 §13 as a new defect, in the same E-numbered form, before it
+  gets fixed. A finding recorded only in a commit message is a finding the next release will
+  re-derive.

@@ -1,145 +1,552 @@
 # Phase 5 — Ship
 
-**Delivers:** a publishable `.vsix` under 500 KB, Marketplace-ready listing assets, and a verified
-release. No feature work in this phase — feature gaps discovered here go back to their owning
-phase.
+**Delivers:** a `.vsix` under 500 KB that installs into stable VS Code and passes the full loop,
+plus the listing assets that make it publishable — manifest identity, icon, README, CHANGELOG,
+`.vscodeignore` — and two new machine checks that hold the package honest. No feature work: feature
+gaps discovered here go back to their owning phase.
 
-Spec references: PRD §9 (manifest), §12 (release checklist), §10 Phase 5, §1 (positioning).
+Spec references: PRD §9 (manifest), §12 (release checklist), §10 Phase 5, §1 (positioning),
+§2/§13 (no telemetry, no network).
+
+> **Scope for 0.1.0: package, not publish.** The phase ends at a verified `.vsix`. Claiming the
+> publisher, the Azure DevOps PAT and `vsce publish` are §10's second half — written down in full,
+> deliberately outside this phase's definition of done. Everything up to that point can be done
+> without Marketplace credentials, which is why it is worth separating.
 
 ## 1. Prerequisites
 
-Phase 4 acceptance checklist (Plan 04 §9) passes, including the manual real-agent run.
+`docs/plans/README.md` makes the previous phase's checklist a hard entry check, and Phase 4's is not
+green. **This document may be written now; it may not be executed until these close:**
 
-## 2. Name & identity (do first — it gates everything else)
+| Open | What it is | Where |
+|---|---|---|
+| Plan 04 §9 item 2 | The real-agent run. "Looks good" and "Reopen" have never been exercised; B1c wants one blind re-run | `04-acceptance-run.md` B1d, B1e, B1c |
+| Plan 04 §9 item 8 | Rename/delete of the target → re-link. The file picker is manual | `04-acceptance-run.md` B4a–B4c |
+| Plan 04 §9 item 9 | Clear addressed / clear all. The modals are unreachable from `@vscode/test-electron` (§10 D9) | `04-acceptance-run.md` B5a–B5e |
+| Plan 04 §10 D21 | An anchor stating an absence orphans instead of flipping — a live defect the first real-agent run found | `04-prompt-and-detection.md` §10 |
+| Plan 03 §8 / A3 | Six Phase 3 steps: rejection wording, sidecar hand-edit, two windows, CSP, themes, narrow pane | `04-acceptance-run.md` A3 |
 
-It gates everything else because two of the three identifiers are effectively permanent: the
-extension is addressed as `publisher.name`, and changing either after the first publish means a new
-listing, with installs, ratings and URLs left behind on the old one. `displayName` can change
-whenever you like.
+D19 ("the D17 note says *section* for a scope that is a block") is recorded as not-yet-fixed and is
+a wording bug in a user-facing notice. It is not a gate, but it is cheap and it will be read by every
+user, so fix it while the manifest work is in flight rather than shipping it.
 
-Starting point: `package.json` today has **no `publisher` and `private: true`**, which is why
-`vsce` refuses to package the repo as-is. `~/.mdcm-local-build/reinstall.sh` fabricates
-`local-dev` for local installs — a placeholder, and not a candidate.
+## 2. Identity — name, publisher, repository
+
+Two of the three public identifiers are effectively permanent: the extension is addressed as
+`publisher.name`, and changing either after the first publish means a new listing with installs,
+ratings and URLs stranded on the old one. `displayName` can change whenever you like.
 
 ### The three identifiers
 
 | Field | Rules | Where it appears |
-| --- | --- | --- |
-| `publisher` | **Globally unique.** Lowercase letters, digits, hyphens. Claimed once at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage) and never renamed | Extension id, listing URL, "More info" panel |
+|---|---|---|
+| `publisher` | **Globally unique.** Letters, digits and hyphens, starting alphanumeric — vsce's `nameRegex` is `/^[a-z0-9][a-z0-9\-]*$/i`, so **no spaces**. Claimed once at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage) and never renamed | Extension id, listing URL, "More info" panel |
 | `name` | Unique **only within the publisher**, so `markdown-review` being taken elsewhere does not block us. Lowercase, no spaces | Extension id, listing URL, `code --install-extension <id>` |
-| `displayName` | Free text, aim for under ~40 characters so it is not truncated in the Extensions view. Freely changeable | Marketplace title, Extensions view, search results |
+| `displayName` | Free text, under ~40 characters so it is not truncated in the Extensions view. Freely changeable | Marketplace title, Extensions view, search results |
 
-### How to check availability
+### Name — decided, and already applied
 
-- **Publisher** — the only hard collision. Try to claim it in the Marketplace management portal; the
-  form rejects a taken id immediately. Do this before writing the id anywhere else.
-- **Extension id** — `https://marketplace.visualstudio.com/items?itemName=<publisher>.<name>` returns
-  404 if free. Only meaningful once the publisher is settled.
-- **Display name** — not enforced, so this is a judgement call rather than a check. Search the
-  Marketplace for the candidate and for "markdown comment" / "markdown review". If something in the
-  first page of results has a near-identical title, pick differently: the cost is being mistaken for
-  another extension in a list of twenty, not a rejected upload.
-
-### Choosing
-
-`name` should match the repo directory so the two cannot drift; keeping `markdown-review` is the
-cheap and correct default unless the display name moves far away from it.
-
-`displayName` carries the discovery weight — Marketplace search ranks over display name, description
-and `keywords` — so it should contain the words someone would actually type. For this extension that
-is *markdown*, plus *review* or *comment*. Constraints worth applying, in order:
+**`markdown-review` / "Markdown Review".** `displayName` carries the discovery weight — Marketplace
+search ranks over display name, description and `keywords` — so it has to contain the words someone
+would actually type, here *markdown* plus *review* or *comment*. Four constraints, in order:
 
 1. Says what it does to someone who has never heard of it. "Markdown Review" passes; an invented
    word does not.
-2. Contains at least one high-traffic search term, and is not confusable with the several existing
-   *Markdown Preview* extensions — the word *preview* is worth avoiding for that reason alone.
+2. Contains a high-traffic search term, and is not confusable with the several existing *Markdown
+   Preview* extensions — the word *preview* is worth avoiding for that reason alone.
 3. No other product's trademark, including "VS Code" and "Visual Studio" (Microsoft's Marketplace
    naming rules prohibit implying an official relationship).
 4. Survives the PRD §1 positioning sentence sitting directly under it without redundancy.
 
-**Decided: `markdown-review` / "Markdown Review".** The alternatives considered were *Review
-Markdown with AI* and *Comment & Review for Markdown*; both buy search coverage at the cost of
-reading like a category rather than a product, and the second also dates badly. The working name was
-already the shortest option that satisfies all four constraints, so PRD §1's "working name" becomes
-the final one.
+The alternatives considered were *Review Markdown with AI* and *Comment & Review for Markdown*; both
+buy search coverage at the cost of reading like a category rather than a product, and the second also
+dates badly. The working name was already the shortest option satisfying all four, so PRD §1's
+"working name" becomes the final one. The coverage the longer candidates would have bought is bought
+instead through `description` and `keywords`, which rank alongside `displayName` and cost nothing in
+the title.
 
-Both fields already hold these values, so there is nothing to rename. The discovery coverage the
-longer candidates would have bought is bought instead through `description` and `keywords`, which
-are ranked alongside `displayName` and cost nothing in the title.
+### Publisher and repository — resolved
 
-### Still outstanding
+| Thing | Value |
+|---|---|
+| Publisher **id** | `sabhahithworks` |
+| Publisher **display name** | `Sabhahith Works` |
+| `author` | `Nagaraja Sabhahith` |
+| Extension id | `sabhahithworks.markdown-review` |
+| `repository` | `https://github.com/sabhahithworks/Markdown-Review` |
+| Raw asset base | `https://raw.githubusercontent.com/sabhahithworks/Markdown-Review/main/` |
 
-The publisher id, which is the only globally-unique identifier and the only one that has to be
-claimed. Apply it together with removing `private: true` — **one commit**, so no artifact below is
-ever built against a half-applied manifest. Until then `vsce` cannot package the repo, and local
-installs go on using the `local-dev` placeholder.
+**The publisher id is not the publisher name, and conflating them is the most likely mistake in this
+phase.** "Sabhahith Works" cannot be an id — ids are lowercase, digits and hyphens only. `manage`
+takes the id and a separate display name; the display name is what appears on the listing, the id is
+what appears in the URL and in `code --install-extension`. `sabhahithworks` matches the GitHub org
+exactly, which is the whole reason to prefer it over `sabhahith-works`.
 
-Icon: 128×128 PNG at `media/icon.png`, legible at 16 px, works on dark and light Marketplace
-backgrounds. Referenced from the manifest `icon` field.
+Claim it **before** writing it into the manifest, even though publishing is deferred: the form
+rejects a taken id immediately, the id is permanent, and unclaimed ids are first-come. Then confirm
+`https://marketplace.visualstudio.com/items?itemName=sabhahithworks.markdown-review` returns 404.
 
-## 3. Listing assets
+The remote exists (`git@github.com:sabhahithworks/Markdown-Review.git`) but is not configured
+locally — `git remote -v` is empty. Add it and push before §5's absolute image URLs can resolve.
 
-- **README.md** (repo root = Marketplace listing):
-  - First line is the PRD §1 positioning sentence: works on *any* markdown file with *any* agent —
-    that's the differentiator, lead with it.
-  - Animated GIF of the full loop (open pane → comment → copy prompt → agent edits → status flips
-    → confirm). Record in the Extension Development Host at a tidy window size; keep under ~4 MB.
-  - **All image URLs absolute** (raw.githubusercontent.com) — relative paths break on the
-    Marketplace (PRD §12). The GIF lives in the repo but is excluded from the package (§4).
-  - Sections: what it is (3 sentences), the loop (GIF + 4 numbered steps), how detection works
-    (one honest paragraph: `addressed` is inferred, you confirm), settings table, sidecar format
-    note (where comments live, that they're git-shareable), non-goals/roadmap line, license.
-- **CHANGELOG.md**: promote the `Unreleased` entries accumulated since Phase 1 to `0.1.0` with a
-  date.
-- **LICENSE**: MIT, matching the manifest `license` field.
+### The one-commit rule
 
-## 4. Package size — the 500 KB budget
+`publisher`, `author`, `repository` and `icon` added, `private: true` removed — **one commit**, so no
+artifact below is ever built against a half-applied manifest.
 
-`.vscodeignore` excluding: `src/`, `media/src/`, `docs/`, `node_modules/` (esbuild output is
-self-contained), tests, fixtures, `.vscode/`, `.vscode-test/`, config files, the README GIF
-(referenced by absolute URL, not shipped).
+Note what this is *not*: a gate. `vsce` 3.9.2 does not read `private` at all, and
+`validateManifestForPackaging` deliberately allows a missing publisher ("allow users to package an
+extension without a publisher for testing reasons", `out/package.js:972`). Packaging works today;
+`publish` is where both bite. The one-commit rule is about identity coherence — an id, an author and
+a repository URL that disagree with each other across three commits is how a listing ends up
+pointing at the wrong source — not about unblocking a tool.
+
+## 3. Manifest completion
+
+Field by field against the current `package.json`:
+
+| Field | Now | After | Why |
+|---|---|---|---|
+| `private` | `true` | *removed* | An npm-publish guard that has no business on a package published through `vsce`. It does **not** block `vsce` (§2), so removing it is hygiene, not a fix |
+| `publisher` | absent | `"sabhahithworks"` | §2. Optional for `package`, required by `publish` |
+| `author` | absent | `"Nagaraja Sabhahith"` | §2. Distinct from the `markdownReview.author` **setting**, which names comment authors — do not conflate them |
+| `repository` | absent | `{ "type": "git", "url": "https://github.com/sabhahithworks/Markdown-Review" }` | PRD §9. Without it `vsce` needs `--allow-missing-repository`, and the listing has no source link |
+| `icon` | absent | `"media/icon.png"` | §4 |
+| `categories` | `["Other"]` | *unchanged* | PRD §9 says `["Other", "Notebooks"]`; that is wrong — see §13 E3 |
+| `engines.node` | `">=20"` | *unchanged* | Not read by `vsce`; harmless, and true of the build |
+| `scripts.vscode:prepublish` | absent | `"npm run build"` | §13 E2 — without it `vsce package` ships whatever stale bytes happen to be in `dist/` |
+| `scripts.package` | absent | `"npx --yes @vscode/vsce package"` | So the packaging command is recorded in the repo rather than in someone's shell history |
+
+Everything else in PRD §9 — the four commands, both menu contributions, all three configuration
+properties, `engines.vscode`, `main`, `license`, `keywords`, and the deliberate absence of
+`activationEvents` — already matches exactly. Do not touch them.
+
+**Dependency decision:** `@vscode/vsce` stays **out** of `devDependencies`, invoked as `npx --yes`.
+The README's freeze governs runtime dependencies and a dev tool is outside it either way, but vsce
+pulls a large tree for something run a handful of times per release, and `~/.mdcm-local-build/reinstall.sh`
+already invokes it this way. Recorded here because the README requires dependency decisions to be
+written into the phase plan rather than inferred from a lockfile diff.
+
+## 4. Icon
+
+A 128×128 PNG at `media/icon.png`, referenced by the manifest `icon` field.
+
+Source of truth is a new `media/icon.svg` authored at 128×128, taking the two-overlapping-speech-bubbles
+geometry from the existing `media/icon-dark.svg` / `media/icon-light.svg`. **Those two stay** — they
+are the webview panel's tab icon (`src/panel/ReviewPanel.ts:149-151`), a 16 px monochrome pair that
+follows the editor theme. This is a different job with different rules.
+
+Constraints:
+
+- **Legible at 16 px.** The Extensions list renders it small; two bubbles at 128 px can carry detail
+  that turns to mud at 16. Check at both sizes before committing.
+- **It needs its own background.** The Marketplace renders the icon on both dark and light chrome, so
+  a transparent PNG with a light stroke vanishes on one of them. A filled rounded square in a fixed
+  colour, with the bubbles knocked out of it, works on both.
+- **Literal colours are correct here.** `scripts/check-css-colors.mjs` bans hardcoded colour in
+  `media/webview.css` only (its `CSS_TARGET` seam names the file). A brand icon must not follow the
+  editor theme — it is the same asset on every machine.
+
+Rasterization has no network path. Try in order, and *look at the result* — a silently empty or
+wrongly-scaled PNG is the failure mode:
+
+```sh
+rsvg-convert -w 128 -h 128 media/icon.svg -o media/icon.png
+# or:
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+  --screenshot=media/icon.png --window-size=128,128 --default-background-color=00000000 \
+  "file://$PWD/media/icon.svg"
+# or:
+qlmanage -t -s 128 -o . media/icon.svg
+```
+
+The PNG is a shipped asset, so it is committed. Confirm no `.gitignore` rule swallows it before
+assuming it is in the tree.
+
+## 5. README.md — the Marketplace listing
+
+The repo root README *is* the listing body. It does not exist yet.
+
+**Line 1 is the PRD §1 positioning sentence.** The PRD says so in as many words: Antigravity and
+Claude Code both have artifact commenting, but only for agent-generated artifacts inside their own
+product; this works on *any* markdown file — a PRD, an ADR, a README, a design doc — with *any*
+agent. That is the differentiator and it is the first thing a reader sees.
+
+Sections, in order:
+
+1. **What it is** — three sentences. Select a passage, leave a comment, hand the file to an agent.
+2. **The loop** — the visual from §6 plus four numbered steps: open the review pane → comment on
+   passages → *Copy Review Prompt* and paste it at any agent → the agent edits the prose and comments
+   flip to `addressed` for you to confirm.
+3. **How detection works** — one honest paragraph, and the most important prose on the page.
+   `addressed` is *inferred* from the anchored text changing; it is never authoritative, you confirm
+   or reopen it, and **the extension never deletes a comment automatically**. Say this plainly. An
+   extension that overclaims here loses trust on the first false positive, and false positives are
+   inherent to the design, not a bug in it.
+4. **Settings** — a table of the three `markdownReview.*` keys with their manifest descriptions
+   verbatim, so the README and the Settings UI cannot drift.
+5. **Where comments live** — `.reviews/docs__specs__auth.md.json` beside your repo: one JSON file per
+   reviewed document, human-readable, versioned, and shareable through git like any other file. The
+   `storageLocation: global` alternative for people who would rather not commit them.
+6. **Privacy** — no telemetry, no network calls, no analytics, ever (PRD §2/§13). §8's
+   `check-bundles.mjs` is what makes that a checkable claim rather than a promise, and it is worth
+   one sentence saying so.
+7. **Not in v1** — one line from PRD §2: no threads or replies, no real-time collaboration, no MCP
+   server, no editing in the preview. Naming the non-goals sets expectations more cheaply than a
+   support thread does.
+8. **License** — MIT, linking `LICENSE`.
+
+**Every image URL absolute**, against the raw base in §2 — relative paths break on the Marketplace
+(PRD §12), because the listing is rendered off-GitHub. The ordering trap: raw URLs only resolve once
+the repo is pushed and public, so push first, then open the README and confirm each image loads from
+its raw URL in a browser before treating the package as final.
+
+While here, settle the LICENSE copyright line. It currently reads `Copyright (c) 2026 markdown-review
+contributors`, which is a placeholder for a project with one author. `Sabhahith Works` (the legal
+entity) or `Nagaraja Sabhahith` are both defensible; pick one deliberately rather than shipping the
+placeholder, and make it match the manifest `license` field's implication of a real licensor.
+
+## 6. The loop recording
+
+The one listing asset that cannot be written, only captured.
+
+- **Document: `docs/fixtures/review-run.md`.** Deliberately imperfect prose, asserted against by
+  nothing, and meant to be rewritten by an agent. **Never `kitchen-sink.md`** — unit tests and
+  `dev/harness/fixture.js` both assert its exact bytes.
+- **What to show:** open the pane → select a passage and comment → *Copy Review Prompt* → paste at an
+  agent → the card flips to `addressed` with a real before/after → **Looks good**. That is the whole
+  product in about twenty seconds, and the before/after is the moment worth landing on.
+- **How it should look:** a tidy window (1280×800 is enough), Dark+, and the editor zoom raised a
+  step or two — the Marketplace renders the listing in roughly a 1000 px column, so text that reads
+  fine on your display is unreadable there. Under ~30 s, under ~4 MB.
+- **Where:** `docs/media/loop.gif`, in the repo, excluded from the package by §7, referenced by
+  absolute raw URL per §5.
+
+**Plan stills as the committed path and the GIF as the upgrade.** Screen recording on macOS is
+straightforward (<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>5</kbd>), but `.mov` → GIF needs a converter
+that may not be installed, and hunting one is not on the critical path for a 0.1.0. Three or four
+annotated screenshots — pane with a comment, the copied prompt, the addressed card with its
+before/after — satisfy the listing. A missing GIF must not block the release; a missing visual
+should.
+
+## 7. `.vscodeignore`
+
+Does not exist. Creating it is not housekeeping — see §13 E1 for what its absence does.
+
+`vsce` applies its own `defaultIgnore` list (`out/package.js:1217`) on top of this file, which
+already covers `.vscodeignore` itself, `package-lock.json`, `.eslintrc*`, `.github`, `**/*.vsix`,
+`**/.DS_Store`, `**/.vscode-test/**` and `**/.git/**`. Those lines are repeated below anyway: they
+cost nothing, and a reader should not have to know vsce's internals to know what ships. What
+`defaultIgnore` conspicuously does **not** cover is `node_modules`, `src/` or anything else in this
+repo — which is E1.
+
+```
+# What ships. Everything not listed here does, so additions to the repo default to being packaged.
+# vsce's own defaultIgnore is small and does not cover node_modules or src — see 05-ship.md §13 E1.
+.vscodeignore
+
+# Sources. The bundles in dist/ and media/ are self-contained.
+src/**
+media/src/**
+media/test/**
+scripts/**
+esbuild.mjs
+tsconfig*.json
+vitest.config.mts
+eslint.config.mjs
+
+# Dev-only trees.
+node_modules/**
+dist-test/**
+dev/**
+docs/**
+.vscode/**
+.vscode-test/**
+.github/**
+.reviews/**
+
+# Repo-internal documents, not listing copy.
+CLAUDE.md
+MARKDOWN_REVIEW_PRD.md
+
+# Build and VCS noise.
+**/*.ts
+**/*.map
+package-lock.json
+.gitignore
+*.vsix
+.DS_Store
+```
+
+Ten files should ship: `package.json`, `README.md`, `CHANGELOG.md`, `LICENSE`,
+`dist/extension.js`, `media/webview.js`, `media/webview.css`, `media/icon.png`,
+`media/icon-dark.svg`, `media/icon-light.svg`. (`package.json` and `README.md` are force-included by
+vsce regardless — `out/package.js:1271` — so the list cannot go below two.)
+
+`node_modules/**` is the load-bearing line. vsce collects production dependencies deliberately, for
+extensions that ship unbundled; esbuild has already inlined all six into the two bundles, so here
+they would be several megabytes of duplicate. The `dependencies` block exists for the build, not for
+the package.
+
+Verify by reading `vsce ls` output (§8), not by reasoning about glob precedence — vsce rewrites
+folder-shaped entries by appending `/**` (`out/package.js:1295`), so what you wrote is not quite what
+is matched.
+
+## 8. Package size — the 500 KB budget
+
+The budget is not tight, and the plan should say so rather than schedule a trimming exercise nothing
+needs. Measured on the current build:
+
+| | |
+|---|---|
+| `dist/extension.js` | 172 KB |
+| `media/webview.js` | 124 KB |
+| `media/webview.css` | 18 KB |
+| ≈ raw total | 318 KB |
+| `~/.mdcm-local-build/markdown-review-local.vsix` (zip) | **121 KB** |
+
+About a quarter of budget, because a `.vsix` is a zip and minified JS compresses well. `esbuild.mjs`
+already prints both bundle sizes on every production build.
 
 Audit steps:
 
-1. `npx @vscode/vsce ls` — review the exact file list; anything unexpected gets ignored.
-2. `npx @vscode/vsce package` → record the size. The known heavy item is `media/webview.js`
-   (highlight.js subset, Plan 02 §5). If over budget, trim registered languages first, then check
-   DOMPurify/markdown-it duplication between the two bundles (each bundle must tree-shake its own
-   copy; the extension bundle should not contain highlight.js at all).
-3. Both bundles built minified, without sourcemaps, `NODE_ENV=production`.
+1. `npx --yes @vscode/vsce ls` — read the file list against §7's expected ten. Anything unexpected
+   gets ignored; anything missing is a bug in `.vscodeignore`. Run it **before** writing
+   `.vscodeignore` once, to see E1 for yourself: the list should be enormous.
+2. `npx --yes @vscode/vsce package` → record the size in §12.
+3. Only if it regresses: trim highlight.js's registered languages first (Plan 02 §5), then check for
+   DOMPurify/markdown-it duplication between the bundles.
 
-## 5. Pre-publish verification
+### `scripts/check-bundles.mjs`
 
-- Install the built `.vsix` locally (`code --install-extension`) in **stable VS Code, not the dev
-  host**, and run the full loop once end-to-end on a real project (PRD §12).
-- **Windows pass** (PRD §12 calls this the likely bug source): on a Windows machine or VM —
-  sidecar naming with backslash-relative paths, `.reviews` creation, watcher events on save,
-  clipboard, reload survival. The Plan 03 §3 unit test covers the naming logic; this pass covers
-  the real filesystem.
-- Fresh-profile activation check: extension activates only on first command use (lazy activation,
-  PRD §9), not on startup — verify with the Running Extensions view + startup profile.
-- Grep the shipped bundles for `http://`, `https://` fetches: the only network-shaped strings
-  permitted are `openExternal` passthroughs of user-document links. No telemetry, no update
-  checks, nothing (PRD §2/§13).
+New guard, wired into `npm run build` beside `lint:css`, following the shape of
+`check-css-colors.mjs` and `check-theme-vars.mjs` — read the built artifact, assert, exit non-zero
+with a specific message, and expose an env-var seam so the guard itself is testable. It asserts:
 
-## 6. Publish
+- **No network APIs in either bundle** — `fetch(`, `XMLHttpRequest`, `WebSocket`, `sendBeacon`,
+  `EventSource`, and in the extension bundle `require("http"|"https"|"net"|"tls"|"dns")`.
+  **Ban the APIs, not the string `https://`.** DOMPurify carries XML namespace URIs
+  (`http://www.w3.org/1999/xhtml`, `.../2000/svg`) and markdown-it carries URL-handling literals, so
+  a blanket URL ban is all false positives and would be switched off within a week. This turns PRD
+  §2/§13's "no telemetry, no network requests, no analytics. Ever." into the only thing it has never
+  had: a test.
+- **`dist/extension.js` contains no highlight.js** — the `hljs` class-name literal survives
+  minification. Each bundle must tree-shake its own copy; the extension host has no business
+  carrying a syntax highlighter.
+- **A per-bundle size ceiling** — 220 KB for `dist/extension.js`, 160 KB for `media/webview.js`.
+  Roughly 30% headroom over today, so ordinary growth is fine and an accidental dependency is not.
+  A regression then fails the build, where someone can see what caused it, rather than surfacing at
+  package time weeks later.
 
-- Azure DevOps org + PAT scoped **Marketplace: Manage**, all accessible organizations (PRD §12).
-- The publisher was claimed in §2; confirm the `publisher` field matches it exactly.
-- `npx @vscode/vsce publish 0.1.0` (or upload the `.vsix` via the web UI for the first release —
-  it gives a clearer error surface).
-- Post-publish: install from the Marketplace on a clean machine/profile, run the loop once. Tag
-  `v0.1.0` in git; open issues for anything deferred.
+## 9. Verification — what a machine can reach, and what cannot
 
-## 7. Acceptance checklist
+Automated, and additions to existing suites rather than new harnesses:
+
+- `scripts/check-bundles.mjs` (§8) — the no-network and bundle-composition guarantees.
+- **Windows-shaped path inputs** in the existing unit suites — see below.
+
+Manual, and scripted in [05-acceptance-run.md](05-acceptance-run.md): installing the built `.vsix`
+into **stable VS Code, not the dev host**, running the loop on a real project, the fresh-profile
+lazy-activation check, the listing render, and a theme pass on the installed bytes.
+
+### The Windows problem
+
+PRD §12 requires a Windows pass and names path separators in sidecar naming as the likely bug source.
+**No Windows machine or VM is available**, so the pass cannot be performed. What replaces it is a
+compensating automated pass, and the box stays open.
+
+Enumerate every place a path is constructed, split or compared, and drive each with Windows-shaped
+inputs — `docs\specs\auth.md`, a drive letter, a UNC prefix, and a mixed-separator path:
+
+- sidecar naming and the `/` → `__` flattening (Plan 03 §3 owns the contract)
+- `.reviews/` directory creation, and the globalStorage fallback's hashed name
+- `FileSystemWatcher` glob patterns
+- the `targetPath` relative-path computation, including after a re-link
+
+Then state what this cannot reach, because a green suite that implies more than it tested is worse
+than an open box: real filesystem case-insensitivity, watcher event timing and coalescing under a
+different FS, and clipboard behaviour. Those remain untested on Windows, recorded as §13 E7, and the
+§12 box carries a dated note rather than a tick. `04-acceptance-run.md`'s rule applies — a box left
+blank is indistinguishable from one that failed.
+
+## 10. Packaging, and the deferred publish
+
+Everything in 0.1.0's scope, in order:
+
+```sh
+npm run check                      # typecheck + lint + unit tests
+npm run test:integration           # host-side assertions in a real VS Code
+npm run build                      # both bundles + the CSS guards + check-bundles.mjs
+npx --yes @vscode/vsce ls          # read the list against §7 — empty output is a FAILURE, not "nothing to report"
+npx --yes @vscode/vsce package     # → markdown-review-0.1.0.vsix, record the size
+code --install-extension markdown-review-0.1.0.vsix --force
+```
+
+Then `05-acceptance-run.md`, against those bytes and not the dev host.
+
+### When you are ready to publish — outside this phase's definition of done
+
+- Azure DevOps organization, and a PAT scoped **Marketplace: Manage**, "all accessible
+  organizations" (PRD §12). The scope matters: a narrower PAT fails at upload with an unhelpful error.
+- Confirm the manifest `publisher` matches the claimed id exactly.
+- `npx --yes @vscode/vsce publish 0.1.0`, or upload the `.vsix` through the web UI for the first
+  release — it gives a clearer error surface for the things that only fail on the server.
+- Post-publish: install from the Marketplace on a clean machine or profile and run the loop once.
+  Tag `v0.1.0`. Open issues for anything deferred, D19 and E7 included.
+
+## 11. CHANGELOG
+
+`CHANGELOG.md` is shipped and the Marketplace renders it as its own tab, so it is listing copy, not
+just an engineering log.
+
+Promote `[Unreleased]` — currently ~150 lines of Added/Fixed/Changed accumulated since Phase 1 — to
+`## [0.1.0] — <date>`, leave an empty `[Unreleased]` above it, and add the link-reference block at
+the foot. Prepend two or three sentences saying what 0.1.0 *is*, so a reader landing on the tab meets
+the product before they meet the intra-phase churn. Keep the detail below that: it is honest, it is
+already written, and a first release that documents its own defect fixes reads better than one that
+pretends it arrived clean.
+
+Note the collision this creates with the shared definition of done, which requires every phase to
+append an entry under `Unreleased`: this phase's job is to empty that section, so the Phase 5 entry
+lands inside `0.1.0` itself. Recorded as §13 E5.
+
+## 12. Acceptance checklist
+
+Each item records *how* it is verified, following Plan 03 §8 and Plan 04 §9. PRD §10 is the only
+phase entry with no *Acceptance:* line of its own — PRD §12 stands in, and every one of its eight
+items appears below. Date this section when it passes.
 
 - [x] `name` / `displayName` decided: `markdown-review` / "Markdown Review" (§2), already applied
-- [ ] Publisher id claimed; `items?itemName=<publisher>.markdown-review` returns 404; `publisher`
-      applied and `private: true` removed, in one commit
-- [ ] `npx @vscode/vsce package` succeeds; `.vsix` < 500 KB; `vsce ls` output reviewed
-- [ ] README leads with the positioning line; GIF plays; all image URLs absolute
-- [ ] LICENSE + CHANGELOG(0.1.0) + 128×128 icon in place
-- [ ] Local `.vsix` install: full loop passes in stable VS Code
-- [ ] Windows verification pass complete
-- [ ] Lazy-activation and no-network greps verified on the shipped bundles
-- [ ] Published; clean-machine install from the Marketplace works; `v0.1.0` tagged
+- [ ] Publisher id `sabhahithworks` claimed; `items?itemName=sabhahithworks.markdown-review` returns
+      404 beforehand
+      — **manual**, and the only irreversible step in the phase (PRD §12 item 2)
+- [ ] `publisher`, `author`, `repository`, `icon` applied and `private: true` removed **in one
+      commit**; git remote added and pushed
+      — `git show --stat` on that commit, and `npx vsce ls` succeeding at all, which it cannot while
+      `private` is set
+- [ ] 128×128 `media/icon.png` in place, legible at 16 px, readable on dark and light (PRD §12 item 3)
+      — **manual**, at both sizes, against both Marketplace backgrounds
+- [ ] README leads with the PRD §1 positioning sentence and carries all eight §5 sections; every
+      image URL absolute and confirmed loading from its raw URL (PRD §12 item 4)
+      — **manual**; the settings table is checked against the live Settings UI in
+      `05-acceptance-run.md` C4
+- [ ] A visual of the loop exists — stills at minimum, GIF preferred (§6)
+      — **manual**
+- [ ] LICENSE present with a settled copyright line; CHANGELOG promoted to `0.1.0` with a date
+      (PRD §12 item 5)
+      — inspection; the CHANGELOG renders as its own tab in `05-acceptance-run.md` C4
+- [ ] `.vscodeignore` present; `vsce ls` lists exactly the ten files in §7 — **no `node_modules/`,
+      no `src/`, no `dist-test/`** (PRD §12 item 6)
+      — read the output file by file, not as a count (§13 E1). Empty output is a failure (§13 E6)
+- [ ] `npx vsce package` succeeds and the `.vsix` is under 500 KB (PRD §12 item 7)
+      — record the number here. Baseline for comparison: the `local-dev` build is 121 KB
+- [ ] `scripts/check-bundles.mjs` green as part of `npm run build`
+      — no network APIs in either bundle, no highlight.js in `dist/extension.js`, both bundles under
+      their ceilings. This is PRD §2/§13's first automated coverage
+- [ ] Windows-shaped path inputs green across sidecar naming, `.reviews/` creation, watcher globs and
+      `targetPath`
+      — unit tests per §9
+- [ ] **The real Windows pass is NOT done** (PRD §12 item 8) — no machine available; §13 E7 records
+      what remains untested. Leave this box unticked deliberately, not blank
+- [ ] Installed `.vsix`: the full loop passes in stable VS Code on a real project (PRD §12 item 7)
+      — **manual**, `05-acceptance-run.md` C1–C2
+- [ ] Lazy activation confirmed on a fresh profile: inactive until first command use, no
+      `onStartupFinished` (PRD §9)
+      — **manual**, `05-acceptance-run.md` C3, via the Running Extensions view
+- [ ] Listing renders: README and CHANGELOG tabs, images resolve, settings table matches the real
+      Settings UI; theme pass on the installed bytes
+      — **manual**, `05-acceptance-run.md` C4–C5
+- [ ] *Deferred, outside 0.1.0's definition of done:* PAT scoped Marketplace: Manage (PRD §12 item 1);
+      published; clean-machine install works; `v0.1.0` tagged (§10)
+
+## 13. Spec corrections applied in this phase
+
+Recorded so later work does not "restore" them, mirroring Plan 01 §9, Plan 03 §9 and Plan 04 §10.
+
+### Release-blocking — these would have shipped broken
+
+**E1 — with no `.vscodeignore`, `vsce` packages the entire repo and its production dependencies.**
+The plan originally recorded the opposite defect — that vsce falls back to `.gitignore`, which lists
+`media/webview.js`, and would therefore ship a webview with no script. **That is wrong**, and the
+correction matters because it inverts the failure mode. Reading vsce 3.9.2's `collectFiles`
+(`out/package.js:1269-1298`): when `.vscodeignore` is absent it uses the `files` property from
+`package.json` if present, and otherwise an **empty** ignore list — `Promise.resolve('')`. There is
+no `.gitignore` path. The only exclusions left are the built-in `defaultIgnore` (`out/package.js:1217`),
+a short list aimed at editor and CI dotfiles.
+
+So the real first `vsce package` produces an archive containing `src/`, `docs/`, `dev/`,
+`MARKDOWN_REVIEW_PRD.md`, `.reviews/`, `dist-test/suite.js` — **1.4 MB of unminified integration-test
+bundle on its own** — and, via `collectAllFiles` → `getDependencies`, every file of all six
+production dependencies, highlight.js included. Against a 500 KB budget that is not a near miss.
+It is release-blocking for the same reason the original wording was: the first package is silently
+wrong, and nothing in `npm run check`, `npm run test:integration` or `dev/harness/` looks at an
+archive. It simply fails loudly on size rather than quietly on a blank pane, which is the better of
+the two.
+
+Two things follow. `.vscodeignore` is a required deliverable, not tidiness (§7), and its
+`node_modules/**` line is the load-bearing one. And §12's box asks to *read* the `vsce ls` output
+against §7's expected ten files, because a count alone would not distinguish this from success.
+`~/.mdcm-local-build/reinstall.sh` never hit it: it copies four artifacts into a staging directory
+and writes its own two-line `.vscodeignore` there, which is why the repo has been producing correct
+121 KB local builds while carrying this gap.
+
+**E2 — no `vscode:prepublish`, so `vsce package` ships whatever is in `dist/`.** `vsce` runs
+`vscode:prepublish` before packaging precisely so the archive cannot contain stale bytes; the
+manifest has no such script, and PRD §9 does not mention one. Without it, packaging after a
+`--watch` session silently ships **unminified, inline-sourcemapped** bundles — larger, and built from
+whatever the last watch iteration happened to compile. Fixed by `"vscode:prepublish": "npm run
+build"`, which also drags `lint:css` and `check-bundles.mjs` in front of every package.
+
+### Corrected in this plan, inline above
+
+**E3 — PRD §9's `categories: ["Other", "Notebooks"]` is wrong.** `Notebooks` is the Marketplace
+category for notebook renderers, kernels and serializers. This extension has nothing to do with
+notebooks; it renders Markdown files in a webview. A wrong category is not free — it puts the
+listing in front of people looking for something else, which costs an install-then-uninstall and a
+possible one-star review, and category accuracy is something Marketplace review does look at. The
+shipped manifest already has `["Other"]` and it stays. Reported rather than silently resolved,
+because `docs/plans/README.md` makes the PRD authoritative when a plan and the PRD conflict — this
+is the conflict, stated.
+
+**E4 — PRD §9's manifest is a template, and two of its placeholders hide a real distinction.**
+`"publisher": "<your-publisher-id>"` and `"url": "https://github.com/<you>/markdown-review"` are
+resolved in §2. The trap is that a publisher has *both* an id (`sabhahithworks`, lowercase, permanent,
+appears in the extension id and URL) and a display name (`Sabhahith Works`, free text, changeable,
+appears on the listing). PRD §9 only has a slot for the first, so the second is easy to never decide
+and end up with an id where a company name should be — common enough that vsce has a dedicated error
+for it: *"Expected the identifier of a publisher, not its human-friendly name"* (`out/validation.js:54`),
+which is what `"Sabhahith Works"` in the `publisher` field would produce, on the space. Also resolved
+here: the repository's real name is `Markdown-Review`, not `markdown-review`, so the raw asset URLs
+in §5 must carry that exact case.
+
+**E5 — the definition of done requires an `Unreleased` entry this phase must delete.**
+`docs/plans/README.md` ends every phase with "a short entry appended to `CHANGELOG.md` under
+`Unreleased`", and Phase 5's job (§11) is to promote that whole section to `0.1.0`. Resolved by
+letting the Phase 5 entry land inside `0.1.0` itself. Not a defect in either document — just the one
+place where a rule written for four phases does not fit the fifth.
+
+### Learned from the local-build script, recorded so it is not re-learned
+
+**E6 — `vsce` can collect zero files and still exit 0.** The header comments of
+`~/.mdcm-local-build/reinstall.sh` record it: staging under `/private/tmp`, `vsce ls` printed nothing
+and exited 0, and `vsce package` then failed with a misleading "entrypoint missing" — sending the
+investigation at the manifest `main` field, which was fine. The likely mechanism, from
+`collectAllFiles` (`out/package.js:1253`): it computes `path.relative(cwd, ...)` against directories
+returned by `getDependencies`, and on macOS `/tmp` is a symlink to `/private/tmp`, so a resolved
+dependency root and an unresolved `cwd` produce relative paths that begin `../..` and match nothing.
+Offered as a diagnosis, not a certainty — it was not reproduced under a debugger.
+
+Two rules follow regardless. Package from the repo, not from a temp directory. And treat empty
+`vsce ls` output as a hard failure, never as "nothing to report" — which is exactly the reading that
+wasted that afternoon, and exactly what §12's box guards against.
+
+### Noted, not done
+
+**E7 — PRD §12's Windows pass cannot be performed.** No Windows machine or VM is available. §9's
+compensating unit tests cover the thing the PRD actually worries about — separator handling in
+sidecar naming and path construction — but three things stay untested on Windows: real filesystem
+case-insensitivity, `FileSystemWatcher` event timing under a different filesystem, and clipboard
+behaviour. The §12 box stays unticked with this note rather than blank, and rather than ticked on the
+strength of the substitute. If a Windows machine becomes available before publish, run
+`05-acceptance-run.md` Part B on it; if it does not, this is a known and stated risk of 0.1.0, and
+the first Windows bug report is expected to be about a path.

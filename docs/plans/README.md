@@ -38,6 +38,8 @@ What remains genuinely manual is written down rather than remembered — see
 the current lists, and keep them to things a machine cannot reach (CSP enforcement, window reload,
 real theme palettes, cross-window sync, modal confirms, and above all a *real* agent editing a real
 document). The Phase 4 run subsumes the Phase 3 one, which is still that phase's entry gate.
+[05-acceptance-run.md](05-acceptance-run.md) adds the one thing none of them touch: the installed
+`.vsix` in stable VS Code, rather than the working tree in a dev host.
 
 ## Contract ownership — the no-duplication rule
 
@@ -57,6 +59,7 @@ consuming phase's plan as a delta.
 | Prompt format | PRD §7, operationalized in Plan 04 §3 |
 | Status lifecycle wiring (who flips what, when) | Plan 04 §5 |
 | Toolchain (tsconfig, ESLint, vitest, scripts) | Plan 01 §2 |
+| Packaging, manifest identity, listing assets | Plan 05 §2–§8 |
 
 ## Shared engineering conventions
 
