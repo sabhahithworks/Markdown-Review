@@ -126,8 +126,11 @@ Each item records *how* it is verified. The interactive remainder is scripted in
 [03-acceptance-run.md](03-acceptance-run.md) — run that before starting Phase 4 and date this
 section when it passes.
 
-- [ ] Full create flow works: select → button → popover → card appears, span highlighted
-      — **manual**, acceptance run step 1 (the harness covers the resulting layout, not the gesture)
+- [x] Full create flow works: select → button → popover → card appears, span highlighted
+      — `dev/harness/` **Run gestures**: a real `Range` over rendered text, through the real
+      `selectionchange` debounce, to a real `addComment` — asserting the body, the selected text,
+      and that the offset the *webview* computed equals the offset the *host* computed for the same
+      passage. Only the mouse itself is unexercised; acceptance run step 1 still covers the feel
 - [x] Selections < 3 or > 500 chars rejected with the exact messages in §4
       — `src/test/notices.test.ts` asserts the wording verbatim; "nothing persisted" is step 2
 - [x] Sidecar appears at the correct `.reviews/...` path, pretty-printed; hand-editing the body

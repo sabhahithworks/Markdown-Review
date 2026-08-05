@@ -82,6 +82,7 @@
         <select id="mr-scenario"></select>
       </label><br>
       <button id="mr-check" type="button">Run checks</button>
+      <button id="mr-gestures" type="button">Run gestures</button>
     </div>
     <pre id="mr-log"></pre>
   </div>
@@ -504,6 +505,173 @@
       }
       write(failed === 0 ? 'ALL CHECKS PASSED' : `${failed} CHECK(S) FAILED`, failed === 0 ? 'pass' : 'fail');
     }
+
+    // ---- gestures ---------------------------------------------------------------------------
+    //
+    // The create flow and the manual re-anchor are the two acceptance items that are *interactions*
+    // rather than states: select text, get a button, get a popover, submit. Both live entirely in
+    // the webview, so both are drivable here — which is the difference between an item a human has
+    // to remember to check and one a machine does.
+    //
+    // Async, unlike `checks`, because `selection.ts` debounces `selectionchange` by 150 ms. Results
+    // go to the same log.
+
+    const SELECTION_SETTLE_MS = 260;
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    /** Selects the first text node containing `needle`, exactly as a drag would. */
+    function selectText(needle) {
+      const walker = document.createTreeWalker(document.getElementById('content'), NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const at = node.textContent.indexOf(needle);
+        if (at === -1) continue;
+        const range = document.createRange();
+        range.setStart(node, at);
+        range.setEnd(node, at + needle.length);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return true;
+      }
+      return false;
+    }
+
+    function clearSelection() {
+      window.getSelection().removeAllRanges();
+    }
+
+    const floatingButton = () => document.querySelector('.mr-selection-button');
+    const popoverEl = () => document.querySelector('.mr-popover');
+    const lastPosted = (type) => [...window.__POSTED__].reverse().find((m) => m.type === type);
+
+    async function gestureCreateFlow() {
+      const needle = 'validates every incoming bearer token';
+      const before = window.__POSTED__.length;
+
+      if (!selectText(needle)) return fail(`could not find ${needle} in the rendered document`);
+      await wait(SELECTION_SETTLE_MS);
+
+      const button = floatingButton();
+      if (!button || button.hidden) return fail('no floating button appeared for a valid selection');
+
+      button.click();
+      const popover = popoverEl();
+      if (!popover || popover.hidden) return fail('clicking the button did not open the popover');
+
+      const textarea = popover.querySelector('.mr-popover-input');
+      const submit = [...popover.querySelectorAll('button')].find((b) => b.textContent === 'Comment');
+      if (!textarea || !submit) return fail('the popover is missing its input or its submit button');
+      if (!submit.disabled) return fail('submit is enabled with an empty body');
+
+      textarea.value = 'Does this cover expired keys?';
+      textarea.dispatchEvent(new Event('input'));
+      if (submit.disabled) return fail('submit stayed disabled after typing');
+
+      submit.click();
+      const posted = lastPosted('addComment');
+      if (!posted) return fail('submitting posted no addComment message');
+      if (posted.body !== 'Does this cover expired keys?') return fail(`body came through as ${JSON.stringify(posted.body)}`);
+      if (posted.selectedText !== needle) return fail(`selectedText came through as ${JSON.stringify(posted.selectedText)}`);
+
+      // The offset is the whole point of anchor space: it must land on the text, not near it.
+      const expected = fixture.plainText.indexOf(needle);
+      if (posted.offset !== expected) return fail(`offset ${posted.offset}, expected ${expected}`);
+      if (popoverEl() && !popoverEl().hidden) return fail('the popover stayed open after submitting');
+      if (window.__POSTED__.length <= before) return fail('nothing was posted at all');
+
+      clearSelection();
+      return pass(`selection -> button -> popover -> addComment at offset ${posted.offset}`);
+    }
+
+    /** The orphan row for `id`, re-read from the DOM: `setArmed` re-renders the section. */
+    const orphanRow = (id) =>
+      id
+        ? document.querySelector(`#orphans [data-comment-id="${id}"]`)
+        : document.querySelector('#orphans [data-comment-id]');
+
+    const actionOn = (row, label) =>
+      row && [...row.querySelectorAll('button')].find((b) => b.textContent === label);
+
+    async function gestureReanchor() {
+      const first = orphanRow();
+      if (!first) return fail('no orphan rows to re-anchor (wrong scenario?)');
+      const id = first.dataset.commentId;
+
+      const arm = actionOn(first, 'Re-anchor');
+      if (!arm) return fail('no Re-anchor action on the orphan row');
+      arm.click();
+
+      if (!actionOn(orphanRow(id), 'Cancel')) return fail('arming did not turn the action into Cancel');
+
+      const needle = 'Tokens are validated at the edge';
+      if (!selectText(needle)) return fail(`could not find ${needle} in the rendered document`);
+      await wait(SELECTION_SETTLE_MS);
+
+      const button = floatingButton();
+      if (!button || button.hidden) return fail('no floating button while armed');
+      if (button.textContent !== 'Re-anchor here') return fail(`button reads ${JSON.stringify(button.textContent)} while armed`);
+
+      button.click();
+      // No popover: the comment already has a body, and asking again would imply it is being replaced.
+      if (popoverEl() && !popoverEl().hidden) return fail('a popover opened during a re-anchor');
+
+      const posted = lastPosted('reanchorComment');
+      if (!posted) return fail('committing posted no reanchorComment message');
+      if (posted.id !== id) return fail(`posted id ${posted.id}, expected ${id}`);
+      if (posted.selectedText !== needle) return fail(`selectedText came through as ${JSON.stringify(posted.selectedText)}`);
+
+      clearSelection();
+      return pass(`arm -> select -> commit, reanchorComment for ${id}`);
+    }
+
+    async function gestureEscapeDisarms() {
+      const first = orphanRow();
+      if (!first) return fail('no orphan rows (wrong scenario?)');
+      const id = first.dataset.commentId;
+
+      const arm = actionOn(first, 'Re-anchor');
+      if (!arm) return fail('no Re-anchor action on the orphan row');
+      arm.click();
+      if (!actionOn(orphanRow(id), 'Cancel')) return fail('arming did not take');
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+      if (actionOn(orphanRow(id), 'Cancel')) return fail('Escape did not disarm');
+      return pass('Escape disarms cleanly');
+    }
+
+    const gestures = {
+      'create flow: select, comment, submit': gestureCreateFlow,
+      'manual re-anchor: arm, select, commit': gestureReanchor,
+      'manual re-anchor: Escape disarms': gestureEscapeDisarms,
+    };
+
+    async function runGestures() {
+      // Both gestures need orphans on screen and a document behind them.
+      const previous = currentKey;
+      loadScenario('orphans');
+      await wait(SELECTION_SETTLE_MS);
+
+      log.replaceChildren();
+      write(`— gestures @ ${window.innerWidth}x${window.innerHeight}`);
+      let failed = 0;
+      for (const [name, gesture] of Object.entries(gestures)) {
+        let result;
+        try {
+          result = await gesture();
+        } catch (error) {
+          result = fail(`threw: ${String((error && error.stack) || error)}`);
+        }
+        if (result.verdict === 'FAIL') failed++;
+        write(`${result.verdict}  ${name}: ${result.detail}`, result.verdict === 'FAIL' ? 'fail' : 'pass');
+      }
+      write(failed === 0 ? 'ALL GESTURES PASSED' : `${failed} GESTURE(S) FAILED`, failed === 0 ? 'pass' : 'fail');
+      loadScenario(previous);
+      return failed;
+    }
+
+    document.getElementById('mr-gestures').addEventListener('click', () => { void runGestures(); });
+    window.__RUN_GESTURES__ = runGestures;
 
     document.getElementById('mr-check').addEventListener('click', runChecks);
     // Exposed so the browser automation can run them without clicking.

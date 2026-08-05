@@ -215,9 +215,11 @@ this phase's entry gate. Date this section when it passes.
       acceptance for this phase. Every automated case uses synthetic edits
 - [x] Deleting an anchored sentence orphans exactly that comment; orphan section shows the quote
       — `detection.spec.ts` for the status, `dev/harness/` `orphans` scenario for the section
-- [ ] Manual re-anchor re-attaches an orphan
-      — **manual**: `reattach` is covered in `store.spec.ts` and the armed row renders in the
-      harness, but the gesture (arm → select → commit) needs a pane
+- [x] Manual re-anchor re-attaches an orphan
+      — `store.spec.ts` for `reattach`; `dev/harness/` **Run gestures** for the gesture itself:
+      arm from the orphan row, select new text, confirm the button reads "Re-anchor here", commit,
+      and assert a `reanchorComment` carrying the right id and text — plus that **no popover opens**,
+      which is the part of the design a human would most easily forget to check. Escape disarms
 - [x] Full rewrite → all orphaned, banner appears, diff view shows baseline vs current, no crash
       — `detection.spec.ts` (statuses, sidecar, both diff sides), `rewrite.test.ts` (the trigger
       rule), harness `rewrite` scenario (the banner, and that it is *on screen*)

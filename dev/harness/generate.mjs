@@ -299,6 +299,11 @@ async function main() {
     frontMatterHtml: rendered.frontMatterHtml ?? '',
     targetPath: 'docs/fixtures/kitchen-sink.md',
     author: 'harness',
+    // Anchor space itself, so the gesture suite can assert that the offset the *webview* computed
+    // for a selection is the offset the *host* would have computed for the same text. That equality
+    // is the whole contract between `anchorSpace.ts` and `plaintext.ts`, and nothing else in the
+    // harness is in a position to check it.
+    plainText: doc.text,
     scenarios,
   };
 

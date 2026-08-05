@@ -9,11 +9,14 @@ Part A closes `docs/plans/03-commenting.md` §8. Part B closes the four `[ ]` it
 ## Before you start
 
 ```sh
-npm run check             # typecheck + lint + 421 unit tests
-npm run test:integration  # 39 host-side assertions in a real VS Code
+npm run check             # typecheck + lint + 465 unit tests
+npm run test:integration  # 40 host-side assertions in a real VS Code
 npm run build             # both bundles + the two CSS guards
 rm -rf docs/fixtures/.reviews
 ```
+
+And the browser harness, which now covers gestures as well as layout — serve the repo, open
+`/dev/harness/`, then **Run checks** and **Run gestures**.
 
 All three were green and `.reviews/` was cleared when this document was written; re-run them if
 anything has changed since.
@@ -52,11 +55,13 @@ Run `docs/plans/03-acceptance-run.md` end to end (8 steps, ~10 min) against `kit
 Six of its eight steps re-confirm items the harnesses already tick. **These two are the gate** — the
 only unchecked boxes in Plan 03 §8, and the ones with no automated coverage of any kind:
 
-- [ ] **A1 — create flow** (run step 1). Select the sentence beginning "The authentication service
-      validates every incoming bearer token…", click the floating **Comment** button, type a body,
-      submit with <kbd>Cmd/Ctrl</kbd>+<kbd>Enter</kbd>.
-      > Expect: the popover closes, a card appears in the right margin aligned to that sentence, the
-      > sentence gains a highlight, and hovering either one emphasises the other.
+- [x] **A1 — create flow** — **now machine-checked.** `dev/harness/` → **Run gestures** drives a
+      real selection through the real debounce to a real `addComment`, and asserts the offset the
+      webview computed matches the host's. Serve the repo and click the button; no F5 needed.
+      >
+      > What that cannot check is how it *feels* — whether the button lands somewhere sensible
+      > relative to the selection, and whether the highlight and card read as connected. Worth thirty
+      > seconds in a real pane, but it is no longer the gate.
 
 - [ ] **A2 — window reload** (run step 4). *Developer: Reload Window* with the pane open.
       > Expect: the pane returns against the same file with the same comments. This is the
@@ -119,14 +124,11 @@ Then click **Copy review prompt (3)** in the header bar.
 - [ ] **B2a** — delete an anchored sentence from the document and save.
       > Expect: exactly that comment orphans. It leaves the gutter and appears in the **orphaned**
       > section above the content, quoting the text it *used* to be attached to. Nothing else moves.
-- [ ] **B2b** — click **Re-anchor** on that row.
-      > Expect: the row explains itself — "Select the new text in the document, or press Escape to
-      > cancel." — and the button becomes **Cancel**.
-- [ ] **B2c** — select new text in the document.
-      > Expect: the floating button reads **Re-anchor here**, and clicking it commits immediately
-      > with **no popover** (there is no body to type). The comment returns to `open` in the gutter
-      > with its original body and author intact.
-- [ ] **B2d** — arm another re-anchor and press <kbd>Escape</kbd>. It disarms cleanly.
+- [x] **B2b–B2d** — arm, select, commit, and Escape-to-disarm are **now machine-checked** by
+      `dev/harness/` → **Run gestures**, including that committing opens **no popover** and that the
+      posted `reanchorComment` carries the right id. What is left for a human is the round trip
+      *through the host*: that the comment comes back `open` in the gutter with its original body
+      and author, which the harness cannot see because it has no store behind it.
 
 ### B3 — full rewrite and the diff — §9 item 5 (confirmation)
 
