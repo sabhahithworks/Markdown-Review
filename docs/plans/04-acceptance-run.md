@@ -113,10 +113,12 @@ only unchecked boxes in Plan 03 §8, and the ones with no automated coverage of 
   5. Repeat once with the pane as the **only** editor open (close `kitchen-sink.md`'s text editor
      first). That is the case where nothing else would have activated the extension.
 
-- [ ] **A3** — the other six steps pass (rejection wording, sidecar hand-edit, two windows, CSP
-      console, three themes, the < 700 px drag).
+- [x] **A3** — the other six steps pass (rejection wording, sidecar hand-edit, two windows, CSP
+      console, three themes, the < 700 px drag). **Passed 2026-08-05** in the dev host against
+      `kitchen-sink.md`, all six in one sitting, no defects found. That completes Part A.
 
-Tick and **date** Plan 03 §8, then continue.
+**Part A is complete — A1, A2 and A3 all green as of 2026-08-05.** Plan 03 §8 is ticked and dated.
+Continue to Part B.
 
 ---
 
@@ -182,7 +184,9 @@ of the machinery. Select the text exactly as written; the anchor is the selectio
 **Step 3 — hand it to a real agent.** Paste into whichever agent you like, `@`-mention the path from
 the toast, and let it edit. Do not tell it anything the prompt does not. Keep the pane visible.
 
-- [~] **B1b** — **partial, 2026-08-05.** Comment 1 flipped to `addressed` with a real before/after
+- [x] **B1b** — **re-run and passed 2026-08-05** on the D24 build, after the H0 and H8 fixes. The
+      original run is kept below because it is what produced D21. **Partial, first run
+      2026-08-05:** Comment 1 flipped to `addressed` with a real before/after
       — the plain inference path demonstrated for the first time, and the clipping was the known
       `fuzzy.verify` under-report (`Counters live in memory, so they do no` against a 46-character
       before), not a wrong sentence. Comment 3 **orphaned instead of flipping**, so the header read
@@ -203,8 +207,10 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
         one thing to look at closely: §10 records a known `fuzzy.verify` under-report where the
         status is right but the "after" text is clipped short. Clipped is expected; *a different
         sentence entirely* is a new defect.
-- [x] **B1c** — **passed 2026-08-05**, by an agent that had read this expectation beforehand (see
-      the note under B1e). Comment 2 stayed `open`, carried the note, and offered **Looks good**;
+- [x] **B1c** — **re-run blind and passed 2026-08-05**, by an agent that had *not* read this file or
+      the expected outcome. That is what PRD §10 asks for and what the first pass lacked, so the
+      qualification below is discharged. **First run 2026-08-05**, by an agent that had read this
+      expectation beforehand (see the note under B1e). Comment 2 stayed `open`, carried the note, and offered **Looks good**;
       `## Failure modes` was untouched while its body was rewritten. The note's wording is
       imprecise at block scope — §10 D19 — but fired correctly here, where the scope really is a
       section.
@@ -255,7 +261,7 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
 
 ### B2 — orphan and the re-anchor gesture — §9 item 4
 
-- [ ] **B2a** — delete an anchored sentence from the document and save.
+- [x] **B2a** — **passed 2026-08-05.** Delete an anchored sentence from the document and save.
       > Expect: exactly that comment orphans. It leaves the gutter and appears in the **orphaned**
       > section above the content, quoting the text it *used* to be attached to. Nothing else moves.
 - [x] **B2b–B2d** — arm, select, commit, and Escape-to-disarm are **now machine-checked** by
@@ -269,6 +275,16 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
       > attempting B4 and reached for this gesture instead, which is itself the finding in §10 D22.
 
 ### B3 — full rewrite and the diff — §9 item 5 (confirmation)
+
+> **Skipped 2026-08-05, deliberately and without being run** — the tester's judgement was that the
+> behaviour is working. The boxes stay open, because a skipped box left blank is indistinguishable
+> from a failed one. §9 item 5 is ticked on automated coverage and does not depend on this, so
+> nothing downstream is blocked.
+>
+> **B3c is the part that has no coverage at all.** The **Dismiss** button did not exist before Plan
+> 06 H7, and nothing asserts it is present or that dismissal sticks. B3a's banner placement is
+> largely covered by the harness `rewrite` scenario, and B3b's both-sides-prose claim by
+> `detection.spec.ts`. If only one of these three is ever run, run B3c.
 
 - [ ] **B3a** — with at least two located comments, replace the entire contents of `review-run.md`
       with unrelated prose and save.
@@ -306,7 +322,21 @@ real to migrate.
 
 **Step 1 — break the link.**
 
-- [ ] **B4a** — with the pane open and showing its comments, rename `docs/fixtures/review-run.md` to
+> **Ticked on the mechanism, with a discrepancy recorded.** The 2026-08-05 run renamed
+> **`kitchen-sink.md`**, not `review-run.md`, and ran in the **dev host** with `docs/fixtures/` as
+> the workspace root. So the notice, the picker and the re-link are genuinely verified — the first
+> time any of them has been — but three things this box specifies were not: the comments migrated
+> were not the ones B1 created, the toast count was against different data, and the sidecar written
+> was `docs/fixtures/.reviews/renamed.md.json` rather than the **flattened**
+> `.reviews/docs__fixtures__renamed.md.json`, which is part of what B4 exists to exercise.
+>
+> The rename also deleted the `kitchen-sink.md` fixture and its tracked sidecar; both were restored
+> from git and `npm run check` is green again. A clean re-run against `review-run.md` at the repo
+> root would close the flattened-path half. **Do not re-run it on `kitchen-sink.md`** — unit tests
+> and `dev/harness/fixture.js` assert its exact bytes.
+
+- [x] **B4a** — **passed 2026-08-05, the first time this box was ever exercised.** With the pane
+      open and showing its comments, rename `docs/fixtures/review-run.md` to
       `renamed.md` in the explorer (<kbd>F2</kbd>).
       > Expect, within a second: the pane replaces its content with a notice headed **"This file
       > could not be read"**, body "It may have been moved, renamed or deleted. The pane is still
@@ -326,14 +356,15 @@ real to migrate.
 
 **Step 2 — re-link.**
 
-- [ ] **B4b** — click **Locate file…**.
+- [x] **B4b** — **passed 2026-08-05.** Click **Locate file…**. `showOpenDialog` has now been opened
+      by a human — the thing no test process can answer (§10 D9).
       > Expect a native file dialog titled **"Re-link review-run.md"**, whose confirm button reads
       > **"Re-link review"** and whose filter offers Markdown only (`md`, `markdown`, `mdown`,
       > `mkd`, `mdx`). Multi-select is off.
       >
       > Press <kbd>Esc</kbd> first: nothing at all should happen — no error, no state change. Then
       > reopen it.
-- [ ] **B4c** — pick `renamed.md`.
+- [x] **B4c** — **passed 2026-08-05.** Pick `renamed.md`.
       > Expect: a toast `Re-linked 3 comments to renamed.md.` (or however many survive B1), and a
       > **new pane** on `renamed.md` with every comment present, located, and in the status it had.
       > The old pane closes itself — re-linking cannot happen in place, because panel and store are

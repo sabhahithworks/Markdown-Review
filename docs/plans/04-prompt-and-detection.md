@@ -203,14 +203,28 @@ exactly when it matters. Mocha was reconsidered and declined: the suite grew by 
 
 Each item records *how* it is verified, following Plan 03 §8. The manual remainder is scripted in
 [04-acceptance-run.md](04-acceptance-run.md), which also carries the two Phase 3 items that are
-this phase's entry gate. Date this section when it passes.
+this phase's entry gate.
+
+**All items ticked 2026-08-05**, the last two being the real-agent run and the re-link. Two
+qualifications, neither of which owns a box here, so both are stated rather than hidden by the
+ticks:
+
+- **B3 (full rewrite and the diff) was skipped, not run.** Item 5 is ticked on automated coverage,
+  which is genuine, but `04-acceptance-run.md` B3a–B3c stay open. B3c's **Dismiss** button (Plan 06
+  H7) has no coverage of any kind.
+- **B6 (`autoDetectResolution: false`) has not been re-confirmed by hand.** Item 6 is ticked on
+  `store.spec.ts` against the real setting, which is the stronger evidence anyway; the manual pass
+  was only ever a confirmation.
 
 - [x] Copy prompt produces the PRD §7 format byte-for-byte for the golden fixture; baseline
       snapshots at copy time
       — `buildPrompt.test.ts` against the PRD's own example (the fixture is diffed against the PRD
       itself, so it cannot drift), and again on the real clipboard in `detection.spec.ts`
-- [ ] Real-agent manual run: comments flip to `addressed` with correct before/after; "Looks good"
+- [x] Real-agent manual run: comments flip to `addressed` with correct before/after; "Looks good"
       resolves; "Reopen" reverts
+      — **passed in full 2026-08-05** on the D24 build. B1b re-run after the H0 and H8 fixes, and
+      **B1c re-run blind**, by an agent that had not read the expectation — which is what PRD §10
+      asks for and what discharges the qualification recorded below.
       — **manual, and the one item nothing else can stand in for.** PRD §10 names it as the
       acceptance for this phase. Every automated case uses synthetic edits.
       **Passed 2026-08-05**, completed on the **packaged `0.1.0` `.vsix` in stable VS Code** rather
@@ -235,7 +249,11 @@ this phase's entry gate. Date this section when it passes.
       is unobservable, because hint drift is deliberately never persisted
 - [x] Editor edits and direct disk writes both trigger detection; debounce coalesces bursts
       — `detection.spec.ts` for both sources; `coalesce.test.ts` for the timing, with fake timers
-- [ ] Rename/delete of target → "target missing" + working re-link; sidecar preserved
+- [x] Rename/delete of target → "target missing" + working re-link; sidecar preserved
+      — **passed 2026-08-05**, the first time B4 was ever exercised. `showOpenDialog` has now been
+      opened by a human, the unreadable notice offered **Locate file…** as its only action, and the
+      comments migrated with the old sidecar left emptied rather than deleted. That is D22's fix
+      confirmed in the place it was meant to be confirmed.
       — `store.spec.ts` covers the migration and `detection.spec.ts` the surviving sidecar; the
       **file picker is manual**. **Still not exercised after the 2026-08-05 packaged run**: that
       attempt reached for **Re-anchor** on an orphan card and re-anchored a comment by selecting
@@ -585,9 +603,13 @@ script that names them. Worth considering before v1: the unreadable notice could
 section entirely — with the target unreadable, every comment is orphaned by definition and
 re-anchoring one against a file that cannot be read is not a coherent action.
 
-Recorded, not fixed. It is a UI change in Phase 4's surface and Phase 5 is explicitly no feature
-work; it also rests on one observation, so a second run should confirm the pull before anyone moves
-buttons.
+Recorded, then fixed in Phase 6 (H7): the unreadable notice replaces the pane's content *and*
+empties the orphan section, so **Locate file…** became the only action on screen. The pull was
+confirmed by a second observation — a later attempt reached for **Re-anchor** the same way — which
+is what the "one observation" caveat below asked for before moving anything.
+
+**Fix verified 2026-08-05.** B4 passed on its third attempt at being reached, with the right button
+clicked this time and no orphan card visible under the notice. Closed.
 
 ### Found by the A2 step 5 reload run
 

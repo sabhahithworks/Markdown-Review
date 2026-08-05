@@ -14,6 +14,24 @@ step leaves the state the next one needs.
 
 Roughly 70 minutes of work, plus however long an agent takes to think in M3 and M9.
 
+**Where this stands (2026-08-05).** Ten of the twelve steps are done. `04-acceptance-run.md` Part A
+and Part B are green, `03-commenting.md` §8 is dated, and every box in `04-prompt-and-detection.md`
+§9 is ticked.
+
+| | |
+| --- | --- |
+| ✅ **Passed** | 1, 2, 3, 4, 6, 9, 10, 11 |
+| ⏭️ **Skipped, not verified** | **5** (B3 — rewrite banner and diff; its **Dismiss** button has no coverage of any kind) |
+| ☐ **Not run** | **7** (B6, a confirmation of an already-covered item) · **8** (C1, the Extensions-list identity check) · **12** (C3 — **must** be re-run, its static half was voided by D24) |
+
+**Two defects came out of this run**: **D24**, the blank restored pane, which is why the archive was
+repackaged; and **D23**, a latent delivery-gate bug found while chasing it. Both are fixed and in the
+current `.vsix`. **D22 is closed** — step 6 confirmed its fix on the first occasion the box was ever
+reached.
+
+Nothing outstanding blocks publishing except step 12, which is a genuine gate: it is the only check
+that lazy activation survived the D24 manifest change.
+
 **When something fails**, do not fix it here. Write it into the owning phase doc's defect ledger
 first, in the same numbered form the neighbours use (`04-prompt-and-detection.md` §10 for D-numbers,
 `05-ship.md` §13 for E-numbers, `06-production-hardening.md` §4 for H-numbers), and *then* fix it. A
@@ -32,9 +50,9 @@ npm run test:integration   # host-side assertions in a real VS Code
 npm run build              # both bundles + CSS colour/theme guards + the bundle guard
 ```
 
-All three must be green. They were on 2026-08-05 with the D23 fix in the tree — 513 unit tests across
-26 files, 49 integration assertions, both bundles and every guard. Re-run them anyway, because you
-are about to spend an hour attributing behaviour to the build.
+All three must be green. They were on 2026-08-05 with the D23 and D24 fixes in the tree — 513 unit
+tests across 26 files, 50 integration assertions, both bundles and every guard. Re-run them anyway,
+because you are about to spend an hour attributing behaviour to the build.
 
 Then confirm exactly one Markdown Review is installed — two extensions contributing the same four
 commands is a confusing hour, and a "working" result may be the *old* build answering:
@@ -71,7 +89,7 @@ Then *Developer: Reload Window*.
 
 ---
 
-# Sitting 1 — Extension Development Host, `kitchen-sink.md`
+# Sitting 1 — Extension Development Host, `kitchen-sink.md` — ✅ COMPLETE 2026-08-05
 
 Press <kbd>F5</kbd>. The launch config opens `docs/fixtures/` as the workspace root, so the pane's
 messages say `kitchen-sink.md` and sidecars land in `docs/fixtures/.reviews/`.
@@ -88,18 +106,22 @@ rm -rf docs/fixtures/.reviews
 
 ---
 
-### Step 1 — A2 step 5: reload with the pane as the only editor
+### Step 1 — A2 step 5: reload with the pane as the only editor — ✅ PASSED 2026-08-05
 
-*Closes: `04-acceptance-run.md` A2 step 5 — the last piece of that box.*
+*Closed: `04-acceptance-run.md` A2 step 5 — the last piece of that box, ticked there.*
 
-**This box failed on 2026-08-05. The cause was exactly what this step predicted — the extension
-never activated for the restore (**D24**) — and it is fixed. Re-run to confirm.** The manifest now
-declares `onWebviewPanel:markdownReview.panel`; the reasoning, and why it stays lazy, is in
+**Passed on the third attempt.** It failed twice with a blank restored pane. The cause was exactly
+what this step predicted — the extension never activated for the restore (**D24**) — and it is
+fixed: the manifest declares `onWebviewPanel:markdownReview.panel`, and the pane now comes back
+populated with the pane as the only editor open. Reasoning, and why it stays lazy, in
 `04-prompt-and-detection.md` §10 D24.
 
-**Expected now: the pane comes back populated.** If it is still blank, work the checklist below in
-order and *do not skip to the webview console* — it took three runs to get here precisely because
-that shortcut was taken twice.
+Verified in the **dev host** (F5, source build). The packaged archive carries the same manifest —
+confirmed inside the `.vsix` — but the packaged path gets its own exercise at step 12.
+
+Everything below is kept as the diagnostic for a recurrence, not as work outstanding. If the pane is
+ever blank here again, work it in order and *do not skip to the webview console* — it took three
+runs to get here precisely because that shortcut was taken twice.
 
 > **What cost those three runs**, so it is not repeated: the **presence of a Markdown Review entry
 > in the Output dropdown** was read as proof the extension had activated. It is not — VS Code keeps
@@ -121,8 +143,8 @@ comments and roughly the same scroll position.
 **The moment the window is back, before touching anything else**, collect these two — **in this
 order**. The first is decisive and takes one keystroke; the second is the one that misled three runs.
 
-- [ ] *Developer: Show Running Extensions* — is **Markdown Review** in the list?
-- [ ] *View → Output*, dropdown top-right → **Markdown Review** — what lines are in it?
+1. *Developer: Show Running Extensions* — is **Markdown Review** in the list?
+2. *View → Output*, dropdown top-right → **Markdown Review** — what lines are in it?
 
 **Running Extensions is the authority on whether the extension activated.** The output channel is
 *not*: VS Code keeps the previously-selected channel name in that dropdown across a reload, so the
@@ -166,14 +188,19 @@ both previous attempts left out.
 
 ---
 
-### Step 2 — A3: the six remaining Phase 3 steps
+### Step 2 — A3: the six remaining Phase 3 steps — ✅ PASSED 2026-08-05
 
-*Closes: `04-acceptance-run.md` A3, which is `03-acceptance-run.md` steps 2, 3, 5, 6, 7, 8.*
+*Closed: `04-acceptance-run.md` A3, which is `03-acceptance-run.md` steps 2, 3, 5, 6, 7, 8 — ticked
+there, and `03-commenting.md` §8 is dated.*
+
+All six passed in one sitting with **no defects found** — including the four things being looked at
+for the first time since they were written: the H4 write-race in 2c, the H6 `img-src` change in 2d,
+the forced-colors fallback in 2e, and the H16 marker layer in 2f.
 
 Same dev host, same document. Steps 1 and 4 of that doc are already covered by the gesture harness
 and by step 1 above.
 
-- [ ] **2a — Rejections** (`03-acceptance-run.md` step 2)
+- [x] **2a — Rejections** (`03-acceptance-run.md` step 2)
 
   Select a single two-character word, try to comment. Then select the whole **Fenced code** section
   (line 57 onward — well over 500 characters), try to comment.
@@ -183,7 +210,7 @@ and by step 1 above.
   > asserted by `src/test/notices.test.ts`; what you are checking here is that nothing was
   > persisted. Open `docs/fixtures/.reviews/kitchen-sink.md.json` and count.
 
-- [ ] **2b — Hand-edit the sidecar** (step 3)
+- [x] **2b — Hand-edit the sidecar** (step 3)
 
   Open `docs/fixtures/.reviews/kitchen-sink.md.json` in an editor beside the pane. Change a
   comment's `body` and save.
@@ -191,7 +218,7 @@ and by step 1 above.
   > Expect the card text to update without you touching the pane. The store half is covered by
   > `store.spec.ts`; what is manual is that the card re-renders.
 
-- [ ] **2c — Two windows** (step 5)
+- [x] **2c — Two windows** (step 5)
 
   Open `docs/fixtures/` in a second window and open the review pane there too. Add a comment in one
   window.
@@ -204,7 +231,7 @@ and by step 1 above.
   > regressing. If a comment made in one window disappears from the other, or a `.tmp` file is left
   > on disk, that is the finding.
 
-- [ ] **2d — CSP** (step 6)
+- [x] **2d — CSP** (step 6)
 
   *Developer: Open Webview Developer Tools* on the pane, then reload it.
 
@@ -216,7 +243,7 @@ and by step 1 above.
   > image** is that fix working, not a failure. A violation on a **script or a style** is real.
   > `kitchen-sink.md` line 81's *Images and relative paths* section is where to look.
 
-- [ ] **2e — Themes** (step 7)
+- [x] **2e — Themes** (step 7)
 
   Switch between Dark+, Light+ and a High Contrast theme with at least one comment on screen.
 
@@ -228,7 +255,7 @@ and by step 1 above.
   > outline was added this phase for exactly this — but forced-colors itself is a Windows mode and
   > cannot be checked here.
 
-- [ ] **2f — Narrow pane** (step 8)
+- [x] **2f — Narrow pane** (step 8)
 
   Drag the pane's edge until it is under 700 px wide, then back.
 
@@ -240,13 +267,15 @@ and by step 1 above.
   > slowly. In narrow mode the markers now live in their own layer rather than inside the
   > `aria-hidden` overlay (H16) — they should be reachable by <kbd>Tab</kbd>, which is new.
 
-**Then:** tick A3 in `04-acceptance-run.md`, and tick and **date** `03-commenting.md` §8.
+**Done 2026-08-05:** A3 ticked in `04-acceptance-run.md`, and `03-commenting.md` §8 ticked and dated.
 
-Close the dev host.
+**Sitting 1 is complete.** Close the dev host. Everything from here needs the packaged build, so
+re-check the preflight's byte count before starting sitting 2 — it is the one thing that silently
+invalidates the four sittings below.
 
 ---
 
-# Sitting 2 — installed build, repo root, `review-run.md`
+# Sitting 2 — installed build, repo root, `review-run.md` — ◐ steps 3, 4, 6 ✅ · step 5 skipped · step 7 outstanding
 
 Open the **repo root** in normal VS Code — not `docs/fixtures/`. Paths now read
 `docs/fixtures/review-run.md` and the sidecar is `.reviews/docs__fixtures__review-run.md.json`, the
@@ -265,10 +294,14 @@ delete.
 
 ---
 
-### Step 3 — B1: the real-agent run
+### Step 3 — B1: the real-agent run — ✅ PASSED 2026-08-05
 
-*Closes: `04-acceptance-run.md` B1b (re-run) and B1c (blind re-run). B1a, B1d, B1e are already
-green and only need to not regress.*
+*Closed: `04-acceptance-run.md` B1b (re-run) and B1c (blind re-run), both ticked there. B1a, B1d,
+B1e were already green and did not regress. Closes `04-prompt-and-detection.md` §9 item 2.*
+
+**The item nothing else could stand in for, and it holds.** B1c now has what PRD §10 actually asked
+for — a blind run by an agent that had not read the expectation — rather than the informed run that
+stood in for it before.
 
 The one item nothing else can stand in for. Every automated case in the repo writes the "after" text
 itself, which tests the detection machinery but not what the product actually bets on: that a real
@@ -354,9 +387,10 @@ git checkout docs/fixtures/review-run.md
 
 ---
 
-### Step 4 — B2a: orphan on deletion
+### Step 4 — B2a: orphan on deletion — ✅ PASSED 2026-08-05
 
-*Closes: `04-acceptance-run.md` B2a. B2b–B2d are machine-checked by the gesture harness.*
+*Closed: `04-acceptance-run.md` B2a, ticked there. B2b–B2d are machine-checked by the gesture
+harness.*
 
 - [ ] With a comment on an anchored sentence, delete that sentence from the document and save.
 
@@ -365,9 +399,28 @@ git checkout docs/fixtures/review-run.md
 
 ---
 
-### Step 5 — B3: full rewrite and the diff
+### Step 5 — B3: full rewrite and the diff — ⏭️ SKIPPED 2026-08-05, not verified
 
-*Closes: `04-acceptance-run.md` B3a, B3b, B3c.*
+*Would close: `04-acceptance-run.md` B3a, B3b, B3c. **They remain unticked there** — this was a
+deliberate skip on the tester's judgement that the behaviour is working, not an observation.*
+
+**Nothing here was run, and the boxes stay open.** Per this file's own rule, a skipped box left
+blank is indistinguishable from a failed one, so it is written down rather than ticked.
+
+What is *not* covered by anything else, and is therefore what the skip actually costs:
+
+- **5b's diff** is the only check that both sides render as prose. `detection.spec.ts` asserts the
+  current side carries no `**` or `##`, so D1 cannot regress silently — this part is the smallest
+  loss.
+- **5a's banner placement** — "at the top of the pane and on screen without scrolling" — is a
+  layout judgement. The harness `rewrite` scenario checks the banner is on screen, so this is
+  largely covered.
+- **5c's Dismiss button has no coverage at all.** It did not exist until H7, the banner previously
+  cleared itself on the next render, and no test asserts the button is present or that dismissal
+  sticks. **This is the real gap**, and it is a Phase 6 change that has never been exercised.
+
+Worth ten minutes before publishing, since 5c is new code that nothing has looked at. Not a blocker
+for the steps below — B3 resets its own state and nothing downstream depends on it.
 
 With at least two located comments in place:
 
@@ -395,9 +448,23 @@ With at least two located comments in place:
 
 ---
 
-### Step 6 — B4: rename and re-link
+### Step 6 — B4: rename and re-link — ✅ PASSED 2026-08-05
 
-*Closes: `04-acceptance-run.md` B4a, B4b, B4c.*
+*Closed: `04-acceptance-run.md` B4a, B4b, B4c, all ticked there. Closes
+`04-prompt-and-detection.md` §9 item 8.*
+
+**Exercised for the first time, on the third attempt at reaching it, and it worked — but against
+the wrong document.** The run renamed `kitchen-sink.md` in the dev host rather than `review-run.md`
+at the repo root, so the **flattened sidecar name this step exists to exercise by hand was not**;
+the sidecar landed at `docs/fixtures/.reviews/renamed.md.json`. It also deleted the fixture and its
+tracked sidecar, both restored from git. The mechanism is verified; the flattened-path half is not.
+A clean re-run is cheap. **Never rename `kitchen-sink.md` — its exact bytes are asserted.**
+
+ Both earlier
+attempts clicked **Re-anchor** on an orphan card instead of **Locate file…** on the unreadable
+notice — the D22 finding. Suppressing the orphan section under that notice is what made the right
+action the only one on screen, and this run is the evidence that fix works. `showOpenDialog` has now
+been opened by a human, which no test process can do (D9).
 
 **This has never once been exercised.** Both 2026-08-05 attempts reached for **Re-anchor** on an
 orphan card instead of **Locate file…** on the unreadable notice — two recovery actions were visible
@@ -475,12 +542,17 @@ Run this with real comments in place, so there is something to migrate.
 
 **Reset the setting when done.**
 
-**Then:** tick items 2, 8 and 9 in `04-prompt-and-detection.md` §9 and date the section. Part A is
-now green, which is what gates everything below.
+**Done 2026-08-05:** items 2, 8 and 9 are ticked in `04-prompt-and-detection.md` §9 and **every box
+in that section is now green** — dated there, with B3's skip and B6's un-run confirmation named
+explicitly rather than absorbed into the ticks. `05-acceptance-run.md` Part A, which gates everything
+below, is satisfied.
+
+**Step 7 itself has not been run.** It is a confirmation of §9 item 6, which `store.spec.ts` already
+covers against the real setting, so nothing is blocked — but the box is not ticked.
 
 ---
 
-# Sitting 3 — the packaged build's listing and themes
+# Sitting 3 — the packaged build's listing and themes — ◐ steps 9, 10, 11 ✅ · step 8 outstanding
 
 Same window, normal VS Code, repo root. Nothing to reset.
 
@@ -505,9 +577,9 @@ Same window, normal VS Code, repo root. Nothing to reset.
 
 ---
 
-### Step 9 — C2: the full loop, on a real document
+### Step 9 — C2: the full loop, on a real document — ✅ PASSED 2026-08-05
 
-*Closes: `05-acceptance-run.md` C2.*
+*Closed: `05-acceptance-run.md` C2, ticked there.*
 
 **The box that exercises the code this phase changed most.** Open a Markdown file **of your own** —
 not a fixture — that you are willing to have an agent rewrite. Note which file; cleanup needs the
@@ -531,9 +603,9 @@ name.
 
 ---
 
-### Step 10 — C4: the listing, as VS Code renders it
+### Step 10 — C4: the listing, as VS Code renders it — ✅ PASSED 2026-08-05
 
-*Closes: `05-acceptance-run.md` C4.*
+*Closed: `05-acceptance-run.md` C4, ticked there.*
 
 Click Markdown Review in the Extensions view to open its detail pane, and read all three tabs.
 
@@ -569,9 +641,9 @@ worth doing carefully **before** publishing rather than after.
 
 ---
 
-### Step 11 — C5: themes on the installed bytes
+### Step 11 — C5: themes on the installed bytes — ✅ PASSED 2026-08-05
 
-*Closes: `05-acceptance-run.md` C5.*
+*Closed: `05-acceptance-run.md` C5, ticked there.*
 
 With the pane open and one comment, one `addressed` card and one resolved card on screen:
 
@@ -667,7 +739,9 @@ from this repo.
 - [ ] **17** — Publish. Then open the listing and confirm it renders as step 10 predicted.
 - [ ] **18** — On a clean machine or profile, install **from the Marketplace** and run the loop once.
 - [ ] **19** — Tag `v0.1.0`. Open tracking issues for the deferred set: **E7** (no Windows pass) and
-      **D22** (second observation of the competing-recovery-actions finding).
+      **D22** — *no longer needed*: the fix was confirmed by B4 on 2026-08-05 and D22 is closed. If
+      any tracking issue is opened here, it should be for **B3**, skipped and unverified, whose
+      **Dismiss** button has no coverage of any kind.
 
 ---
 
@@ -712,12 +786,12 @@ Reinstall the local dev build if you want it back:
 
 # Recording the outcome
 
-| Steps | Tick here, and in |
-| --- | --- |
-| 1, 2 | `04-acceptance-run.md` A2/A3, then `03-commenting.md` §8 — **date it** |
-| 3–7 | `04-acceptance-run.md` B1–B6, then `04-prompt-and-detection.md` §9 items 2, 8, 9 — **date it** |
-| 8–12 | `05-acceptance-run.md` C1–C5, then `05-ship.md` §12 — **date it** |
-| 13–19 | `05-acceptance-run.md` Part C |
+| Steps | Tick here, and in | Status |
+| --- | --- | --- |
+| 1, 2 | `04-acceptance-run.md` A2/A3, then `03-commenting.md` §8 — **date it** | ✅ done 2026-08-05, all three ticked and dated |
+| 3–7 | `04-acceptance-run.md` B1–B6, then `04-prompt-and-detection.md` §9 items 2, 8, 9 — **date it** | ◐ 3, 4, 6 ✅ and §9 fully ticked; **5 skipped**, 7 not run |
+| 8–12 | `05-acceptance-run.md` C1–C5, then `05-ship.md` §12 — **date it** | ◐ 9, 10, 11 ✅; 8 not run; **12 must be re-run** — its static half was voided by D24 |
+| 13–19 | `05-acceptance-run.md` Part C | outstanding, publish day |
 
 New defects go in the owning ledger **before** they get fixed:
 

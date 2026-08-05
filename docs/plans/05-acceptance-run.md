@@ -81,7 +81,10 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C2 — the full loop, on a real document — §12 item 13, PRD §12 item 7
 
-- [ ] **C2** — passed 2026-08-05 on the previous build; **must be re-run**, because this is the box
+- [x] **C2** — **re-run and passed 2026-08-05** on the D24 build, against a real non-fixture
+      document of the tester's own. That discharges the re-run this box was carrying, and covers the
+      one gap the earlier pass had: the document was a fixture, not a file from a real project.
+      **Earlier pass, previous build:** this is the box
       that exercises the code Plan 06 changed most. Previously passed against
       `docs/fixtures/review-run.md` with the **repo root** as
       the workspace, so `.reviews/docs__fixtures__review-run.md.json` exercised the flattened name by
@@ -143,7 +146,9 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C4 — the listing, as VS Code renders it — §12 items 5, 7, 15
 
-- [~] **C4** — passed 2026-08-05; **re-run needed.** The settings comparison is re-done and found a
+- [x] **C4** — **re-run and passed 2026-08-05** on the D24 build, all three tabs including the
+      walkthrough's three steps. The re-run this box was carrying is discharged. **Earlier pass:**
+      the settings comparison is re-done and found a
       drift (see below); the Changelog tab has a new `[Unreleased]` section above `0.1.0`, and
       Feature Contributions has gained a keybinding and a walkthrough. Click Markdown Review to open
       its detail pane and read all three tabs.
@@ -175,7 +180,10 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C5 — themes on the installed bytes — §12 item 15
 
-- [~] **C5** — passed 2026-08-05; **re-run needed.** The precondition is re-verified — the packaged
+- [x] **C5** — **re-run and passed 2026-08-05** on the D24 build, with the four things Plan 06 added
+      seen in a real theme for the first time. **Windows forced-colors remains unverified** — it
+      cannot be reached on this platform, and is deliberately not claimed by this tick. **Earlier
+      pass:** the precondition is re-verified — the packaged
       `media/webview.css` is byte-identical to the repo's, so nothing was stripped — and the three
       harness presets pass on the new stylesheet. But Plan 06 added a forced-colors block, a
       `position uncertain` badge, an armed-delete state and an empty-state panel, none of which
