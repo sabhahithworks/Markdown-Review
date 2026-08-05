@@ -42,6 +42,15 @@ and how honestly it reports itself.
 
 ### Fixed
 
+- **Reloading the window left the review pane permanently blank.** The tab came back, the contents
+  never did, and the only way out was to close the pane and open it again. The extension wakes up
+  when you run one of its commands — but restoring a pane after a reload isn't something you run, so
+  nothing woke it, and the pane it was supposed to refill sat there empty. It now also wakes for a
+  panel restore, and only for that. Opening a window that has no review pane in it still loads
+  nothing. The comments were never at risk; they were on disk the whole time.
+- **A hidden review pane could stay blank after being shown again.** Messages to the pane are held
+  back while it is hidden, and nothing reopened that gate except the pane reloading itself from
+  scratch. Found while chasing the reload bug above and fixed separately.
 - **A comment could be positioned hundreds of pixels from its own highlight.** Cards were rendered
   in document order but *laid out* in the order they were created, and the stacking pass assumes
   the two agree. Commenting on a late paragraph and then an early one pushed the early card below

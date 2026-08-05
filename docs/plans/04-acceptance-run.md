@@ -74,10 +74,11 @@ only unchecked boxes in Plan 03 §8, and the ones with no automated coverage of 
 
 - [x] **A2 — window reload** (Plan 03 step 4). The `WebviewPanelSerializer` path, which has no
       automated coverage of any kind — `@vscode/test-electron` cannot reload its own window.
-      **Passed 2026-08-05** on an installed build, against `review-run.md` rather than
-      `kitchen-sink.md` — the serializer restores by path, so the document is immaterial. Steps 1–4
-      only; **step 5 is still outstanding**, and it is the one that actually exercises the
-      activation gap the note below describes.
+      **Steps 1–4 passed 2026-08-05** on an installed build, against `review-run.md` rather than
+      `kitchen-sink.md` — the serializer restores by path, so the document is immaterial.
+      **Step 5 passed 2026-08-05**, on the third attempt: it failed twice with a blank restored
+      pane, which is the activation gap the note below predicted, now fixed as **D24**. It is the
+      only box in the plan that ever caught it.
 
   1. Open `kitchen-sink.md` → *Markdown Review: Open Review Pane*. Leave two comments on different
      paragraphs if the sidecar is empty (commenting never edits the document, so this is safe).
@@ -92,19 +93,22 @@ only unchecked boxes in Plan 03 §8, and the ones with no automated coverage of 
       > scrollLine, filter }` through `vscode.setState` (`media/src/webview.ts:145`) and back via
       > `deserializeWebviewPanel` (`src/extension.ts:45`).
 
-      > **The failure mode to watch for is a pane that comes back blank, or a tab that closes
-      > itself.** Restoring a webview raises the `onWebviewPanel:markdownReview.panel` activation
-      > event, and unlike commands that one is **not** inferred from `contributes` — `package.json`
-      > declares no `activationEvents` at all today (deliberately, per CLAUDE.md's lazy-activation
-      > rule). If the extension is not activated at restore time the serializer was never registered,
-      > and VS Code discards the panel.
+      > **This is the box that caught D24, and the prediction written here was correct.** Restoring
+      > a webview raises the `onWebviewPanel:markdownReview.panel` activation event, and unlike
+      > commands that one is **not** inferred from `contributes`. The manifest declared no
+      > `activationEvents` at all, so the extension was never activated at restore time, the
+      > serializer was never registered, and the pane came back as a tab with nothing in it.
+      > `package.json` now declares exactly that one event — still lazy, since it fires only during
+      > an actual restore. If this box fails again, check the manifest still carries it before
+      > anything else.
       >
-      > If it does fail: adding `"activationEvents": ["onWebviewPanel:markdownReview.panel"]` is the
-      > fix and does **not** break lazy activation — it fires only when a panel is actually being
-      > restored, unlike `onStartupFinished`. Record it as a new D-number in Plan 04 §10 first.
-      >
-      > A blank pane with the tab still present is a different bug: the serializer ran, but `revive`
-      > failed. Check *View → Output → Markdown Review* and the extension host console.
+      > **A blank pane with the tab still present does not, on its own, mean `revive` failed.** That
+      > reading cost two runs. VS Code restores the tab from its own workspace state without asking
+      > the extension anything, so "tab present, pane empty" is also exactly what a never-activated
+      > extension looks like. Settle it with *Developer: Show Running Extensions* — **not** with the
+      > presence of a Markdown Review entry in the Output dropdown, which survives a reload whether
+      > or not the extension ran. The channel's *contents* are evidence; its existence is not.
+      > `deserializeWebviewPanel` now logs a line, so the channel can answer this directly.
 
   5. Repeat once with the pane as the **only** editor open (close `kitchen-sink.md`'s text editor
      first). That is the case where nothing else would have activated the extension.

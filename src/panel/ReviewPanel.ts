@@ -31,6 +31,7 @@ import { REVIEW_VIEW_TYPE, isWebviewMessage, toReviewSummary } from './messages.
 import { anchorRejectionMessage } from './notices.js';
 import type { ReadResult } from './readTarget.js';
 import { readTarget } from './readTarget.js';
+import { ReadyLatch } from './readyLatch.js';
 
 const ALLOWED_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 
@@ -61,8 +62,12 @@ export class ReviewPanel {
 
   private readonly disposables: vscode.Disposable[] = [];
   private disposed = false;
-  /** The webview script has loaded and posted `ready`; before that, messages are dropped. */
-  private ready = false;
+  /**
+   * Gates every host→webview message: before the webview posts `ready`, and while it is hidden,
+   * delivery is impossible and `post()` drops rather than silently succeeding (H14, D23). The rule
+   * lives in `readyLatch.ts` so it can be unit-tested without a real window reload.
+   */
+  private readonly latch = new ReadyLatch();
   /** Guards against a slow read overwriting the result of a newer one. */
   private renderGeneration = 0;
   /**
@@ -223,16 +228,23 @@ export class ReviewPanel {
       light: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-light.svg'),
       dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-dark.svg'),
     };
+    this.trace('panel constructed, waiting for the webview handshake');
     panel.webview.html = this.getHtmlForWebview(panel.webview);
 
     panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
-    // Without `retainContextWhenHidden`, hiding the panel tears the webview context down; the
-    // script reloads on show and posts a fresh `ready`. Until that arrives, `post()` must know
-    // delivery is impossible rather than silently "succeeding" into a dead context (H14).
+    // A window restore emits view-state churn without destroying the webview context, so a flip
+    // landing inside `refresh()`'s await can shut the gate just in time for the finished render to
+    // be dropped — and no second `ready` ever comes. Reopening on the way back to visible is what
+    // makes that recoverable (D23); see `readyLatch.ts` for why it is safe in both directions.
     panel.onDidChangeViewState(
       () => {
-        if (!panel.visible) this.ready = false;
+        const refreshing = this.latch.onVisibilityChange(panel.visible);
+        this.trace(
+          `viewState visible=${String(panel.visible)} canPost=${String(this.latch.canPost)}` +
+            `${refreshing ? ' → refresh' : ''}`,
+        );
+        if (refreshing) void this.refresh();
       },
       null,
       this.disposables,
@@ -245,7 +257,8 @@ export class ReviewPanel {
         if (!isWebviewMessage(raw)) return;
         switch (raw.type) {
           case 'ready':
-            this.ready = true;
+            this.latch.onReady();
+            this.trace('ready received');
             // `targetPath` here is the absolute path the serializer needs to reopen the file — not
             // `ReviewFile.targetPath`, which is workspace-relative (PRD §4). Two different jobs.
             this.post({ type: 'init', targetPath: this.target.fsPath, author: authorName(this.target) });
@@ -344,8 +357,25 @@ export class ReviewPanel {
     }
   }
 
+  /**
+   * Diagnostics for the restore path (D23).
+   *
+   * The pane going blank after a reload produces no error anywhere: dropped messages are the gate
+   * working as designed, so the failure is silent by construction. These lines are what turn a
+   * second occurrence into evidence instead of another round of hypotheses. They are quiet in
+   * normal use — a handful per panel, none per keystroke.
+   */
+  private trace(message: string): void {
+    this.output.appendLine(`[panel] ${path.basename(this.target.fsPath)}: ${message}`);
+  }
+
   private post(message: HostMessage): void {
-    if (this.disposed || !this.ready) return;
+    if (this.disposed) return;
+    if (!this.latch.canPost) {
+      // The one line that would have identified D23 on the first run rather than the third.
+      this.trace(`dropped ${message.type} (gate shut, handshaked=${String(this.latch.hasHandshaked)})`);
+      return;
+    }
     void this.panel.webview.postMessage(message);
   }
 
@@ -353,7 +383,7 @@ export class ReviewPanel {
     if (this.disposed) return;
     // Nothing would be delivered yet; the `ready` handler runs a refresh of its own, so a change
     // arriving before the script loads is covered without queueing anything here.
-    if (!this.ready) return;
+    if (!this.latch.canPost) return;
 
     const generation = ++this.renderGeneration;
 

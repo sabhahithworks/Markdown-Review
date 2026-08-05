@@ -589,6 +589,117 @@ Recorded, not fixed. It is a UI change in Phase 4's surface and Phase 5 is expli
 work; it also rests on one observation, so a second run should confirm the pull before anyone moves
 buttons.
 
+### Found by the A2 step 5 reload run
+
+**D23 — the `ready` latch is cleared by a visibility flip that did not tear the context down, and
+nothing ever re-arms it.** A2 step 5 — reload the window with the review pane as the only editor —
+came back with the tab restored and the pane permanently blank. The comments were intact, the
+output channel existed and was empty, and closing the pane and reopening it rendered everything
+correctly. Confirmed on 2026-08-05 by switching to another editor tab and back, which repopulated
+the pane immediately.
+
+`ready` (`src/panel/ReviewPanel.ts:65`) gates every host→webview message: `post()` drops silently
+when it is false, and `refresh()` returns early. It is set only by the webview's `ready` message and
+cleared on any `onDidChangeViewState` where `panel.visible` is false. The comment above that handler
+states the assumption it rests on — *"hiding the panel tears the webview context down; the script
+reloads on show and posts a fresh `ready`"* — and that is true for a real hide, but not for the
+transient view-state churn a window restore produces. The sequence:
+
+1. The revived webview boots and posts `ready`; the host sets `ready = true`, posts `init` and calls
+   `void this.refresh()`.
+2. `refresh()` is async and awaits `readTarget`, yielding the event loop mid-flight.
+3. A transient `visible === false` arrives during restore and clears the latch.
+4. `refresh()` resumes, renders correctly, and calls `post()` — which discards the result.
+5. The context was never destroyed, so no second `ready` is ever sent. The pane stays blank until
+   something forces a genuine teardown.
+
+The silence is the design working as written: these are dropped messages, not errors, so nothing
+reaches the output channel. That is why the symptom is indistinguishable by eye from a render
+failure, and why the first hypothesis for this box was the wrong one — see the note below.
+
+**D23 is latent, not the cause of the blank pane. The cause is D24.** This was first recorded the
+other way round, and the correction matters more than the finding: the reasoning that got there is a
+trap the next person will walk into as well.
+
+The blank pane was attributed to this latch because the **Markdown Review output channel was present
+in the Output dropdown**, which was read as proof that `activate()` had run. It is not. VS Code
+keeps the previously-selected channel name in that dropdown across a window reload, so an entry can
+survive with no live registration behind it. *Developer: Show Running Extensions* answered the
+question the channel could not, and the extension was **absent** — it had never activated. See D24.
+
+**"The channel exists" and "our code ran" are different claims.** The check that distinguishes them
+is Running Extensions, or a log line written *during* the run — which is why `deserializeWebviewPanel`
+now appends one. An artefact that persists across the event you are testing cannot be evidence about
+that event.
+
+The latch defect itself is real and stays fixed: the gate genuinely could not reopen without a full
+context teardown, so any future path that hides the pane without destroying it would strand exactly
+this way. It simply was not what happened here.
+
+Fixed by re-arming on the way back to visible and re-running the refresh, rather than trusting the
+webview to re-handshake. H14's intent is preserved — nothing is posted into a context known to be
+dead — but a spurious flip can no longer strand the pane. If the context *was* torn down the webview
+posts its own `ready` and the refresh runs twice, which is idempotent.
+
+**Also added while chasing this:** `[panel]` tracing on the output channel — panel construction, the
+handshake, every view-state flip with the gate's state, and every dropped message with its type.
+Three reload runs produced no evidence at all, because a shut gate discarding messages is the design
+working and writes nothing anywhere. The first run should have been conclusive.
+
+**What is and is not covered.** The gate's rule was extracted into `src/panel/readyLatch.ts` —
+pure and `vscode`-free — so `src/test/readyLatch.test.ts` can assert the part that was wrong,
+including the exact ready → spurious-flip → visible interleaving. What remains uncovered is the
+*trigger*: `@vscode/test-electron` cannot reload its own window, so the serializer path stays
+unreachable (D9's neighbour) and only a human running A2 step 5 can prove the churn happens at all.
+The unit tests stop the rule regressing; they cannot stop a future change to `onDidChangeViewState`
+from bypassing the latch.
+
+**D24 — nothing in the manifest wakes the extension for a panel restore, so a reloaded pane is never
+revived.** The actual cause of the A2 step 5 failure, confirmed on 2026-08-05: after *Developer:
+Reload Window* with the review pane as the only editor, the tab came back blank and *Developer: Show
+Running Extensions* did **not** list Markdown Review. It had not activated, so
+`registerWebviewPanelSerializer` had never run, so `deserializeWebviewPanel` was never called. VS
+Code restores the panel's tab from its own workspace state regardless — only the *contents* need the
+extension — which is why the symptom is a blank pane rather than a missing one.
+
+This is exactly what `04-acceptance-run.md:102` predicted, written down long before it was confirmed.
+
+Activation is inferred from `contributes.commands` (PRD §9), which covers every entry point the user
+initiates. A restore is the one entry point the user does *not* initiate: the serializer is
+registered at **runtime**, inside `activate()`, so the manifest never mentions
+`onWebviewPanel:markdownReview.panel` and VS Code has no reason to wake anything. Opening the file
+in a text editor first happened to activate the extension by other means, which is why A2 steps 1–4
+passed and only step 5 failed, and why this needed to be its own step.
+
+Fixed by declaring `"activationEvents": ["onWebviewPanel:markdownReview.panel"]`. **This does not
+weaken lazy activation** — the event fires only when VS Code is actually restoring a panel of that
+view type, which by definition means the user already had one open. It is not `onStartupFinished`,
+and a fresh window with no review pane still never loads the extension.
+
+**PRD §9 and CLAUDE.md's hard constraint both said "no `activationEvents`" and both were wrong** —
+not about the goal, but about the mechanism. "Inferred from `contributes.commands`" is sufficient
+only for command-initiated entry, and the extension has a second entry point. The constraint is
+restated as *lazy*, with the one permitted event named and justified, rather than as a bare
+prohibition. Updated in four places, all of which asserted the absence:
+
+- `package.json` — the manifest itself
+- `src/extension.ts:5` — the file header
+- `src/test/integration/suite/activation.spec.ts` — now asserts the value rather than the absence,
+  and still asserts the extension is dormant before any command
+- `CLAUDE.md` and `docs/plans/05-acceptance-run.md` C3's static half
+
+**C3 (`05-acceptance-run.md`, manual-run step 12) must be re-run** against a rebuilt `.vsix`, with
+its expectation rewritten: the static half now expects exactly one `activationEvents` entry, and the
+behavioural half is unchanged — still absent from Running Extensions until a command is run. The
+static half's previous "confirmed on the shipped bytes 2026-08-05" no longer applies.
+
+**Cost of the misdiagnosis, recorded deliberately.** Three reload runs were spent on this. Two
+things made it expensive: a shut delivery gate discards messages silently, so the failure wrote
+nothing anywhere (now fixed by the `[panel]` tracing), and the presence of the output channel was
+taken as proof of activation when it is an artefact that outlives the reload. The check that would
+have settled it on the first run — Running Extensions — costs one keystroke and was in the step's
+own checklist from the start.
+
 ### Noted, not changed
 
 - `#notice` remains a single slot shared by `tooLarge`, `targetUnreadable` and `rewriteDetected`.

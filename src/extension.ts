@@ -1,8 +1,17 @@
 /**
  * Activation and command registration.
  *
- * Activation is inferred from `contributes.commands` (PRD §9) — there is deliberately no
- * `activationEvents` array and no `onStartupFinished`, so nothing runs until the user asks for it.
+ * Activation is lazy: inferred from `contributes.commands` (PRD §9), so nothing runs until the user
+ * asks for it. There is no `onStartupFinished`.
+ *
+ * The manifest declares exactly one `activationEvents` entry —
+ * `onWebviewPanel:markdownReview.panel` (D24). Inference covers commands, and a command is the only
+ * entry point the *user* initiates; restoring a webview panel after a window reload is the one that
+ * VS Code initiates. The serializer below is registered at runtime, so without that declaration
+ * nothing in the manifest tells VS Code to wake us for a restore, and a reloaded pane comes back
+ * with its tab and no contents. The event fires only when a panel of that view type is actually
+ * being restored — which means the user already had one open — so a fresh window still loads
+ * nothing.
  */
 
 import * as path from 'node:path';
@@ -45,6 +54,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.window.registerWebviewPanelSerializer(REVIEW_VIEW_TYPE, {
       deserializeWebviewPanel(panel: vscode.WebviewPanel, state: unknown): Thenable<void> {
+        // Proves activation *and* the serializer ran, which is otherwise only inferable from the
+        // output channel merely existing (D23).
+        output.appendLine('[extension] deserializing a review panel');
         if (!isPanelState(state)) {
           // Nothing identifies which file this panel belonged to, and guessing would attach it to
           // the wrong document. Closing is the honest outcome.

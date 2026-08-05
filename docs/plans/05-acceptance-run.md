@@ -118,9 +118,15 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
       > profile does not leave you with the cold start this box is about.
       >
       > Do the static half first — it fails faster. Unzip the `.vsix` and check
-      > `extension/package.json` has **no `activationEvents`**, a `main`, four `contributes.commands`
-      > and `engines.vscode` ≥ 1.74. Confirmed on the shipped bytes 2026-08-05. That establishes the
-      > precondition; only the Running Extensions view establishes the behaviour.
+      > `extension/package.json` has **exactly one `activationEvents` entry,
+      > `onWebviewPanel:markdownReview.panel`** (D24 — anything else, or none at all, is a
+      > regression), a `main`, four `contributes.commands` and `engines.vscode` ≥ 1.74. That
+      > establishes the precondition; only the Running Extensions view establishes the behaviour.
+      >
+      > **The 2026-08-05 confirmation of this half is void** — it was taken against bytes that
+      > carried no `activationEvents`, which is the defect D24 fixed. Re-check against the rebuilt
+      > archive. The behavioural half is unchanged: still absent from Running Extensions until a
+      > command is run, because that one event fires only during an actual panel restore.
       >
       > **Do not try to automate this by reading `exthost.log`.** An isolated `--extensions-dir` /
       > `--user-data-dir` instance was tried on 2026-08-05: it installed and launched but wrote no

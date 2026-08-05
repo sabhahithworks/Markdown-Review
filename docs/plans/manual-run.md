@@ -32,8 +32,9 @@ npm run test:integration   # host-side assertions in a real VS Code
 npm run build              # both bundles + CSS colour/theme guards + the bundle guard
 ```
 
-All three must be green. They were at commit `bdd3c63`; re-run them anyway, because you are about to
-spend an hour attributing behaviour to the build.
+All three must be green. They were on 2026-08-05 with the D23 fix in the tree — 513 unit tests across
+26 files, 49 integration assertions, both bundles and every guard. Re-run them anyway, because you
+are about to spend an hour attributing behaviour to the build.
 
 Then confirm exactly one Markdown Review is installed — two extensions contributing the same four
 commands is a confusing hour, and a "working" result may be the *old* build answering:
@@ -47,8 +48,23 @@ If `local-dev.markdown-review` is there, `code --uninstall-extension local-dev.m
 The packaged archive in the repo root is the one to test against:
 
 ```sh
-ls -la markdown-review-0.1.0.vsix     # 142,889 bytes, the H35–H36 layout build
+ls -la markdown-review-0.1.0.vsix     # 143,522 bytes, the D24 build (repackaged 2026-08-05)
 code --install-extension markdown-review-0.1.0.vsix --force
+```
+
+**Check the byte count.** The archive was repackaged for D24 — anything older (142,889 bytes, the
+H35–H36 layout build; or the interim 143,243-byte D23 build) still has the blank-restored-pane bug,
+so sittings 2–4 against it would be testing the wrong bytes. The version is deliberately still
+`0.1.0`: nothing has been published, so there is no released build to distinguish this from. If the
+size is wrong, `npm run package` and re-install.
+
+Size alone only proves the file changed. Confirm both fixes are actually in it:
+
+```sh
+unzip -p markdown-review-0.1.0.vsix extension/package.json | node -e \
+  "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).activationEvents))"
+# expect [ 'onWebviewPanel:markdownReview.panel' ] — D24
+unzip -p markdown-review-0.1.0.vsix extension/dist/extension.js | grep -c onVisibilityChange   # 1 — D23
 ```
 
 Then *Developer: Reload Window*.
@@ -76,8 +92,21 @@ rm -rf docs/fixtures/.reviews
 
 *Closes: `04-acceptance-run.md` A2 step 5 — the last piece of that box.*
 
-**This is the step that is currently failing.** Work through the diagnostic below rather than just
-re-observing it.
+**This box failed on 2026-08-05. The cause was exactly what this step predicted — the extension
+never activated for the restore (**D24**) — and it is fixed. Re-run to confirm.** The manifest now
+declares `onWebviewPanel:markdownReview.panel`; the reasoning, and why it stays lazy, is in
+`04-prompt-and-detection.md` §10 D24.
+
+**Expected now: the pane comes back populated.** If it is still blank, work the checklist below in
+order and *do not skip to the webview console* — it took three runs to get here precisely because
+that shortcut was taken twice.
+
+> **What cost those three runs**, so it is not repeated: the **presence of a Markdown Review entry
+> in the Output dropdown** was read as proof the extension had activated. It is not — VS Code keeps
+> the previously-selected channel name across a reload, so the entry outlives the event being
+> tested. *Developer: Show Running Extensions* is the check that actually answers it, and it was in
+> this step's checklist the whole time. A separate latent bug (D23) was found and fixed on the way,
+> which is worth having but was never the cause.
 
 1. Open `kitchen-sink.md` → *Markdown Review: Open Review Pane*.
 2. Leave two comments on different paragraphs.
@@ -89,49 +118,51 @@ re-observing it.
 **Expected:** the pane is still there, on the same tab, against `kitchen-sink.md`, with both
 comments and roughly the same scroll position.
 
-**The moment the window is back, before touching anything else**, collect these two:
+**The moment the window is back, before touching anything else**, collect these two — **in this
+order**. The first is decisive and takes one keystroke; the second is the one that misled three runs.
 
 - [ ] *Developer: Show Running Extensions* — is **Markdown Review** in the list?
-- [ ] *View → Output*, dropdown top-right — does a **Markdown Review** channel exist, and what is
-      in it?
+- [ ] *View → Output*, dropdown top-right → **Markdown Review** — what lines are in it?
 
-The output channel is created in `activate()`. **If the channel does not exist, the extension never
-activated**, and that is the whole finding.
+**Running Extensions is the authority on whether the extension activated.** The output channel is
+*not*: VS Code keeps the previously-selected channel name in that dropdown across a reload, so the
+entry can be there with nothing behind it. That mistake is what D24 cost. The channel's *contents*
+are still evidence — the lines below are written during the run, so they cannot outlive it:
 
-Then classify what you saw — three different bugs wear the same word "empty":
+| Line | Proves |
+| --- | --- |
+| `[extension] deserializing a review panel` | Activation happened **and** the serializer ran |
+| `[extension] not reviving …` | `resolveTarget` rejected the stored path |
+| `[panel] …: ready received` | The webview booted and can receive messages |
+| `[panel] …: viewState visible=… canPost=…` | Every view-state flip, and whether the gate is open |
+| `[panel] …: dropped <type> (gate shut …)` | A render was computed and then discarded (D23) |
+
+Then classify. Four different bugs wear the same word "empty":
 
 | What you see | What it means |
 | --- | --- |
-| The pane tab is **gone entirely** | The serializer never ran, or `isPanelState` rejected the stored state and `deserializeWebviewPanel` disposed the panel deliberately (`src/extension.ts:48`). An `[extension] not reviving …` line in the output channel means `resolveTarget` rejected the path instead. |
-| The tab is **there, pane blank/white** | `revive` ran but rendering failed. Open *Developer: Open Webview Developer Tools* and read the console. |
-| The tab is there, **document renders, comments missing** | Not a restore problem at all — a store problem, and a much more interesting one. |
+| Blank pane, **absent from Running Extensions** | The extension never activated — **this was D24**, and if it recurs the `activationEvents` entry has been lost from the manifest. Check `node -e "console.log(require('./package.json').activationEvents)"` first; for the packaged build check `extension/package.json` inside the `.vsix`, since the archive can lag the source. |
+| Blank pane, **listed**, and a `deserializing` line, but no `ready received` | The webview never booted on the restore path. *Developer: Open Webview Developer Tools* and read the console — a 404 on `webview.js` or a CSP violation. |
+| Blank pane, `ready received` present, `dropped …` lines following | Delivery is being gated (D23's shape). The `viewState` lines say whether a flip shut it and whether anything reopened it. |
+| The pane tab is **gone entirely** | The serializer ran and rejected the panel: `isPanelState` refused the stored state and `deserializeWebviewPanel` disposed it (`src/extension.ts`), or `[extension] not reviving …` says `resolveTarget` refused the path. |
+| Document renders, **comments missing** | Not a restore problem at all — a store problem, and a much more interesting one. |
 
-**The likely cause, stated so you can disprove it.** `package.json` has no `activationEvents` at all
-(`node -e "console.log(require('./package.json').activationEvents)"` → `undefined`). Commands get
-their activation inferred from `contributes.commands`, but `onWebviewPanel:markdownReview.panel` is
-registered at *runtime* by `registerWebviewPanelSerializer` — nothing in the manifest tells VS Code
-to wake the extension for a restore. With the text editor open in A2 steps 1–4 something else may
-have activated it; with the pane as the only editor, nothing does. This is precisely why step 5 is a
-separate step. The serializer path has **zero automated coverage** — there is no `revive` or
-`deserialize` test anywhere in `src/test/`, because `@vscode/test-electron` cannot reload its own
-window.
+**Why this step exists at all.** Activation is inferred from `contributes.commands`, which covers
+every entry point the *user* initiates. A panel restore is initiated by VS Code, and the serializer
+that handles it is registered at runtime — so until D24 the manifest gave VS Code no reason to wake
+the extension for one. With the text editor open in A2 steps 1–4 something else activated it; with
+the pane as the only editor, nothing did. That is precisely why step 5 is a separate step, and why
+it is the only box that ever caught this.
 
-**The fix, if confirmed** (already written down at `04-acceptance-run.md:102`): declare
-`"activationEvents": ["onWebviewPanel:markdownReview.panel"]`. It does *not* break lazy activation —
-that event fires only when a panel is actually being restored, unlike `onStartupFinished`.
+The serializer path still has **zero automated coverage** — there is no `revive` or `deserialize`
+test anywhere in `src/test/`, because `@vscode/test-electron` cannot reload its own window. What
+*is* covered now is the manifest: `activation.spec.ts` asserts `activationEvents` is exactly
+`["onWebviewPanel:markdownReview.panel"]`, so losing it or broadening it fails the integration
+suite. The behaviour still needs a human, which is this step.
 
-It is not a one-line change to the repo, though. Four places currently assert the manifest carries
-**no** `activationEvents`, and all four have to change from "none" to "one, and here is why it is
-still lazy":
-
-- `docs/plans/05-acceptance-run.md:121` — C3's static half
-- `src/test/integration/suite/activation.spec.ts:47`
-- `src/extension.ts:5` — the file header
-- `CLAUDE.md` — the lazy-activation hard constraint
-
-And it means **step 12 (C3) must be re-run afterwards**, not trusted from its static half.
-
-Record it as a new D-number in `04-prompt-and-detection.md` §10 before changing anything.
+**If this box fails again, record it as a new D-number in `04-prompt-and-detection.md` §10 before
+changing anything** — and put the Running Extensions answer in the entry, since that is the fact
+both previous attempts left out.
 
 ---
 
@@ -591,16 +622,27 @@ code --profile mdcm-fresh --install-extension markdown-review-0.1.0.vsix
 extension-host log and did not answer `code --status`. Four attempts, no evidence. The profile route
 plus a human takes two minutes.
 
-The static half is already re-verified on the shipped bytes: no `activationEvents`, `main` present,
-four commands, `engines.vscode` `^1.90.0`. That establishes the precondition; only the Running
-Extensions view establishes the behaviour — which is why it is worth repeating rather than assuming,
-now that a **walkthrough** contribution exists and walkthroughs are a documented way to get pulled
-in early.
+**The static half's previous confirmation is void — D24 changed the manifest.** It was verified
+against bytes carrying **no** `activationEvents`, which is the defect. Re-check it on the rebuilt
+archive:
 
-> **If step 1 ends in the `activationEvents` fix**, this step must be re-run against the rebuilt
-> `.vsix` *and* its expectation rewritten from "no `activationEvents`" to "exactly
-> `onWebviewPanel:markdownReview.panel`, and the extension is still absent from Running Extensions
-> until a command is run".
+```sh
+unzip -p markdown-review-0.1.0.vsix extension/package.json | node -e \
+  "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).activationEvents))"
+# expect [ 'onWebviewPanel:markdownReview.panel' ] — exactly one entry
+```
+
+Plus `main` present, four commands, `engines.vscode` `^1.90.0`. **Exactly one entry, and that one.**
+An empty or missing array is D24 regressing; anything broader — `onStartupFinished`,
+`onLanguage:markdown` — defeats lazy activation and would still pass a careless "is the event
+there?" check.
+
+That establishes the precondition; only the Running Extensions view establishes the behaviour. **The
+behavioural expectation is unchanged**: still absent until a command is run. That is the whole point
+of choosing `onWebviewPanel:` — it fires only when VS Code is restoring a panel of that view type,
+which means the user already had one open. Worth repeating rather than assuming, both because the
+manifest changed under it and because a **walkthrough** contribution now exists and walkthroughs are
+a documented way to get pulled in early.
 
 **Then:** tick C1–C5 in `05-ship.md` §12 and date the section. Leave the Windows box (PRD §12 item
 8) **deliberately unticked with its note** — do not tick it on the strength of the substitute tests.

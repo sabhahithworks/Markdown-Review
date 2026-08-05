@@ -44,8 +44,29 @@ async function closeEverything(): Promise<void> {
 describe('activation', () => {
   it('stays dormant until a command is used', () => {
     // PRD §9 / Plan 02 §2: activation is inferred from `contributes.commands`, with no
-    // `activationEvents` and no `onStartupFinished`. This assertion is why this spec runs first.
+    // `onStartupFinished`. This assertion is why this spec runs first.
     assert.equal(extension().isActive, false, 'the extension activated without being asked');
+  });
+
+  it('declares exactly the one activation event a panel restore needs', () => {
+    // D24. This used to assert `activationEvents` was absent entirely, which is what left a
+    // reloaded review pane blank: inference from `contributes.commands` covers the entry points the
+    // user initiates, and a panel restore is initiated by VS Code. The serializer is registered at
+    // runtime, so only this declaration tells VS Code to wake us for one.
+    //
+    // Asserted as an exact list rather than a `.includes`, because the constraint is two-sided:
+    // the event must be there, and nothing broader — `onStartupFinished` or `onLanguage:markdown`
+    // would load the extension for every window or every Markdown file and pass a looser check.
+    const events: unknown = extension().packageJSON.activationEvents;
+    assert.deepEqual(
+      events,
+      ['onWebviewPanel:markdownReview.panel'],
+      'activationEvents must be exactly the panel-restore event (D24)',
+    );
+
+    // The dormancy assertion above already proves it stays lazy *with* this event declared: both
+    // run before any command, and this event fires only during an actual restore.
+    assert.equal(extension().isActive, false, 'declaring the event must not activate anything');
   });
 
   it('activates on markdownReview.open and registers all four commands', async () => {
