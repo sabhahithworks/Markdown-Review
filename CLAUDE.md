@@ -18,7 +18,7 @@ A VS Code extension (working name `markdown-review`) that renders any Markdown f
 
 Per-phase execution plans live under `docs/plans/` — start at `docs/plans/README.md` (phase map, shared conventions, contract-ownership table, verification harnesses), then execute the plan for the current phase. Run the previous phase's acceptance checklist before starting a new phase.
 
-Commands: `npm run check` (the one command the definition-of-done maps to), `npm test`, `npm run test:watch`, `npm run typecheck`, `npm run lint`, `npm run build` (also runs the CSS colour + theme-variable checks). `PERF=0 npm test` skips the 5 MB performance suite. Tests are split into two vitest projects — `--project node` for `src/test/`, `--project webview` for the jsdom suites in `media/test/`.
+Commands are in `package.json`; the ones with non-obvious behaviour: `npm run check` is what the definition-of-done maps to, `npm run build` also runs the CSS colour + theme-variable checks and the bundle guard, and `PERF=0 npm test` skips the 5 MB performance suite. Tests are split into two vitest projects — `--project node` for `src/test/`, `--project webview` for the jsdom suites in `media/test/`.
 
 **Two verification harnesses sit outside `npm run check`**, because one launches VS Code and the other needs a browser. Extend them; don't rebuild them.
 
@@ -31,32 +31,21 @@ Two release-blocking PRD defects were found and fixed during Phase 1 — see `do
 
 ## Build order (PRD §10 — binding)
 
-Phases must be completed in order; each has acceptance criteria that must pass before starting the next:
-
-1. **Anchoring core** — `src/anchor/` + `src/render/plaintext.ts`, pure logic, zero VS Code imports, full test suite (PRD §5) green via `npm test`
-2. **Read-only preview** — webview panel, rendering, CSP, theming, `data-line` attributes
-3. **Commenting** — selection → anchor → card, sidecar persistence, reload survival
-4. **Prompt + detection** — copy prompt, baseline snapshot, file watcher, re-anchor, status inference
-5. **Ship** — packaging via `npx @vscode/vsce package` (< 500 KB)
-
-Phase 1 is the load-bearing piece. Build and test it completely before touching any VS Code API.
+Phases must be completed in order; each has acceptance criteria that must pass before starting the next. PRD §10 lists them, `docs/plans/README.md` maps them to plans.
 
 ## Tech stack (PRD §3 — do not deviate without flagging)
 
-- TypeScript with `strict: true`
-- esbuild, two entry points (extension host + webview; webview JS ships separately in `media/`)
-- `markdown-it` (its `token.map` provides the source-line ranges anchoring depends on)
-- `dompurify` for sanitizing rendered HTML
-- `diff-match-patch` (`match_main`) for fuzzy anchor relocation
+The versions are in `package.json`; what it can't tell you is why each one is there:
+
+- `markdown-it` — its `token.map` provides the source-line ranges anchoring depends on
+- `diff-match-patch` — `match_main` specifically, for fuzzy anchor relocation
+- `dompurify` sanitizes all rendered HTML
 - Webview UI is vanilla TS + CSS — **no framework**
-- Tests: `vitest` for units, `@vscode/test-electron` for integration
 - No new dependencies beyond these without asking first
 
 ## Architecture
 
-Planned layout under `src/`: `extension.ts` (activation, commands), `panel/` (webview lifecycle + typed message contract), `render/` (markdown-it setup, rendered-DOM → normalized plain text + offset map), `anchor/` (create/locate/reanchor — the critical module), `store/ReviewStore.ts` (sidecar persistence, single source of truth even with two panels open), `prompt/buildPrompt.ts`.
-
-Key architectural facts that span multiple modules:
+`src/anchor/` is the critical module (create/locate/reanchor); `src/store/ReviewStore.ts` is the single source of truth for a review even with two panels open. Key architectural facts that span multiple modules:
 
 - **Anchors live in rendered-plain-text space, not markdown source.** The user selects rendered text (`**bold**` reads as `bold`), so both anchor creation and relocation operate on the normalized plain text produced by `render/plaintext.ts` (whitespace collapsed per block, blocks joined by `\n`, with an offset → source-line index from `token.map`). Fenced code content is preserved verbatim, not normalized.
 - **Locate is a confidence cascade** (PRD §5): exact+context (1.0) → exact nearest to hint (0.9/0.7) → fuzzy near hint (0.5) → fuzzy whole-document (0.3) → null. Confidence < 0.5 must be shown as "position uncertain".
