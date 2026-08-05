@@ -63,8 +63,11 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C1 — install and identity — §12 items 3, 4
 
-- [x] **C1** — **passed 2026-08-05.** With the `.vsix` installed, open the Extensions view and find
-      **Markdown Review**.
+- [~] **C1** — passed 2026-08-05 on the 0.1.0 build; **re-run needed after Plan 06**, which changed
+      the manifest. The data half is re-verified on the new shipped bytes: `displayName` "Markdown
+      Review", `publisher` `sabhahithworks`, the one-line description, and a 128×128 RGBA
+      `media/icon.png`. The icon is unchanged by Plan 06, so its legibility judgement carries over —
+      but the list entry itself has not been looked at since. Open the Extensions view and check it.
 
 > Expect: the 128×128 icon renders in the list **at 16 px and still reads as two speech bubbles** —
 > this is the size the icon actually gets seen at, and the one a 128 px preview flatters. The title
@@ -78,7 +81,9 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C2 — the full loop, on a real document — §12 item 13, PRD §12 item 7
 
-- [x] **C2** — **passed 2026-08-05**, against `docs/fixtures/review-run.md` with the **repo root** as
+- [ ] **C2** — passed 2026-08-05 on the previous build; **must be re-run**, because this is the box
+      that exercises the code Plan 06 changed most. Previously passed against
+      `docs/fixtures/review-run.md` with the **repo root** as
       the workspace, so `.reviews/docs__fixtures__review-run.md.json` exercised the flattened name by
       hand. A separate non-fixture document was not used; the path shape PRD §12 cares about was.
       Open a Markdown file you are willing to have rewritten, and run the whole loop: *Open Review Pane* → comment on two or three passages →
@@ -99,7 +104,11 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C3 — lazy activation on a fresh profile — §12 item 14, PRD §9
 
-- [x] **C3** — **passed 2026-08-05.** Markdown Review was **absent** from *Show Running Extensions*
+- [~] **C3** — passed 2026-08-05; **the static half is re-verified on the new bytes** (no
+      `activationEvents`, `main` present, four commands, `engines.vscode` `^1.90.0`) and the
+      integration suite still asserts dormancy, but a walkthrough contribution is new in Plan 06 and
+      walkthroughs are a documented way to get pulled in early — so the Running Extensions half is
+      worth repeating rather than assuming. Previously: Markdown Review was **absent** from *Show Running Extensions*
       on a fresh profile with a Markdown folder open and no command run, and appeared only after
       *Open Review Pane*. `code --profile mdcm-fresh`, install the `.vsix` into it, open a folder
       containing Markdown, and **without running any command** open
@@ -128,8 +137,10 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C4 — the listing, as VS Code renders it — §12 items 5, 7, 15
 
-- [x] **C4** — **passed 2026-08-05.** In the Extensions view, click Markdown Review to open its detail pane, and read all
-      three tabs.
+- [~] **C4** — passed 2026-08-05; **re-run needed.** The settings comparison is re-done and found a
+      drift (see below); the Changelog tab has a new `[Unreleased]` section above `0.1.0`, and
+      Feature Contributions has gained a keybinding and a walkthrough. Click Markdown Review to open
+      its detail pane and read all three tabs.
 
 > Expect, on **Details**: the first line is the PRD §1 positioning sentence — *any* markdown file,
 > *any* agent. Every image loads; a broken image here is a relative URL that will break identically
@@ -142,14 +153,30 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 > On **Feature Contributions**: four commands, and three settings whose descriptions match Plan 05
 > §5's README table word for word. Open Settings and search `markdownReview` to compare — the README
 > table and the Settings UI drifting apart is a documentation bug that only this comparison catches.
+> It caught one on the 2026-08-05 re-run: `markdownReview.author` read "Name attached to your
+> comments." in the README against "…Defaults to your system username." in the manifest. §5 says the
+> table carries the manifest description *verbatim*, so the README was the side corrected.
+>
+> **Two sections are new since the first pass** (Plan 06): a **Keybinding** row for
+> <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> bound to *Open Review Pane* when the editor
+> language is Markdown, and a **Walkthrough** — "Review markdown with any AI agent", three steps.
+> The walkthrough also appears in the *Get Started* section of the Welcome page; open it once and
+> confirm all three steps render their markdown body, since those three files ship in the `.vsix`
+> and a wrong path here shows as an empty step rather than an error.
 >
 > This tab set is the closest local proxy for the Marketplace listing that exists, which is why it is
 > worth doing carefully before publishing rather than after.
 
 ### C5 — themes on the installed bytes — §12 item 15
 
-- [x] **C5** — **passed 2026-08-05.** With the pane open and at least one comment, one `addressed` card and one resolved
-      card on screen, switch between Dark+, Light+ and a High Contrast theme.
+- [~] **C5** — passed 2026-08-05; **re-run needed.** The precondition is re-verified — the packaged
+      `media/webview.css` is byte-identical to the repo's, so nothing was stripped — and the three
+      harness presets pass on the new stylesheet. But Plan 06 added a forced-colors block, a
+      `position uncertain` badge, an armed-delete state and an empty-state panel, none of which
+      existed when this box was last ticked. With the pane open and at least one comment, one
+      `addressed` card and one resolved card on screen, switch between Dark+, Light+ and a High
+      Contrast theme. **On Windows, also try forced-colors** — that is the one Plan 06 could not
+      verify anywhere.
 
 > Expect: cards, popover, highlight, status badges and the header bar all stay legible; nothing
 > disappears into its background.

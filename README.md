@@ -70,7 +70,7 @@ you.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `markdownReview.author` | *system username* | Name attached to your comments. |
+| `markdownReview.author` | *system username* | Name attached to your comments. Defaults to your system username. |
 | `markdownReview.storageLocation` | `workspace` | `workspace` writes to `.reviews/` (shareable via git). `global` keeps comments private to your machine. |
 | `markdownReview.autoDetectResolution` | `true` | Mark comments as addressed when their anchored text changes. |
 
