@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-08-05
+
+First release. Comment on any Markdown file in a review pane, copy a prompt, hand it to whichever AI
+agent you already use, and let the extension work out which comments were addressed by watching the
+file change. The agent is only ever asked to edit prose — every piece of bookkeeping stays here,
+which is what makes it work with any agent and no integration.
+
+Everything below is the detail of how that got built, including the defects found and fixed on the
+way. `addressed` is inferred and never authoritative; nothing is deleted automatically.
+
 ### Added
 
 - **The review loop, host side (Phase 4a).** Copy a prompt, let any agent edit the prose, and the
@@ -173,3 +183,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first ~300 characters of any document) and the `addressed` comparison basis, which now reads
   `anchor.exact` rather than the unlocatable `baselineText`. `docs/plans/01-anchoring-core.md` §9
   lists these and the smaller corrections fixed inline.
+
+[Unreleased]: https://github.com/sabhahithworks/Markdown-Review/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/sabhahithworks/Markdown-Review/releases/tag/v0.1.0

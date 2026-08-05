@@ -420,32 +420,44 @@ items appears below. Date this section when it passes.
 - [ ] Publisher id `sabhahithworks` claimed; `items?itemName=sabhahithworks.markdown-review` returns
       404 beforehand
       — **manual**, and the only irreversible step in the phase (PRD §12 item 2)
-- [ ] `publisher`, `author`, `repository`, `icon` applied and `private: true` removed **in one
-      commit**; git remote added and pushed
-      — `git show --stat` on that commit, and `npx vsce ls` succeeding at all, which it cannot while
-      `private` is set
-- [ ] 128×128 `media/icon.png` in place, legible at 16 px, readable on dark and light (PRD §12 item 3)
-      — **manual**, at both sizes, against both Marketplace backgrounds
-- [ ] README leads with the PRD §1 positioning sentence and carries all eight §5 sections; every
-      image URL absolute and confirmed loading from its raw URL (PRD §12 item 4)
-      — **manual**; the settings table is checked against the live Settings UI in
-      `05-acceptance-run.md` C4
+- [x] `publisher`, `author`, `repository`, `icon` applied and `private: true` removed **in one
+      commit** — **2026-08-05**, `558bf29`. `git remote add origin` done; **not yet pushed**, which
+      is what the README's absolute image URLs are waiting on
+      — `git show --stat 558bf29`. The `vsce ls` half of this item as originally written was wrong:
+      neither `private` nor a missing `publisher` blocks `package` in vsce 3.9.2 (§2, §13 E4)
+- [x] 128×128 `media/icon.png` in place, legible at 16 px, readable on dark and light (PRD §12 item 3)
+      — **2026-08-05**. `media/icon.svg` rasterized through headless Chrome; inspected at 128 px and
+      again downsampled to 16 px, where the two bubbles and the amber accent still separate
+- [x] README leads with the PRD §1 positioning sentence and carries all eight §5 sections
+      (PRD §12 item 4)
+      — **2026-08-05**. **No image URLs to check yet**: it ships with no images rather than with
+      broken ones, so the absolute-URL rule is untested until the visual below lands. The settings
+      table is checked against the live Settings UI in `05-acceptance-run.md` C4
 - [ ] A visual of the loop exists — stills at minimum, GIF preferred (§6)
-      — **manual**
-- [ ] LICENSE present with a settled copyright line; CHANGELOG promoted to `0.1.0` with a date
+      — **manual, and the one listing asset still missing.** `ffmpeg` is present, so the GIF path is
+      open; the recording itself needs a human driving a real pane
+- [x] LICENSE present with a settled copyright line; CHANGELOG promoted to `0.1.0` with a date
       (PRD §12 item 5)
-      — inspection; the CHANGELOG renders as its own tab in `05-acceptance-run.md` C4
-- [ ] `.vscodeignore` present; `vsce ls` lists exactly the ten files in §7 — **no `node_modules/`,
+      — **2026-08-05**. Copyright is `Sabhahith Works`; `[Unreleased]` emptied above a dated
+      `[0.1.0]` with a summary paragraph and link references
+- [x] `.vscodeignore` present; `vsce ls` lists exactly the ten files in §7 — **no `node_modules/`,
       no `src/`, no `dist-test/`** (PRD §12 item 6)
-      — read the output file by file, not as a count (§13 E1). Empty output is a failure (§13 E6)
-- [ ] `npx vsce package` succeeds and the `.vsix` is under 500 KB (PRD §12 item 7)
-      — record the number here. Baseline for comparison: the `local-dev` build is 121 KB
-- [ ] `scripts/check-bundles.mjs` green as part of `npm run build`
-      — no network APIs in either bundle, no highlight.js in `dist/extension.js`, both bundles under
-      their ceilings. This is PRD §2/§13's first automated coverage
-- [ ] Windows-shaped path inputs green across sidecar naming, `.reviews/` creation, watcher globs and
-      `targetPath`
-      — unit tests per §9
+      — **2026-08-05**, read file by file. `media/icon.svg` was an eleventh until excluded: it is the
+      raster's source, not a runtime asset. E1 measured at the same time — 1,849 files without the
+      file, 10 with it
+- [x] `npx vsce package` succeeds and the `.vsix` is under 500 KB (PRD §12 item 7)
+      — **2026-08-05: 129.4 KB** (132,480 bytes, 12 entries incl. vsce's two metadata files).
+      About a quarter of budget; the `local-dev` build was 121 KB
+- [x] `scripts/check-bundles.mjs` green as part of `npm run build`
+      — **2026-08-05**. Both bundles clean of every banned API on the first run, and `hljs` appears
+      in `media/webview.js` but not `dist/extension.js`. Teeth confirmed against three probe files
+      through the `EXTENSION_BUNDLE` / `WEBVIEW_BUNDLE` seams: a `fetch(`, an `hljs`, and an
+      oversized file each exit 1. PRD §2/§13's first automated coverage
+- [x] Windows-shaped path inputs green across sidecar naming and `targetPath`
+      — **2026-08-05**, `sidecarPath.test.ts` (17 tests). Scope corrected from §9 as written:
+      `.reviews/` creation and the watcher globs have **no Windows-specific surface to test** —
+      both build patterns with `path.dirname`/`path.basename` and a bare filename, which carry no
+      separator. See §13 E8 for the drive-letter case, which turns out to be unreachable
 - [ ] **The real Windows pass is NOT done** (PRD §12 item 8) — no machine available; §13 E7 records
       what remains untested. Leave this box unticked deliberately, not blank
 - [ ] Installed `.vsix`: the full loop passes in stable VS Code on a real project (PRD §12 item 7)
@@ -478,6 +490,10 @@ So the real first `vsce package` produces an archive containing `src/`, `docs/`,
 `MARKDOWN_REVIEW_PRD.md`, `.reviews/`, `dist-test/suite.js` — **1.4 MB of unminified integration-test
 bundle on its own** — and, via `collectAllFiles` → `getDependencies`, every file of all six
 production dependencies, highlight.js included. Against a 500 KB budget that is not a near miss.
+
+**Measured, 2026-08-05**, by moving `.vscodeignore` aside and running `vsce ls`: **1,849 files**,
+1,740 of them under `node_modules/` and 55 under `src/`, plus both `dist-test/` bundles, the PRD and
+`CLAUDE.md`. With the file in place: **10**.
 It is release-blocking for the same reason the original wording was: the first package is silently
 wrong, and nothing in `npm run check`, `npm run test:integration` or `dev/harness/` looks at an
 archive. It simply fails loudly on size rather than quietly on a blank pane, which is the better of
@@ -539,6 +555,28 @@ Offered as a diagnosis, not a certainty — it was not reproduced under a debugg
 Two rules follow regardless. Package from the repo, not from a temp directory. And treat empty
 `vsce ls` output as a hard failure, never as "nothing to report" — which is exactly the reading that
 wasted that afternoon, and exactly what §12's box guards against.
+
+### Found while executing the phase
+
+**E8 — `sidecarFileName` has an unstated precondition, and the Windows case that would break it
+cannot be reached.** Chasing §9's drive-letter and UNC coverage turned up that `path.win32.relative`
+returns an *absolute* path when the two arguments are on different drives — `relative('C:\ws',
+'D:\other\file.md')` is `'D:\other\file.md'`, not a `..` chain. Fed to `sidecarFileName` that becomes
+`D:__other__file.md.json`, and `:` is illegal in a Windows filename, so the sidecar write would fail
+with an error pointing nowhere near the cause.
+
+It is not reachable. `resolveSidecar` (`src/store/ReviewStore.ts:543`) only calls `path.relative`
+when `vscode.workspace.getWorkspaceFolder(target)` returned a folder, and that API returns one only
+when it *contains* the target — so the relative path can never cross a drive, reach a UNC root, or
+even begin with `..`. Nothing was changed: adding a guard for an unreachable input is how a codebase
+accumulates defensive code nobody can explain later. What was added is a test that states the
+precondition and pins the behaviour, so if a future caller ever does pass an absolute path, the test
+is what explains the error message.
+
+The same investigation shrank §9's scope honestly. `.reviews/` creation and the `FileSystemWatcher`
+globs were listed there as Windows risks; both construct their pattern from `path.dirname` and
+`path.basename` with a bare filename, which contains no separator at all. There is nothing
+platform-specific left in them to test.
 
 ### Noted, not done
 
