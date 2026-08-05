@@ -261,7 +261,7 @@ export class ReviewStore {
 
     const result = reanchor(this.state, doc, {
       ...options,
-      inferAddressed: options.inferAddressed ?? this.inferAddressedSetting(),
+      inferAddressed: options.inferAddressed ?? this.inferAddressed,
     });
 
     this.commit(result.reviewFile, { persist: result.changed, notify: result.changed });
@@ -271,8 +271,14 @@ export class ReviewStore {
   /**
    * `markdownReview.autoDetectResolution`, scoped to this target so a folder-level
    * `.vscode/settings.json` wins in a multi-root workspace.
+   *
+   * Public because the panel's section-change signal (D17) honours the same setting. That signal is
+   * not a status and infers nothing — it reports that text differs from the baseline — but someone
+   * who turned inference off is asking not to be told what the extension thinks happened, and
+   * splitting hairs about which kinds of "what the extension thinks happened" still apply would be
+   * a setting nobody could predict. Read live rather than cached, matching `applyReanchor`.
    */
-  private inferAddressedSetting(): boolean {
+  get inferAddressed(): boolean {
     return vscode.workspace
       .getConfiguration('markdownReview', this.target)
       .get<boolean>('autoDetectResolution', true);

@@ -157,6 +157,14 @@ The client retries failed requests up to five times before giving up.
 Errors surface as structured problem documents.
 `;
 
+/**
+ * Long enough for the 400 ms coalescer plus a re-anchor pass and a debounced sidecar write.
+ *
+ * Only for assertions whose expected outcome is "nothing changed" — there is no transition to
+ * `waitFor`, so the alternative is asserting immediately and passing before the pass has even run.
+ */
+const CHANGE_SETTLE_MS = 900;
+
 /** Statuses by comment id, so an assertion does not depend on array order. */
 async function statuses(read: () => Promise<ReviewFile>): Promise<Record<string, CommentStatus>> {
   const review = await read();
@@ -198,6 +206,39 @@ describe('change detection (PRD §8)', () => {
       AUTH_ANCHORS.retries,
       'anchor.exact is the durable record and must survive the flip',
     );
+  });
+
+  it('leaves a heading comment open when only its section body changed (D17)', async () => {
+    // The case the first real-agent run found. Comment 3 is anchored on `## Error handling`, so
+    // rewriting the prose *under* it — exactly what the comment asked for — leaves `anchor.exact`
+    // untouched and infers nothing.
+    //
+    // That is the correct status, and this test exists to keep it correct: the fix for D17 is a
+    // separate, weaker signal computed per render in the panel, never a fourth status and never a
+    // widening of what `addressed` claims. If a later change starts flipping this to `addressed`,
+    // `addressed` has stopped meaning "the text you selected changed".
+    const { target, read } = await seedReview('detect-section');
+    await vscode.commands.executeCommand('markdownReview.open', target);
+
+    await writeText(
+      target,
+      AUTH_MARKDOWN.replace(
+        'Errors surface as structured problem documents.',
+        'Errors surface as structured problem documents. Requests time out after 30 seconds.',
+      ),
+    );
+
+    // The other two comments are untouched by this edit, so the only observable transition would be
+    // the wrong one. Wait for the pass to have happened, then assert nothing moved.
+    await delay(CHANGE_SETTLE_MS);
+
+    const byId = await statuses(read);
+    assert.equal(byId['detect-section-3'], 'open', 'a heading anchor must not infer addressed');
+    assert.equal(byId['detect-section-1'], 'open');
+    assert.equal(byId['detect-section-2'], 'open');
+
+    const heading = (await read()).comments.find((c) => c.id === 'detect-section-3');
+    assert.equal(heading?.resolution, undefined, 'nothing was inferred, so there is no before/after');
   });
 
   it('detects an unsaved editor edit, preferring the buffer over disk', async () => {

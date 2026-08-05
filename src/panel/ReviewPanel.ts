@@ -12,10 +12,13 @@ import { nanoid } from 'nanoid';
 import * as vscode from 'vscode';
 import { createAnchor } from '../anchor/create.js';
 import { createLocator } from '../anchor/locate.js';
-import type { Comment, Located, PlainTextDoc } from '../anchor/types.js';
+import type { Comment, Located, PlainTextDoc, ReviewFile } from '../anchor/types.js';
 import { showRewriteDiff } from '../detect/baselineDocuments.js';
+import { changedRanges, touches } from '../detect/changedRanges.js';
 import { createChangeWatcher } from '../detect/changeWatcher.js';
 import { detectRewrite } from '../detect/rewrite.js';
+import type { TextRange } from '../detect/scope.js';
+import { scopeOf } from '../detect/scope.js';
 import { renderPlainText } from '../render/plaintext.js';
 import type { ImageResolver } from '../render/renderer.js';
 import { renderMarkdown } from '../render/renderer.js';
@@ -68,6 +71,9 @@ export class ReviewPanel {
    * and is `undefined` only before the first successful render.
    */
   private doc: PlainTextDoc | undefined;
+
+  /** Memo for the baseline diff behind the section-change signal; see `changedRanges` below. */
+  private changedMemo: { baselineAt: string; text: string; ranges: TextRange[] | null } | undefined;
 
   static createOrShow(
     context: vscode.ExtensionContext,
@@ -326,9 +332,80 @@ export class ReviewPanel {
       for (const comment of review.comments) located[comment.id] = null;
     }
 
+    const sectionChanged = this.doc ? this.sectionChanged(review, this.doc, located) : [];
+
     // The baseline is stripped here rather than left to the webview to ignore: it is the one field
     // that can be hundreds of kilobytes, and this message goes out on every state change.
-    this.post({ type: 'reviewState', review: toReviewSummary(review), located });
+    this.post({ type: 'reviewState', review: toReviewSummary(review), located, sectionChanged });
+  }
+
+  /**
+   * Open comments whose *region* changed since the prompt was copied, though their own anchored
+   * text did not (D17).
+   *
+   * `anchor.exact` is both the passage the user pointed at and the evidence for `addressed`, and
+   * those only coincide when the fix lands inside the selection. They come apart for every comment
+   * whose anchor *labels* the thing to fix rather than being it — a heading above a section the
+   * agent rewrote is the case that found this. Such a comment stays `open` forever and the pane
+   * says nothing, which is indistinguishable from the agent never having run.
+   *
+   * This is deliberately **not** a status. `reanchor.ts` remains the only code that sets one, the
+   * result is derived per render and never persisted, and the card asks rather than asserts.
+   */
+  private sectionChanged(
+    review: ReviewFile,
+    doc: PlainTextDoc,
+    located: Record<string, Located | null>,
+  ): string[] {
+    // Not a status, but still the extension volunteering a theory about what the agent did.
+    if (!this.store.inferAddressed) return [];
+
+    const baseline = review.baselineText;
+    // No baseline means the prompt was never copied, or the document was too large to snapshot
+    // (Plan 04 §10 D2). "Changed since you asked" has no meaning before you asked.
+    if (!baseline) return [];
+
+    const ranges = this.changedRanges(baseline, review.baselineAt ?? '', doc.text);
+    if (!ranges) return [];
+
+    // A comment written after the prompt was copied was never in it, so the baseline predates the
+    // claim and cannot be evidence about it. An unparseable date — which PRD §11's hand-editable
+    // sidecar allows — leaves the comment in rather than out: over-reporting is the safe direction.
+    const baselineTime = Date.parse(review.baselineAt ?? '');
+
+    const ids: string[] = [];
+    for (const comment of review.comments) {
+      // `addressed` and `orphaned` already carry stronger evidence, and `resolved` is terminal.
+      if (comment.status !== 'open') continue;
+
+      const found = located[comment.id];
+      if (!found) continue;
+
+      if (!Number.isNaN(baselineTime)) {
+        const created = Date.parse(comment.createdAt);
+        if (!Number.isNaN(created) && created > baselineTime) continue;
+      }
+
+      const scope = scopeOf(doc, found);
+      if (scope && touches(ranges, scope)) ids.push(comment.id);
+    }
+    return ids;
+  }
+
+  /**
+   * The baseline diff, memoized.
+   *
+   * `refresh()` deliberately posts state twice when a status flips — both posts are computed from
+   * the same document and the same store state, so they are byte-identical — and diffing a pair of
+   * 256 KB documents twice for an identical answer is the one part of that which is not free.
+   */
+  private changedRanges(baseline: string, baselineAt: string, text: string): TextRange[] | null {
+    const memo = this.changedMemo;
+    if (memo && memo.baselineAt === baselineAt && memo.text === text) return memo.ranges;
+
+    const ranges = changedRanges(baseline, text);
+    this.changedMemo = { baselineAt, text, ranges };
+    return ranges;
   }
 
   /**

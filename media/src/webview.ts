@@ -391,7 +391,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
       // showed up as highlights landing on the wrong line.
       header?.setState(message.review);
       orphans?.setState(message.review.comments, message.located);
-      comments?.setState(message.review, message.located);
+      comments?.setState(message.review, message.located, message.sectionChanged);
       break;
 
     case 'rewriteDetected':

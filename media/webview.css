@@ -748,6 +748,24 @@ body:not(.mr-narrow) {
   text-decoration: none;
 }
 
+/* ---------- The section-change note (D17) ---------- */
+
+/*
+ * Deliberately quieter than `.mr-diff` above. That block is the evidence for `addressed` and is
+ * coloured like a diff, because it is one. This is a weaker claim — the region around the comment
+ * moved, which may or may not mean the comment was answered — and giving it the same red/green
+ * would invite reading it as the same thing. A rule rather than a colour keeps it legible under
+ * forced-colors, where a background would be stripped by the OS.
+ */
+.mr-card-note {
+  margin: 6px 0 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--vscode-panel-border);
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- Orphan triage ---------- */
 
 /*

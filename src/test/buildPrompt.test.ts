@@ -194,13 +194,29 @@ describe('buildPrompt — heading phrasing (PRD §7)', () => {
     expect(promptSix).toContain('On the section "###### Deep heading"');
   });
 
-  it('uses the plain phrasing when the anchor covers only part of a heading', () => {
+  it('names the whole section when the anchor covers only part of a heading', () => {
+    // Inverted by D17. This asserted the plain phrasing on the reasoning that "half a heading is
+    // not a section" — but the anchor that produced D17 was a heading selected without its manual
+    // `2. ` numbering, which is the ordinary gesture, and nobody selects three words of a heading
+    // to talk about only those three words. The quote names the whole heading rather than the
+    // fragment, or the instruction would be worse than the one it replaced.
     const doc = docOf('## Error handling and retries\n\nBody text here.\n');
     const review = makeReviewFile([makeComment(anchorOn(doc, 'and retries'))]);
 
     const { prompt } = buildPrompt(review, doc);
 
-    expect(prompt).toContain('On: "and retries"');
+    expect(prompt).toContain('On the section "## Error handling and retries"');
+  });
+
+  it('still uses the plain phrasing when the anchor runs out of the heading', () => {
+    // The boundary of that widening: once the selection crosses into the prose below, it is no
+    // longer a claim about the section.
+    const doc = docOf('## Error handling\n\nBody text here.\n');
+    const review = makeReviewFile([makeComment(anchorOn(doc, 'handling\nBody text'))]);
+
+    const { prompt } = buildPrompt(review, doc);
+
+    expect(prompt).toContain('On: "handling Body text"');
     expect(prompt).not.toContain('On the section');
   });
 

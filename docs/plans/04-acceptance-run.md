@@ -103,10 +103,16 @@ Then click **Copy review prompt (3)** in the header bar.
 - [ ] **B1d** — **Reopen** on another → it returns to `open`, and the header's open count and the
       **Copy review prompt (n)** label both go back up.
 
-> If a comment orphans instead of flipping to `addressed`, that is the finding. Note **which**
-> comment and **what the agent did to that passage** — a paragraph-level rewrite where a clause-level
-> edit would have done is a prompt problem, not an anchoring problem, and the fix is PRD §7's
-> wording rather than `src/anchor/`.
+> **Comment 2 will not flip to `addressed`, and that is correct.** It is anchored to a heading, and
+> `addressed` means the text you *selected* changed — rewriting the section below leaves the heading
+> untouched. Expect the weaker signal instead: the card keeps its `open` status and gains the note
+> "This section changed since you copied the prompt", with **Looks good**. That is D17, found by the
+> first run of this very step; see Plan 04 §10.
+>
+> If a comment orphans instead, that is a different finding. Note **which** comment and **what the
+> agent did to that passage** — a paragraph-level rewrite where a clause-level edit would have done
+> is a prompt problem, not an anchoring problem, and the fix is PRD §7's wording rather than
+> `src/anchor/`.
 
 ### B2 — orphan and the re-anchor gesture — §9 item 4
 

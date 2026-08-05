@@ -71,8 +71,19 @@ export type HostMessage =
    * confidence cascade out of the webview keeps `diff-match-patch` out of that bundle (Plan 03 §9
    * C2). A `null` entry means the anchor could not be found; the comment is orphaned. The webview's
    * only job is mapping these offsets onto the DOM via `data-ap-start`.
+   *
+   * `sectionChanged` lists the ids of `open` comments whose *region* differs from the review
+   * baseline even though their own anchored text does not (D17) — a heading comment whose section
+   * the agent rewrote, say. It is a weaker claim than `addressed` on purpose and is never a status:
+   * nothing is inferred, nothing is persisted, and the user confirms with "Looks good". Sent as a
+   * sparse array because the common case is empty and this message goes out on every state change.
    */
-  | { type: 'reviewState'; review: ReviewSummary; located: Record<string, Located | null> }
+  | {
+      type: 'reviewState';
+      review: ReviewSummary;
+      located: Record<string, Located | null>;
+      sectionChanged: string[];
+    }
   /**
    * A single re-anchor pass lost every comment that was previously located, and a baseline exists
    * (PRD §11). Evaluated host-side because only the host knows the state *before* the pass.

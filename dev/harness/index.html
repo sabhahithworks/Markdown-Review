@@ -132,7 +132,7 @@
       currentKey = key;
       const scenario = fixture.scenarios[key];
       post({ type: 'setContent', html: fixture.html, frontMatterHtml: fixture.frontMatterHtml });
-      post({ type: 'reviewState', review: scenario.review, located: scenario.located });
+      post({ type: 'reviewState', review: scenario.review, located: scenario.located, sectionChanged: scenario.sectionChanged ?? [] });
       // Only the host can detect a rewrite — it needs the state from *before* the re-anchor pass —
       // so the scenario declares the outcome and the page plays the host's part.
       if (scenario.rewriteDetected) {
@@ -148,7 +148,7 @@
     themeSelect.addEventListener('change', () => {
       document.documentElement.dataset.theme = themeSelect.value;
       // Colour changes cannot move layout, but the reposition is free and keeps the two in step.
-      post({ type: 'reviewState', review: fixture.scenarios[currentKey].review, located: fixture.scenarios[currentKey].located });
+      post({ type: 'reviewState', review: fixture.scenarios[currentKey].review, located: fixture.scenarios[currentKey].located, sectionChanged: fixture.scenarios[currentKey].sectionChanged ?? [] });
     });
     scenarioSelect.addEventListener('change', () => loadScenario(scenarioSelect.value));
 
@@ -361,6 +361,36 @@
           return fail('the "after" line is underlined and reads as a link');
         }
         return pass(`${befores.length} before/after pair(s), ${beforeColour} vs ${afterColour}`);
+      },
+
+      'the section-change note lands only on the flagged card'() {
+        if (currentKey !== 'nearby') return skip('other scenario');
+        const scenario = fixture.scenarios[currentKey];
+        const flagged = new Set(scenario.sectionChanged);
+
+        const noted = [...document.querySelectorAll('#gutter .mr-card')].filter((card) => card.querySelector('.mr-card-note'));
+        const notedIds = new Set(noted.map((card) => card.dataset.commentId));
+        if (notedIds.size !== flagged.size) return fail(`${notedIds.size} card(s) carry the note, expected ${flagged.size}`);
+        for (const id of flagged) {
+          if (!notedIds.has(id)) return fail(`${id} was flagged but carries no note`);
+        }
+
+        // The note must not read as the addressed diff. Those are the evidence for an inference the
+        // extension made; this is a weaker claim, and rendering them alike invites confusing the two.
+        const note = noted[0].querySelector('.mr-card-note');
+        if ((note.textContent || '').trim().length === 0) return fail('the note is empty');
+        if (noted[0].querySelector('.mr-diff')) return fail('a flagged open card is also showing a before/after');
+
+        const addressed = document.querySelector('#gutter .mr-card-addressed .mr-diff-before');
+        if (!addressed) return fail('the scenario lost its addressed card, so the comparison is untested');
+        if (getComputedStyle(note).color === getComputedStyle(addressed).color) {
+          return fail('the note renders the same colour as an addressed diff');
+        }
+
+        // "Looks good" rather than "Resolve": the user is confirming something, not judging cold.
+        const labels = [...noted[0].querySelectorAll('.mr-card-action')].map((button) => button.textContent);
+        if (!labels.includes('Looks good')) return fail(`no "Looks good" action, found ${labels.join(', ')}`);
+        return pass(`note on ${notedIds.size} of ${scenario.review.comments.length} card(s), distinct from the diff`);
       },
 
       'the header does not swallow content'() {

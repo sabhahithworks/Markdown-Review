@@ -365,6 +365,42 @@ but not one that fires over a full document. Moved above the content in both she
 check now asserts the banner is **on screen at scroll top** rather than merely present — "exists"
 was the assertion that let this through.
 
+### Found by the first real-agent run
+
+**D17 — a comment on a heading can never be inferred `addressed`.** The acceptance run's whole
+purpose, delivering on its first use. A comment was anchored to a heading, the agent rewrote the
+section beneath it, and the comment stayed `open` — correctly, per PRD §5, and uselessly.
+
+The root cause is that `anchor.exact` does two jobs. It is the *reference* the user pointed at, and
+the *evidence* that the comment was acted on. Those coincide only when the fix lands inside the
+selection, which is not true of any comment whose anchor **labels** the thing to fix: a heading, a
+list's intro line, "add a caveat after this". So this was never a heading special case. Worse, the
+pane had no way to say "the agent ran and changed something near here", so the state was
+indistinguishable from the agent never having run at all.
+
+Fixed with a second, weaker, **derived** signal rather than by widening `addressed` — that status is
+the one thing the user is asked to trust, and buying coverage with false positives spends exactly the
+credibility it depends on. `src/detect/scope.ts` decides what region a comment is about,
+`src/detect/changedRanges.ts` diffs `baselineText` into current-document coordinates, and
+`ReviewPanel.postReviewState` intersects the two. Nothing is persisted, no status was added, and the
+sidecar format is unchanged. PRD §5 and §8 are amended.
+
+Two things fell out of it:
+
+- `buildPrompt` and the detector had disagreed about what a heading anchor means. The prompt said
+  `On the section "## …"` while `reanchor` watched only the heading line. They now share `scopeOf`.
+- `headingBlockAt`'s exact-span-equality rule is gone. It reasoned that "half a heading is not a
+  section" — but the anchor that produced D17 was a heading selected without its manual `2. `
+  numbering, which is the ordinary gesture, and nobody selects three words of a heading to talk
+  about only those three words. An anchor that *runs out* of the heading still falls back to block
+  scope; that boundary has its own test.
+
+**Also corrected: PRD §5 claimed locating an anchor inside `baselineText` was "not implementable".**
+Too strong — `createLocator` reads only `doc.text`. What the baseline lacks is block structure, and
+the signal needs none: it maps the diff into the current document, where the block map is the one
+just rendered. The conclusion the claim supported (that `anchor.exact`, not `baselineText`, is the
+`addressed` comparison basis) is unaffected and stands.
+
 ### Noted, not changed
 
 - `#notice` remains a single slot shared by `tooLarge`, `targetUnreadable` and `rewriteDetected`.

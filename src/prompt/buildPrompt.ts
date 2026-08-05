@@ -15,7 +15,8 @@
 import type { Locator } from '../anchor/locate.js';
 import { createLocator } from '../anchor/locate.js';
 import { truncateQuote } from '../anchor/text.js';
-import type { BlockSpan, Comment, Located, PlainTextDoc, ReviewFile } from '../anchor/types.js';
+import type { Comment, Located, PlainTextDoc, ReviewFile } from '../anchor/types.js';
+import { scopeOf } from '../detect/scope.js';
 import { collapse } from '../render/plaintext.js';
 
 export interface PromptResult {
@@ -105,34 +106,31 @@ function createdAt(comment: Comment): number {
  * quote beats no quote at all.
  */
 function describeAnchor(entry: Entry, doc: PlainTextDoc): string {
-  const raw = entry.found
-    ? doc.text.slice(entry.found.start, entry.found.end)
-    : entry.comment.anchor.exact;
+  const scope = entry.found ? scopeOf(doc, entry.found) : null;
+
+  // A section quote names the *whole* heading, even when the anchor covered only part of it. Saying
+  // `On the section "### nested"` because the user did not select the first word would be a worse
+  // instruction than the one this replaced — and `scopeOf` deliberately treats a partial heading as
+  // a claim about the section (see its doc comment, and D17).
+  const raw =
+    scope?.kind === 'section' && scope.heading
+      ? doc.text.slice(scope.heading.start, scope.heading.end)
+      : entry.found
+        ? doc.text.slice(entry.found.start, entry.found.end)
+        : entry.comment.anchor.exact;
 
   // Collapse before truncating: fenced code is preserved verbatim in anchor space, so a code anchor
   // carries real newlines that would break this single-line form. Only the *quote* is collapsed —
   // `anchor.exact` is the durable record of what was selected and is never rewritten.
   const title = truncateQuote(collapse(raw));
 
-  const heading = entry.found && headingBlockAt(doc, entry.found);
-  if (heading) {
+  if (scope?.kind === 'section') {
     // The `#` markers are markdown syntax, so they are absent from anchor space and have to be
     // rebuilt. A heading missing its level would be a `walkSpans` bug, and the count of hashes is
     // cosmetic next to getting the "On the section" phrasing right — so fall back rather than skip.
-    return `On the section "${'#'.repeat(heading.headingLevel ?? 1)} ${title}"`;
+    return `On the section "${'#'.repeat(scope.headingLevel ?? 1)} ${title}"`;
   }
   return `On: "${title}"`;
-}
-
-/**
- * The heading block this anchor covers *entirely*, if any (PRD §7).
- *
- * Exact span equality, so an anchor over a few words inside a heading still gets the plain phrasing:
- * "On the section" is a claim about scope, and half a heading is not a section.
- */
-function headingBlockAt(doc: PlainTextDoc, found: Located): BlockSpan | undefined {
-  const block = doc.blocks.find((span) => span.start === found.start && span.end === found.end);
-  return block?.kind === 'heading' ? block : undefined;
 }
 
 /**

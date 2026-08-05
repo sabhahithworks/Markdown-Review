@@ -32,7 +32,11 @@ export interface CommentsOptions {
 }
 
 export interface CommentsView {
-  setState(review: ReviewSummary, located: Record<string, Located | null>): void;
+  setState(
+    review: ReviewSummary,
+    located: Record<string, Located | null>,
+    sectionChanged: readonly string[],
+  ): void;
   setFilter(statuses: readonly CommentStatus[]): void;
   reposition(): void;
 }
@@ -83,6 +87,11 @@ export function stackTops(desired: number[], heights: number[], gap: number): nu
 export function initComments(options: CommentsOptions): CommentsView {
   let comments: Comment[] = [];
   let located: Record<string, Located | null> = {};
+  /**
+   * Ids of open comments whose region changed since the baseline (D17). Not a status — it never
+   * reaches `filter`, and the header still counts these as `open`, because they are.
+   */
+  let sectionChanged = new Set<string>();
   /** Statuses currently shown. Everything, until the header says otherwise. */
   let filter: CommentStatus[] = [...FILTERABLE];
   /** Card element per comment id, for the positioning pass. */
@@ -119,8 +128,13 @@ export function initComments(options: CommentsOptions): CommentsView {
     return options.root.clientWidth > 0 && window.innerWidth < NARROW_BREAKPOINT_PX;
   }
 
-  function setState(review: ReviewSummary, next: Record<string, Located | null>): void {
+  function setState(
+    review: ReviewSummary,
+    next: Record<string, Located | null>,
+    nextSectionChanged: readonly string[],
+  ): void {
     located = next;
+    sectionChanged = new Set(nextSectionChanged);
     // The gutter takes only what it can place. `orphans.ts` takes the rest.
     comments = review.comments.filter((comment) => !belongsInOrphans(comment, next));
     render();
@@ -145,7 +159,9 @@ export function initComments(options: CommentsOptions): CommentsView {
     const ordered = [...live].sort((a, b) => anchorStart(a) - anchorStart(b));
 
     for (const comment of ordered) {
-      const card = buildCard(comment, options, () => toggleExpanded(comment.id));
+      const card = buildCard(comment, options, () => toggleExpanded(comment.id), {
+        sectionChanged: sectionChanged.has(comment.id),
+      });
       card.addEventListener('mouseenter', () => {
         setActive(comment.id);
       });
@@ -328,13 +344,21 @@ function buildMarker(
   return marker;
 }
 
+/** Per-card facts that are derived rather than stored, so they do not live on `Comment`. */
+interface CardSignals {
+  /** The comment's region differs from the review baseline, though its own anchor does not (D17). */
+  sectionChanged: boolean;
+}
+
 function buildCard(
   comment: Comment,
   options: CommentsOptions,
   onToggle: () => void,
+  signals: CardSignals,
 ): HTMLElement {
   const card = document.createElement('article');
   card.className = `mr-card mr-card-${comment.status}`;
+  if (signals.sectionChanged) card.classList.add('mr-card-nearby');
   card.dataset['commentId'] = comment.id;
   card.tabIndex = 0;
 
@@ -366,7 +390,12 @@ function buildCard(
   const diff = buildDiff(comment);
   if (diff) card.append(diff);
 
-  card.append(buildMenu(comment, options, card, body));
+  // Deliberately a sentence rather than a before/after. The region is a whole section, which does
+  // not truncate into a diff honestly, and the pane is already showing the section a few inches to
+  // the left — pointing at it beats paraphrasing it badly (D17).
+  if (signals.sectionChanged) card.append(sectionNote());
+
+  card.append(buildMenu(comment, options, card, body, signals));
   card.addEventListener('click', onToggle);
   return card;
 }
@@ -390,6 +419,20 @@ function buildDiff(comment: Comment): HTMLElement | undefined {
   return wrapper;
 }
 
+/**
+ * The D17 note. Phrased as an observation the user judges, not a claim about their comment.
+ *
+ * "This section changed" is a fact — the text differs from the snapshot taken when the prompt was
+ * copied. "Your comment was addressed" would be a guess, and it is the guess the extension is
+ * deliberately not making here: `addressed` keeps meaning that the anchored text itself changed.
+ */
+function sectionNote(): HTMLElement {
+  const note = document.createElement('p');
+  note.className = 'mr-card-note';
+  note.textContent = 'This section changed since you copied the prompt';
+  return note;
+}
+
 function badge(label: string): HTMLElement {
   const element = document.createElement('span');
   element.className = 'mr-badge';
@@ -406,6 +449,7 @@ function buildMenu(
   options: CommentsOptions,
   card: HTMLElement,
   body: HTMLElement,
+  signals: CardSignals,
 ): HTMLElement {
   const actions = document.createElement('div');
   actions.className = 'mr-card-actions';
@@ -435,8 +479,12 @@ function buildMenu(
   }
 
   if (comment.status !== 'resolved') {
+    // "Looks good" when there is something to confirm, matching the addressed card. The user is
+    // still accepting a suggestion the extension volunteered, just a weaker one; "Resolve" would
+    // read as an unprompted judgement and lose the connection to the note directly above it.
+    const label = signals.sectionChanged ? 'Looks good' : 'Resolve';
     actions.append(
-      action('Resolve', `Resolve comment by ${comment.author}`, () => {
+      action(label, `Resolve comment by ${comment.author}`, () => {
         options.onResolve(comment.id);
       }),
     );
@@ -509,7 +557,8 @@ function buildResolvedGroup(resolved: Comment[], options: CommentsOptions): HTML
   group.append(summary);
 
   for (const comment of resolved) {
-    group.append(buildCard(comment, options, () => undefined));
+    // `resolved` is terminal and never re-anchored, so there is no signal to carry here.
+    group.append(buildCard(comment, options, () => undefined, { sectionChanged: false }));
   }
   return group;
 }

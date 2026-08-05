@@ -7,9 +7,13 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
+import { locate } from '../anchor/locate.js';
 import { reanchor } from '../anchor/reanchor.js';
 import type { PlainTextDoc, ReviewFile } from '../anchor/types.js';
+import { changedRanges, touches } from '../detect/changedRanges.js';
+import { scopeOf } from '../detect/scope.js';
 import { renderPlainText } from '../render/plaintext.js';
+import { BASELINE_MAX_CHARS } from '../store/reviewFile.js';
 import { anchorOn, fixedClock, makeComment, makeReviewFile, mulberry32 } from './helpers.js';
 
 const ENABLED = process.env['PERF'] !== '0';
@@ -178,6 +182,39 @@ describe.skipIf(!ENABLED)('performance — PRD §5 budget', () => {
 
     console.log(`[perf] reanchor (no edits) ${elapsed.toFixed(0)} ms`);
     expect(result.changed).toBe(false);
+    expect(elapsed).toBeLessThan(BUDGET_MS);
+  });
+
+  /**
+   * The D17 signal runs in the same post as `reanchor`, so it spends the same budget.
+   *
+   * The worst case it can actually reach is a full-size baseline against a document that has moved
+   * on from it — 256 KB either side, since `BASELINE_MAX_CHARS` caps what is ever snapshotted and
+   * `MAX_DIFF_CHARS` refuses anything much larger. One diff serves all 50 comments; if that ever
+   * became per-comment this test is what would catch it.
+   */
+  it(`flags section changes for ${String(COMMENT_COUNT)} comments inside the same budget`, () => {
+    const baseline = beforeDoc.text.slice(0, BASELINE_MAX_CHARS);
+    const current = afterDoc.text.slice(0, BASELINE_MAX_CHARS);
+    expect(baseline).not.toBe(current);
+
+    const startedAt = performance.now();
+    const ranges = changedRanges(baseline, current);
+    let flagged = 0;
+    for (const comment of review.comments) {
+      const found = locate(comment.anchor, afterDoc);
+      if (!found) continue;
+      const scope = scopeOf(afterDoc, found);
+      if (scope && touches(ranges, scope)) flagged += 1;
+    }
+    const elapsed = performance.now() - startedAt;
+
+    console.log(
+      `[perf] section signal ${elapsed.toFixed(0)} ms over ${String(ranges?.length ?? 0)} changed ` +
+        `range(s), ${String(flagged)} comment(s) flagged`,
+    );
+
+    expect(ranges).not.toBe(null);
     expect(elapsed).toBeLessThan(BUDGET_MS);
   });
 });

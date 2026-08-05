@@ -222,12 +222,32 @@ For each non-`resolved` comment: locate against the new document. If located and
 differs from `anchor.exact`, set `addressed` and populate `resolution` with before and after. If
 located and identical, keep `open`. If not located, set `orphaned`.
 
-`anchor.exact` — not `baselineText` — is the comparison basis. `baselineText` is stored as
-whole-document plain text with no block map, so locating an anchor inside it is not implementable;
-and copying the prompt twice would silently redefine "before" on already-addressed comments.
-`anchor.exact` is the text as it stood when the user made the claim, which is what the comment is
-actually about. `baselineText` keeps its own job: the "document was rewritten — review the diff"
-banner in Phase 4.
+`anchor.exact` — not `baselineText` — is the comparison basis. Copying the prompt twice would
+otherwise silently redefine "before" on already-addressed comments, and `anchor.exact` is the text
+as it stood when the user made the claim, which is what the comment is actually about.
+
+> **Amended after the first real-agent run (D17).** This rule is correct and stays, but it is not
+> the whole story, and shipping it alone made the product look broken.
+>
+> `anchor.exact` does two jobs: it is the *reference* — the passage the user pointed at — and the
+> *evidence* that the comment was acted on. Those coincide only when the fix lands inside the
+> selection. They come apart for every comment whose anchor **labels** the thing to fix rather than
+> being it: a heading above a section, a list's intro line, any sentence followed by "add a caveat
+> after this". The agent does the work, the anchored text never changes, the comment stays `open`
+> forever, and the pane is indistinguishable from one where the agent never ran.
+>
+> The fix is **not** to widen `addressed`, which would trade the one status the user is asked to
+> trust for a guess. It is a second, weaker, *derived* signal: the region around the comment — its
+> section, for a heading anchor — differs from `baselineText`. The card says so and offers "Looks
+> good"; nothing is inferred, nothing is persisted, and no fourth status exists. See §8.
+>
+> One claim above was also too strong: locating an anchor inside `baselineText` is not
+> *unimplementable* — `locate` reads only `doc.text` — it is the block structure that is missing.
+> The signal needs none, because it diffs the baseline into the *current* document's coordinates,
+> where the block map is the one just rendered.
+
+`baselineText` keeps its own jobs: the "document was rewritten — review the diff" banner, and the
+section-change signal above.
 
 ### Required test cases (`anchor.test.ts`)
 
@@ -345,6 +365,21 @@ Rules:
 - On change: re-render → re-anchor → persist sidecar → post updated state to webview
 - Never auto-close comments. `addressed` is a *suggestion* the user confirms; the card shows the
   before/after text and a "Looks good" button that moves it to `resolved`
+- **The section-change signal (D17).** An `open` comment whose *region* differs from `baselineText`,
+  while its own anchored text does not, carries a note — "This section changed since you copied the
+  prompt" — and the same "Looks good". The region is the enclosing section when the anchor lies in a
+  heading, and the block(s) it covers otherwise; one shared rule decides this and PRD §7's "On the
+  section" phrasing, so the prompt and the detector cannot disagree about what a heading anchor
+  means.
+
+  It is **not a status** and is never stored: it is recomputed per render from the baseline and the
+  document, so there is no sidecar change and nothing to migrate. It is suppressed when there is no
+  baseline, for comments created after the baseline was taken, and by
+  `markdownReview.autoDetectResolution: false`.
+
+  Deliberately weaker than `addressed`, in wording and in styling. `addressed` claims the text you
+  selected changed; this claims only that something near your comment moved, and leaves the judgement
+  to the reader — which is the honest thing to say, and keeps the strong claim worth trusting.
 
 ---
 

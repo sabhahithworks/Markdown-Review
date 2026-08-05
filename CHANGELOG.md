@@ -69,6 +69,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A comment on a heading can now tell you the agent did something.** Anchored to a section
+  heading, the natural way to say "this section needs work", it could never be inferred `addressed`:
+  the agent rewrites the prose below, the heading is untouched, and `addressed` means *the text you
+  selected* changed. The comment stayed `open` forever and the pane looked identical to one where
+  the agent had never run. Found by the first real-agent acceptance run, on its first use.
+
+  The cause is not headings. `anchor.exact` does two jobs — the passage you pointed at, and the
+  evidence your comment was acted on — and those coincide only when the fix lands inside your
+  selection. They come apart for any anchor that *labels* the thing to fix: a heading, a list's
+  intro line, a sentence followed by "add a caveat after this".
+
+  Rather than widen `addressed`, which would trade the one status you are asked to trust for a
+  guess, an `open` comment whose *region* differs from the review baseline now carries a note —
+  "This section changed since you copied the prompt" — and a **Looks good**. The region is the
+  enclosing section for a heading anchor and the covered blocks otherwise. It is not a status, it is
+  recomputed per render and never stored, so there is no sidecar change; it is suppressed with no
+  baseline, for comments written after one was taken, and by `autoDetectResolution: false`.
+- The review prompt now says `On the section "## …"` for an anchor covering *part* of a heading,
+  where it previously fell back to `On: "…"` and quoted the fragment. Selecting a heading without
+  its manual numbering or list marker is the ordinary gesture, and the old rule — exact span
+  equality — meant `buildPrompt` and the change detector disagreed about what a heading anchor
+  means. They now share one `scopeOf`, which is also what the section signal above measures.
 - Orphaned comments no longer stack on top of each other. Cards are absolutely positioned from their
   anchor's rectangle, and an orphan has no rectangle — so every one of them was skipped before the
   stacking pass ran, never got a `top`, and they all landed at the same point. They now live in a

@@ -38,6 +38,7 @@ const PASSAGES = {
   listB: 'Document the rotation procedure',
   listC: 'Add an expiry alert',
   quote: 'Nested quotes are rendered as a distinct level.',
+  heading: 'Prose and inline formatting',
 };
 
 async function loadHostModules() {
@@ -256,6 +257,28 @@ async function main() {
             status: 'orphaned',
             body: 'And this.',
             anchor: { exact: 'none of this survived the rewrite, third' },
+          }),
+        ]),
+        baselineAt: '2026-08-01T09:00:00.000Z',
+      },
+    },
+    nearby: {
+      label: 'Section changed',
+      description:
+        'The D17 case: a comment anchored on a heading whose section the agent rewrote. The anchored text itself is untouched, so the comment is still `open` and nothing was inferred \u2014 the card carries a note and a "Looks good" rather than a before/after. Deliberately shown beside an addressed card and an ordinary open one, because the whole point is that the three read differently.',
+      sectionChanged: ['near0001'],
+      review: {
+        ...review([
+          comment('near0001', PASSAGES.heading, { body: 'How do we choose the name?' }),
+          comment('near0002', PASSAGES.listA, { body: 'Untouched \u2014 no note belongs on this one.' }),
+          comment('near0003', PASSAGES.fence, {
+            status: 'addressed',
+            body: 'Should this throw instead of returning?',
+            resolution: {
+              previousText: PASSAGES.fence,
+              currentText: 'export function verifyOrThrow',
+              detectedAt: '2026-08-01T10:15:00.000Z',
+            },
           }),
         ]),
         baselineAt: '2026-08-01T09:00:00.000Z',
