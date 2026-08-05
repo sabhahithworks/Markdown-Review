@@ -18,13 +18,19 @@ Spec references: PRD §9 (manifest), §12 (release checklist), §10 Phase 5, §1
 `docs/plans/README.md` makes the previous phase's checklist a hard entry check, and Phase 4's is not
 green. **This document may be written now; it may not be executed until these close:**
 
+**Updated 2026-08-05** after the packaged-build run — two of the five closed:
+
 | Open | What it is | Where |
 |---|---|---|
-| Plan 04 §9 item 2 | The real-agent run. "Looks good" and "Reopen" have never been exercised; B1c wants one blind re-run | `04-acceptance-run.md` B1d, B1e, B1c |
-| Plan 04 §9 item 8 | Rename/delete of the target → re-link. The file picker is manual | `04-acceptance-run.md` B4a–B4c |
-| Plan 04 §9 item 9 | Clear addressed / clear all. The modals are unreachable from `@vscode/test-electron` (§10 D9) | `04-acceptance-run.md` B5a–B5e |
+| ~~Plan 04 §9 item 2~~ | ~~The real-agent run~~ — **closed 2026-08-05**, B1d and B1e both exercised on the packaged build | `04-acceptance-run.md` B1d, B1e |
+| ~~Plan 04 §9 item 9~~ | ~~Clear addressed / clear all~~ — **closed 2026-08-05**, all five boxes | `04-acceptance-run.md` B5a–B5e |
+| Plan 04 §9 item 8 | Rename/delete of the target → re-link. **Still not exercised after two runs** — the 2026-08-05 attempt used the re-anchor gesture instead (§10 D22) | `04-acceptance-run.md` B4a–B4c |
 | Plan 04 §10 D21 | An anchor stating an absence orphans instead of flipping — a live defect the first real-agent run found | `04-prompt-and-detection.md` §10 |
 | Plan 03 §8 / A3 | Six Phase 3 steps: rejection wording, sidecar hand-edit, two windows, CSP, themes, narrow pane | `04-acceptance-run.md` A3 |
+
+The packaged run also produced a new Phase 4 finding, **§10 D22** — the re-link and re-anchor
+recovery actions compete for the same attention, and the wrong one is more discoverable. Recorded,
+not fixed: it is a UI change in Phase 4's surface, and this phase is explicitly no feature work.
 
 D19 ("the D17 note says *section* for a scope that is a block") is recorded as not-yet-fixed and is
 a wording bug in a user-facing notice. It is not a gate, but it is cheap and it will be read by every
@@ -86,8 +92,8 @@ Claim it **before** writing it into the manifest, even though publishing is defe
 rejects a taken id immediately, the id is permanent, and unclaimed ids are first-come. Then confirm
 `https://marketplace.visualstudio.com/items?itemName=sabhahithworks.markdown-review` returns 404.
 
-The remote exists (`git@github.com:sabhahithworks/Markdown-Review.git`) but is not configured
-locally — `git remote -v` is empty. Add it and push before §5's absolute image URLs can resolve.
+**Done 2026-08-05:** remote added and `main` pushed; the repo is public, so §5's absolute image URLs
+will resolve as soon as there are any images to resolve.
 
 ### The one-commit rule
 
@@ -460,14 +466,19 @@ items appears below. Date this section when it passes.
       separator. See §13 E8 for the drive-letter case, which turns out to be unreachable
 - [ ] **The real Windows pass is NOT done** (PRD §12 item 8) — no machine available; §13 E7 records
       what remains untested. Leave this box unticked deliberately, not blank
-- [ ] Installed `.vsix`: the full loop passes in stable VS Code on a real project (PRD §12 item 7)
-      — **manual**, `05-acceptance-run.md` C1–C2
+- [x] Installed `.vsix`: the full loop passes in stable VS Code (PRD §12 item 7)
+      — **passed 2026-08-05**, `05-acceptance-run.md` C1–C2. Comments anchored, prompt copied, a
+      real agent's edit flipped a card to `addressed` with a true before/after, **Looks good**
+      resolved and **Reopen** reverted — all from the packaged archive, not a build directory
 - [ ] Lazy activation confirmed on a fresh profile: inactive until first command use, no
       `onStartupFinished` (PRD §9)
-      — **manual**, `05-acceptance-run.md` C3, via the Running Extensions view
-- [ ] Listing renders: README and CHANGELOG tabs, images resolve, settings table matches the real
-      Settings UI; theme pass on the installed bytes
-      — **manual**, `05-acceptance-run.md` C4–C5
+      — **manual**, `05-acceptance-run.md` C3, via the Running Extensions view. **Not run
+      2026-08-05** — the only Part B box left, and the last thing between here and a publishable
+      0.1.0 on this checklist
+- [x] Listing renders: README and CHANGELOG tabs, settings table matches the real Settings UI;
+      theme pass on the installed bytes
+      — **passed 2026-08-05**, `05-acceptance-run.md` C4–C5. No images to resolve yet, so that half
+      of PRD §12 item 4 is still untested — see the loop-visual box above
 - [ ] *Deferred, outside 0.1.0's definition of done:* PAT scoped Marketplace: Manage (PRD §12 item 1);
       published; clean-machine install works; `v0.1.0` tagged (§10)
 

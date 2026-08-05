@@ -63,7 +63,8 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C1 — install and identity — §12 items 3, 4
 
-- [ ] **C1** — with the `.vsix` installed, open the Extensions view and find **Markdown Review**.
+- [x] **C1** — **passed 2026-08-05.** With the `.vsix` installed, open the Extensions view and find
+      **Markdown Review**.
 
 > Expect: the 128×128 icon renders in the list **at 16 px and still reads as two speech bubbles** —
 > this is the size the icon actually gets seen at, and the one a 128 px preview flatters. The title
@@ -77,8 +78,10 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C2 — the full loop, on a real document — §12 item 13, PRD §12 item 7
 
-- [ ] **C2** — open a real project (not `docs/fixtures/`), open a Markdown file you are willing to
-      have rewritten, and run the whole loop: *Open Review Pane* → comment on two or three passages →
+- [x] **C2** — **passed 2026-08-05**, against `docs/fixtures/review-run.md` with the **repo root** as
+      the workspace, so `.reviews/docs__fixtures__review-run.md.json` exercised the flattened name by
+      hand. A separate non-fixture document was not used; the path shape PRD §12 cares about was.
+      Open a Markdown file you are willing to have rewritten, and run the whole loop: *Open Review Pane* → comment on two or three passages →
       *Copy Review Prompt* → paste at an agent → let it edit → confirm one card with **Looks good**.
 
 > Expect: the sidecar lands at `.reviews/<path-with-__>.json` with the flattened name, comments
@@ -96,7 +99,7 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C3 — lazy activation on a fresh profile — §12 item 14, PRD §9
 
-- [ ] **C3** — `code --profile mdcm-fresh`, install the `.vsix` into it, open a folder containing
+- [ ] **C3** — **NOT RUN 2026-08-05**, and the only Part B box left. `code --profile mdcm-fresh`, install the `.vsix` into it, open a folder containing
       Markdown, and **without running any command** open *Developer: Show Running Extensions*.
 
 > Expect: Markdown Review is **not** in the list. Then run *Markdown Review: Open Review Pane* and
@@ -109,7 +112,7 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C4 — the listing, as VS Code renders it — §12 items 5, 7, 15
 
-- [ ] **C4** — in the Extensions view, click Markdown Review to open its detail pane, and read all
+- [x] **C4** — **passed 2026-08-05.** In the Extensions view, click Markdown Review to open its detail pane, and read all
       three tabs.
 
 > Expect, on **Details**: the first line is the PRD §1 positioning sentence — *any* markdown file,
@@ -129,7 +132,7 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C5 — themes on the installed bytes — §12 item 15
 
-- [ ] **C5** — with the pane open and at least one comment, one `addressed` card and one resolved
+- [x] **C5** — **passed 2026-08-05.** With the pane open and at least one comment, one `addressed` card and one resolved
       card on screen, switch between Dark+, Light+ and a High Contrast theme.
 
 > Expect: cards, popover, highlight, status badges and the header bar all stay legible; nothing

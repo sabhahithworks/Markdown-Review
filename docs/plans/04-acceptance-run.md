@@ -209,13 +209,14 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
       > If the note is **missing**: check the setting `markdownReview.autoDetectResolution` is still
       > `true` (B6 turns it off), and that the comment was created *before* you copied the prompt.
       > Both suppress the signal by design.
-- [ ] **B1d** — **Looks good** on comment 2 → it resolves, drops into the resolved group, header
+- [x] **B1d** — **passed 2026-08-05**, against the packaged `0.1.0` `.vsix` in stable VS Code.
+      **Looks good** on comment 2 → it resolves, drops into the resolved group, header
       goes to `0 open`, and the primary action greys out to **Copy review prompt** with no count.
       > Use **comment 1** in the 2026-08-05 run: it is the one that carries **Looks good** and
       > **Reopen**, because it reached `addressed`. This box names comment 2 only because the
       > script assumed the section comment would be the one to resolve.
-- [ ] **B1e** — **Reopen** it → back to `open`, header back to `1 open`, button back to **Copy
-      review prompt (1)**.
+- [x] **B1e** — **passed 2026-08-05.** **Reopen** it → back to `open`, header back to `1 open`,
+      button back to **Copy review prompt (1)**.
 
 > **Agent caveat for the 2026-08-05 run.** The stand-in agent had read B1c's expected outcome in the
 > same session before editing, so it knew that rewriting the section while leaving the heading alone
@@ -253,6 +254,10 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
       posted `reanchorComment` carries the right id. What is left for a human is the round trip
       *through the host*: that the comment comes back `open` in the gutter with its original body
       and author, which the harness cannot see because it has no store behind it.
+      >
+      > **Host round trip confirmed 2026-08-05**, on the packaged build — arm from the orphan row,
+      > select new text, commit, comment re-attached correctly. Reached by accident: the run was
+      > attempting B4 and reached for this gesture instead, which is itself the finding in §10 D22.
 
 ### B3 — full rewrite and the diff — §9 item 5 (confirmation)
 
@@ -275,6 +280,13 @@ Then `git checkout docs/fixtures/review-run.md` and re-open the pane before cont
 The picker is `vscode.window.showOpenDialog` — a native OS dialog, which is precisely why no test
 process can answer it (§10 D9). Run this with B1's comments still in place, so there is something
 real to migrate.
+
+> **Still not exercised after the 2026-08-05 packaged-build run.** That run reached for **Re-anchor**
+> on an orphan card instead of **Locate file…** on the unreadable notice, and re-anchored a comment
+> by selecting text — the B2 gesture, not this one. The picker was never opened. See §10 D22: two
+> recovery actions are visible at once and the wrong one is the more discoverable, which is a finding
+> about the UI, not about the tester. **Read B4a–B4c carefully before the next attempt**: this box is
+> about the *file*, not the *comment*, and nothing in it involves selecting text.
 
 **Step 1 — break the link.**
 
@@ -328,7 +340,7 @@ state the earlier items need.
 **Precondition:** at least one `addressed` comment. B1 leaves two. If you have already cleared them,
 edit an anchored sentence and save to make one.
 
-- [ ] **B5a — cancel.** *Markdown Review: Clear Addressed Comments* from the palette.
+- [x] **B5a — cancel.** **Passed 2026-08-05.** *Markdown Review: Clear Addressed Comments* from the palette.
       > Expect a **modal** (dims the window, cannot be clicked away) reading `Remove 2 addressed
       > comments? Their text changes stay in the document.`, with a **Remove** button next to
       > Cancel. Note the singular is handled: one comment reads `Remove 1 addressed comment?`.
@@ -336,15 +348,15 @@ edit an anchored sentence and save to make one.
       > Click **Cancel**. Expect: nothing changes — same cards, same counts, and **no `.json.bak`
       > on disk**. Check the directory; a backup written before the answer would mean the modal is
       > decorative.
-- [ ] **B5b — confirm.** Run it again, click **Remove**.
+- [x] **B5b — confirm.** **Passed 2026-08-05.** Run it again, click **Remove**.
       > Expect: the addressed cards disappear, the header count drops, and a toast
       > `Removed 2 addressed comments. A backup was saved as review-run.md.json.bak.` (the flattened
       > name `docs__fixtures__review-run.md.json.bak` from the repo root). Open the `.bak` — it is
       > the full sidecar as it was a moment ago, and every removed comment is in it.
-- [ ] **B5c — the header button.** Make another comment addressed, then use **Clear addressed** in
+- [x] **B5c — the header button.** **Passed 2026-08-05.** Make another comment addressed, then use **Clear addressed** in
       the header bar rather than the palette. Same modal, same outcome — it routes through the same
       command (`ReviewPanel.ts:212`).
-- [ ] **B5d — clear all.** *Markdown Review: Clear All Comments*.
+- [x] **B5d — clear all.** **Passed 2026-08-05.** *Markdown Review: Clear All Comments*.
       > Expect: `Remove all N comments from review-run.md? The document itself is not changed.`
       > Confirm, then check the document itself in a text editor — **byte-identical**, and
       > `git diff docs/fixtures/review-run.md` shows only the agent's B1 edits if you have not reset
@@ -352,7 +364,7 @@ edit an anchored sentence and save to make one.
       >
       > There is deliberately **no** header button for this one — palette only, per PRD §6. Confirm
       > there isn't one.
-- [ ] **B5e — nothing to clear.** With the review now empty, run each command once more.
+- [x] **B5e — nothing to clear.** **Passed 2026-08-05.** With the review now empty, run each command once more.
       > Expect an information toast, **no modal**, and **no new `.bak`**: `No addressed comments on
       > review-run.md.` and `No comments on review-run.md.` respectively. A `.bak` written here
       > would overwrite the one from B5d with an empty file — that is the failure worth checking

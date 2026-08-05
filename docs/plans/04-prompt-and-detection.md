@@ -213,13 +213,13 @@ this phase's entry gate. Date this section when it passes.
       resolves; "Reopen" reverts
       — **manual, and the one item nothing else can stand in for.** PRD §10 names it as the
       acceptance for this phase. Every automated case uses synthetic edits.
-      **Run 2026-08-05: the first two thirds hold.** A comment flipped to `addressed` with a
-      before/after that was genuinely the agent's edit, and a heading-anchored comment correctly
-      declined to (§10 D17's fix, working). Still open before this can be ticked: **"Looks good"
-      and "Reopen" have not been exercised** — two clicks, see
-      [04-acceptance-run.md](04-acceptance-run.md) B1d/B1e. Two qualifications also stand: a third
-      comment orphaned rather than flipping (§10 D21, a real defect this run found), and B1c was
-      verified by an agent that had read the expectation, so it wants one blind re-run
+      **Passed 2026-08-05**, completed on the **packaged `0.1.0` `.vsix` in stable VS Code** rather
+      than a dev host. A comment flipped to `addressed` with a before/after that was genuinely the
+      agent's edit, a heading-anchored comment correctly declined to (§10 D17's fix, working), and
+      the second run closed B1d/B1e — **Looks good** resolves, **Reopen** reverts. Two
+      qualifications stand and are not blocking: a comment orphaned rather than flipping in the
+      first run (§10 D21), and B1c was verified by an agent that had read the expectation, so it
+      still wants one blind re-run
 - [x] Deleting an anchored sentence orphans exactly that comment; orphan section shows the quote
       — `detection.spec.ts` for the status, `dev/harness/` `orphans` scenario for the section
 - [x] Manual re-anchor re-attaches an orphan
@@ -237,9 +237,15 @@ this phase's entry gate. Date this section when it passes.
       — `detection.spec.ts` for both sources; `coalesce.test.ts` for the timing, with fake timers
 - [ ] Rename/delete of target → "target missing" + working re-link; sidecar preserved
       — `store.spec.ts` covers the migration and `detection.spec.ts` the surviving sidecar; the
-      **file picker is manual**
-- [ ] Clear addressed / clear all confirm, back up, and execute correctly
-      — `store.spec.ts` covers backup, removal and the backup-failure abort; the **modals are
+      **file picker is manual**. **Still not exercised after the 2026-08-05 packaged run**: that
+      attempt reached for **Re-anchor** on an orphan card and re-anchored a comment by selecting
+      text — the B2 gesture, not this one — so `showOpenDialog` has still never been opened by a
+      human. See §10 D22; the confusion is the finding
+- [x] Clear addressed / clear all confirm, back up, and execute correctly
+      — **passed 2026-08-05** on the packaged build, all five boxes (B5a–B5e): cancel writes no
+      backup, confirm writes one and removes, the header button routes the same way, clear-all
+      leaves the document byte-identical, and the empty case writes no `.bak` over the good one.
+      `store.spec.ts` covers backup, removal and the backup-failure abort; the **modals are
       manual** (§10 D9)
 - [x] Integration test suite green alongside `npm test`
       — 465 unit, 40 integration. Plus, outside `npm run check`: 195 harness checks wide and 183
@@ -541,6 +547,32 @@ read `Counters live in memory, so they do no` against a 46-character "before". T
 and the clipping is known, but on screen it reads as corrupted text rather than as a shortened
 quote. Snapping the span to a word boundary, or marking it with an ellipsis, would cost nothing and
 is independent of fixing the under-report itself.
+
+### Found by the packaged-build acceptance run
+
+**D22 — the two recovery actions compete, and the wrong one is more discoverable.** The 2026-08-05
+run on the packaged `.vsix` set out to do B4 — rename the target, then re-link the review to the
+renamed file through **Locate file…** on the unreadable notice. It instead clicked **Re-anchor** on
+an orphaned comment card and re-anchored that comment by selecting new text. The picker was never
+opened, so §9 item 8 is still untested after two acceptance runs.
+
+Two different repairs are on screen at the same time and they are easy to confuse. **Locate file…**
+repairs *the review's target* — one file picker, all comments migrate. **Re-anchor** repairs *one
+comment's position* — arm, select text, commit. They fix different breakages, but both read as "this
+is broken, fix it", and the one that is wrong for a renamed file is the one sitting on a card in the
+content area, where the eye already is. The notice's button is in a replaced pane the user has just
+been told they cannot read.
+
+Nothing is broken in either flow — the re-anchor round trip through the host worked correctly, which
+is itself a first (04-acceptance-run.md B2b–B2d's host half had no human confirmation before this).
+The finding is that the UI does not distinguish the two repairs well enough for someone holding the
+script that names them. Worth considering before v1: the unreadable notice could suppress the orphan
+section entirely — with the target unreadable, every comment is orphaned by definition and
+re-anchoring one against a file that cannot be read is not a coherent action.
+
+Recorded, not fixed. It is a UI change in Phase 4's surface and Phase 5 is explicitly no feature
+work; it also rests on one observation, so a second run should confirm the pull before anyone moves
+buttons.
 
 ### Noted, not changed
 
