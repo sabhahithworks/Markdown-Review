@@ -16,6 +16,9 @@ import { blockOf, blockRef, blockText, offsetAt, textOfRange, verifyBlockMap } f
 /** Long enough to not fire mid-drag, short enough that the button feels attached to the mouse. */
 const SELECTION_DEBOUNCE_MS = 150;
 
+/** Gap between a floating element and both the selection it describes and the viewport edge. */
+const MARGIN_PX = 8;
+
 export interface SelectionPayload {
   selectedText: string;
   offset: number;
@@ -248,11 +251,38 @@ function createCommentButton(): HTMLButtonElement {
   return button;
 }
 
+/**
+ * Place a `position: fixed` element beside a selection, kept inside the viewport (§10 D20).
+ *
+ * Both callers are `position: fixed`, so this is viewport coordinates throughout and there is no
+ * scroll maths. The element must already be visible — `offsetHeight` is zero while `hidden`.
+ *
+ * Flip before clamp. Clamping alone would slide the element up over the very text it describes,
+ * which for the composer means covering the passage the user is writing about; flipping to the
+ * other side of the selection keeps it adjacent. Clamping is the last resort for a selection so
+ * tall that neither side fits, and it is what stops the actions row leaving the screen.
+ */
+function placeFixed(element: HTMLElement, rect: DOMRect, prefer: 'above' | 'below'): void {
+  const { offsetHeight: height, offsetWidth: width } = element;
+  const above = rect.top - height - MARGIN_PX;
+  const below = rect.bottom + MARGIN_PX;
+
+  const fits = (top: number): boolean => top >= MARGIN_PX && top + height <= window.innerHeight - MARGIN_PX;
+  let top = prefer === 'above' ? above : below;
+  if (!fits(top)) {
+    const other = prefer === 'above' ? below : above;
+    if (fits(other)) top = other;
+  }
+
+  const maxTop = Math.max(window.innerHeight - height - MARGIN_PX, MARGIN_PX);
+  const maxLeft = Math.max(window.innerWidth - width - MARGIN_PX, MARGIN_PX);
+  element.style.top = `${String(Math.min(Math.max(top, MARGIN_PX), maxTop))}px`;
+  element.style.left = `${String(Math.min(Math.max(rect.left, MARGIN_PX), maxLeft))}px`;
+}
+
 function showButton(button: HTMLElement, rect: DOMRect): void {
   button.hidden = false;
-  // Positioned against the viewport (the button is `position: fixed`), so no scroll maths.
-  button.style.top = `${String(Math.max(rect.top - button.offsetHeight - 8, 8))}px`;
-  button.style.left = `${String(Math.max(rect.left, 8))}px`;
+  placeFixed(button, rect, 'above');
 }
 
 interface Popover {
@@ -355,8 +385,7 @@ function createPopover(options: SelectionOptions): Popover {
       previousFocus = document.activeElement;
       open = true;
       element.hidden = false;
-      element.style.top = `${String(Math.max(at.rect.bottom + 8, 8))}px`;
-      element.style.left = `${String(Math.max(at.rect.left, 8))}px`;
+      placeFixed(element, at.rect, 'below');
       textarea.focus();
     },
     onSubmit(handler) {

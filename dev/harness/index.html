@@ -519,8 +519,8 @@
     const SELECTION_SETTLE_MS = 260;
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    /** Selects the first text node containing `needle`, exactly as a drag would. */
-    function selectText(needle) {
+    /** A range over the first text node containing `needle`, without disturbing the selection. */
+    function rangeFor(needle) {
       const walker = document.createTreeWalker(document.getElementById('content'), NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const at = node.textContent.indexOf(needle);
@@ -528,12 +528,43 @@
         const range = document.createRange();
         range.setStart(node, at);
         range.setEnd(node, at + needle.length);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-        return true;
+        return range;
       }
-      return false;
+      return null;
+    }
+
+    /** Selects the first text node containing `needle`, exactly as a drag would. */
+    function selectText(needle) {
+      const range = rangeFor(needle);
+      if (!range) return false;
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    }
+
+    /**
+     * A range over the document's last substantial passage. Picked by position rather than by text
+     * so the bottom-edge gesture keeps working when the fixture changes — and because only the tail
+     * of the document can actually be scrolled against the fold.
+     */
+    function lastSelectableRange() {
+      const walker = document.createTreeWalker(document.getElementById('content'), NodeFilter.SHOW_TEXT);
+      let last = null;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.textContent.trim().length > 25) last = node;
+      }
+      if (!last) return null;
+      const range = document.createRange();
+      range.setStart(last, last.textContent.search(/\S/));
+      range.setEnd(last, last.textContent.trimEnd().length);
+      return range;
+    }
+
+    function selectRange(range) {
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
 
     function clearSelection() {
@@ -640,10 +671,65 @@
       return pass('Escape disarms cleanly');
     }
 
+    /**
+     * §10 D20: the popover is `position: fixed` and used to be placed at `rect.bottom + 8` with no
+     * bottom clamp, so a selection near the fold pushed Cancel/Comment off screen — unreachable,
+     * because a fixed element does not scroll back into view. Asserts the whole popover, and the
+     * actions row specifically, stay inside the viewport.
+     */
+    async function gesturePopoverClamped() {
+      const GAP = 40;
+
+      const target = lastSelectableRange();
+      if (!target) return fail('no selectable text in the rendered document');
+
+      // Scroll first: the floating UI is placed from the rect captured at selection time.
+      window.scrollBy(0, target.getBoundingClientRect().bottom - (window.innerHeight - GAP));
+      selectRange(target);
+      await wait(SELECTION_SETTLE_MS);
+
+      // A selection that never reached the fold would pass this gesture against the D20 code too.
+      const selected = window.getSelection().getRangeAt(0).getBoundingClientRect();
+      const aboveFold = Math.round(window.innerHeight - selected.bottom);
+      if (aboveFold > 120) {
+        return fail(`selection sits ${aboveFold}px above the fold — too far to exercise the edge`);
+      }
+
+      const button = floatingButton();
+      if (!button || button.hidden) return fail('no floating button for a selection near the bottom edge');
+
+      button.click();
+      const popover = popoverEl();
+      if (!popover || popover.hidden) return fail('clicking the button did not open the popover');
+
+      const inside = (rect, what) => {
+        if (rect.top < 0) return `${what} top at ${Math.round(rect.top)}, above the viewport`;
+        if (rect.bottom > window.innerHeight) return `${what} bottom at ${Math.round(rect.bottom)}, past ${window.innerHeight}`;
+        if (rect.left < 0) return `${what} left at ${Math.round(rect.left)}, off the left edge`;
+        if (rect.right > window.innerWidth) return `${what} right at ${Math.round(rect.right)}, past ${window.innerWidth}`;
+        return null;
+      };
+
+      const popoverProblem = inside(popover.getBoundingClientRect(), 'popover');
+      if (popoverProblem) return fail(popoverProblem);
+
+      // The actions row is what D20 actually cost the user: a composer that cannot be submitted.
+      const actions = popover.querySelector('.mr-popover-actions');
+      if (!actions) return fail('the popover has no actions row');
+      const actionsProblem = inside(actions.getBoundingClientRect(), 'Cancel/Comment row');
+      if (actionsProblem) return fail(actionsProblem);
+
+      popover.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      clearSelection();
+      window.scrollTo(0, 0);
+      return pass(`popover and actions on screen for a selection ${aboveFold}px above the fold`);
+    }
+
     const gestures = {
       'create flow: select, comment, submit': gestureCreateFlow,
       'manual re-anchor: arm, select, commit': gestureReanchor,
       'manual re-anchor: Escape disarms': gestureEscapeDisarms,
+      'popover: clamped to the viewport': gesturePopoverClamped,
     };
 
     async function runGestures() {

@@ -435,6 +435,69 @@ emitting it as a clean leading run, so the unpadded window usually wins and the 
 however much the text lengthened. The *status* is correct; only the before/after on the card is
 clipped. `reanchor.test.ts` documents it with an assertion that holds before and after a fix.
 
+### Found by a later real-agent run
+
+**D20 — [Phase 3 bug] the comment popover falls off the bottom of the pane.** Surfaced by the
+acceptance run's own comment 3, which anchors to `The exact ordering has not been written down
+anywhere` — the fixture's final paragraph, and therefore always near the viewport bottom.
+
+`.mr-popover` is `position: fixed` (`media/webview.css:549`) and was placed at `rect.bottom + 8`
+with `Math.max(…, 8)` as the only clamp (`media/src/selection.ts:358`). That clamp guards the
+**top-left** edges and nothing else, so a selection in the bottom ~150 px pushed the popover past
+the fold — and being `position: fixed`, it could not be scrolled back: the popover stays pinned to
+the viewport while the document moves underneath. `.mr-popover-actions` is the popover's last row,
+so **Cancel** and **Comment** were exactly what disappeared, leaving a composer that could be typed
+into but not submitted or dismissed except by <kbd>Esc</kbd>.
+
+The consequence is not confined to this fixture: commenting on the last screenful of *any* document
+required scrolling the passage higher first. Since the popover is positioned once at open time from
+the captured rect, that workaround did work — which is likely why the gesture went unnoticed by
+hand.
+
+The floating **Comment** button did not share the vertical half: it places *above* the selection
+(`selection.ts:254`), so it degrades at the top edge, where the existing clamp catches it. Both
+elements shared the horizontal half — neither clamped against `innerWidth`, so a selection near the
+right of a wide pane overflowed sideways.
+
+Fixed with one `placeFixed` helper used by both: measure after unhiding, try the preferred side,
+flip to the other when the preferred one overflows, then clamp into the viewport on both axes. Flip
+before clamp matters — clamping alone would slide the popover up to overlap the very text the user
+selected, which is worse than a flip for a composer whose whole job is to sit beside that text.
+
+Why nothing caught it: jsdom reports every rectangle as zero, so the vitest suites are blind to it
+by construction, and `dev/harness/` — which does have a real layout engine and does drive a real
+selection — opened the popover only against text mid-viewport. A `popover: clamped to the viewport`
+gesture now opens it against the bottom edge and asserts the action row is inside `innerHeight`,
+which is the assertion whose absence let this ship.
+
+**D19 — the D17 note says "section" for a scope that is a block.** *Recorded, not yet fixed.* `scopeOf` returns
+`ScopeKind = 'section' | 'block'` (`src/detect/scope.ts:30`), and an anchor that is not a heading
+falls back to block scope — one paragraph, one list item, one fence. But `sectionChanged` travels to
+the webview as a bare `string[]` of ids (`src/panel/messages.ts:85`), so the kind never crosses the
+channel, and `sectionNote` (`media/src/comments.ts:432`) hardcodes one string for both: *"This
+section changed since you copied the prompt"*.
+
+Observed on two comments anchored to inline code spans — `Authorization` and `RATE_LIMIT=600` —
+inside paragraphs the agent rewrote. Both correctly stayed `open` (their anchor text survived
+verbatim, so `addressed` would have been a lie) and both correctly raised the weaker signal. Only
+the noun is wrong: the card claims a heading-delimited section moved when the diff touched a single
+paragraph.
+
+This is worth more than the usual wording nit because of the argument `sectionNote`'s own doc
+comment makes: the phrasing was chosen on the grounds that *"This section changed" is a fact*, as
+against a guess the extension deliberately declines to make. At block scope it is not quite a fact —
+it overstates the region. The note's whole value is being an observation precise enough for the user
+to judge, and this is the wrong direction for it to be imprecise in.
+
+Two fixes are open, and the choice is a real one rather than a formality. Widening the message to
+carry the kind gives the truthful noun per comment but adds a field to a contract that has stayed
+deliberately narrow (D3 exists because that message is posted on *every* state change). Picking
+wording true at both scopes — "The text around this changed since you copied the prompt" — costs
+nothing on the wire and loses the sharper word in the case where "section" is exactly right.
+
+No status, no persistence and no sidecar field is involved, so nothing downstream depends on which
+way it goes.
+
 ### Noted, not changed
 
 - `#notice` remains a single slot shared by `tooLarge`, `targetUnreadable` and `rewriteDetected`.
