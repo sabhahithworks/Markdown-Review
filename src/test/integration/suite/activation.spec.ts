@@ -22,11 +22,8 @@ const COMMANDS = [
 ];
 
 function extension(): vscode.Extension<unknown> {
-  // By `name` rather than by `<publisher>.<name>`: the manifest has no publisher until Phase 5
-  // packages it, so the id is not stable yet.
-  const found = vscode.extensions.all.find(
-    (candidate) => (candidate.packageJSON as { name?: string }).name === 'markdown-review',
-  );
+  // Phase 5 declared the publisher, so the id is stable now.
+  const found = vscode.extensions.getExtension('sabhahithworks.markdown-review');
   assert.ok(found, 'the extension under development was not loaded by the test host');
   return found;
 }

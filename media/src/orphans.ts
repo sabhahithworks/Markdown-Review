@@ -10,9 +10,10 @@
  * In normal flow, so nothing here can overlap, escape the pane, or need measuring.
  */
 
-import type { Comment, Located } from '../../src/panel/messages.js';
+import type { Comment, CommentStatus, Located } from '../../src/panel/messages.js';
 import { truncateQuote } from '../../src/panel/messages.js';
 import { belongsInOrphans } from './comments.js';
+import { FILTERABLE } from './header.js';
 
 /** Long enough to recognise a sentence, short enough not to dominate the section. */
 const QUOTE_LENGTH = 160;
@@ -23,21 +24,52 @@ export interface OrphansOptions {
   /** Arms re-anchor mode. The new selection arrives later, through the selection controller. */
   onReanchor(id: string): void;
   onCancelReanchor(): void;
+  /** Speaks a sentence through the pane's live region (H18). */
+  announce(message: string): void;
 }
 
 export interface OrphansView {
   /**
    * Takes exactly what the gutter cannot place, using the same predicate — so the two views
-   * partition the comments between them and none can fall through both.
+   * partition the comments between them and none can fall through both. `sectionChanged` carries
+   * the D21 signal (H0): ids whose last known neighbourhood changed since the prompt was copied.
    */
-  setState(comments: readonly Comment[], located: Record<string, Located | null>): void;
+  setState(
+    comments: readonly Comment[],
+    located: Record<string, Located | null>,
+    sectionChanged?: readonly string[],
+  ): void;
   /** Shows which orphan is waiting for a selection, or `undefined` for none. */
   setArmed(id: string | undefined): void;
+  /**
+   * The status chips filter this section too (H23). They did not, so switching `orphaned` off
+   * removed the gutter cards but left the triage list fully visible — the one place the filter
+   * most obviously *should* apply.
+   */
+  setFilter(statuses: readonly CommentStatus[]): void;
 }
 
 export function initOrphans(options: OrphansOptions): OrphansView {
+  let all: readonly Comment[] = [];
+  let positions: Record<string, Located | null> = {};
   let orphans: Comment[] = [];
   let armed: string | undefined;
+  let changed = new Set<string>();
+  let filter: CommentStatus[] = [...FILTERABLE];
+
+  /**
+   * Membership is by *position* (`belongsInOrphans`), but visibility is by the comment's declared
+   * status — the same value the header counts — so the two can never disagree about what the
+   * chips mean.
+   */
+  function recompute(): void {
+    orphans = all.filter(
+      (comment) => belongsInOrphans(comment, positions) && filter.includes(comment.status),
+    );
+    if (armed !== undefined && !orphans.some((comment) => comment.id === armed)) {
+      armed = undefined;
+    }
+  }
 
   function render(): void {
     if (orphans.length === 0) {
@@ -88,7 +120,21 @@ export function initOrphans(options: OrphansOptions): OrphansView {
       detail.append('was on ', quote);
     }
 
-    row.append(body, detail, buildActions(comment));
+    row.append(body, detail);
+
+    // The D21 signal (H0): an anchor that stated an absence can only be addressed by deleting it,
+    // so the answer the user wanted arrives here — as apparent loss. Same observation-not-claim
+    // wording as the card note (D17/D19), with the consequence spelled out, because in this
+    // section the default reading is "something went wrong".
+    if (armed !== comment.id && changed.has(comment.id)) {
+      const note = document.createElement('p');
+      note.className = 'mr-orphan-note';
+      note.textContent =
+        'The text around this changed since you copied the prompt — it may have been addressed rather than lost.';
+      row.append(note);
+    }
+
+    row.append(buildActions(comment));
     return row;
   }
 
@@ -109,8 +155,28 @@ export function initOrphans(options: OrphansOptions): OrphansView {
       },
     );
 
+    // Two-step, matching the gutter card (H22). An orphan is the case where an accidental delete
+    // costs most: it is the only copy of a remark whose anchor is already gone.
     const remove = action('Delete', `Delete comment by ${comment.author}`, () => {
-      options.onDelete(comment.id);
+      if (remove.dataset['confirming'] === 'true') {
+        options.announce(`Comment by ${comment.author} deleted.`);
+        options.onDelete(comment.id);
+        return;
+      }
+      remove.dataset['confirming'] = 'true';
+      remove.textContent = 'Delete?';
+      remove.classList.add('mr-card-action-danger');
+      remove.setAttribute('aria-label', `Confirm deleting the comment by ${comment.author}`);
+      remove.addEventListener(
+        'blur',
+        () => {
+          delete remove.dataset['confirming'];
+          remove.textContent = 'Delete';
+          remove.classList.remove('mr-card-action-danger');
+          remove.setAttribute('aria-label', `Delete comment by ${comment.author}`);
+        },
+        { once: true },
+      );
     });
 
     actions.append(reanchor, remove);
@@ -128,17 +194,23 @@ export function initOrphans(options: OrphansOptions): OrphansView {
   }
 
   return {
-    setState(comments, located): void {
-      orphans = comments.filter((comment) => belongsInOrphans(comment, located));
+    setState(comments, located, sectionChanged = []): void {
+      changed = new Set(sectionChanged);
+      all = comments;
+      positions = located;
       // An armed comment that is no longer orphaned — re-anchored elsewhere, deleted, or its text
-      // reappeared — must not leave the pane waiting for a selection nothing will consume.
-      if (armed !== undefined && !orphans.some((comment) => comment.id === armed)) {
-        armed = undefined;
-      }
+      // reappeared — must not leave the pane waiting for a selection nothing will consume;
+      // `recompute` drops it.
+      recompute();
       render();
     },
     setArmed(id): void {
       armed = id;
+      render();
+    },
+    setFilter(statuses): void {
+      filter = [...statuses];
+      recompute();
       render();
     },
   };

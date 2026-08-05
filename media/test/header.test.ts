@@ -8,7 +8,14 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Comment, CommentStatus } from '../../src/panel/messages.js';
-import { FILTERABLE, chipLabel, copyPromptLabel, countByStatus, toggleStatus } from '../src/header.js';
+import {
+  FILTERABLE,
+  chipLabel,
+  copyPromptLabel,
+  countByStatus,
+  hiddenNotice,
+  toggleStatus,
+} from '../src/header.js';
 
 function comment(status: CommentStatus): Comment {
   return {
@@ -82,5 +89,31 @@ describe('chipLabel', () => {
   it('reads as a count and a status', () => {
     expect(chipLabel('open', 3)).toBe('3 open');
     expect(chipLabel('orphaned', 0)).toBe('0 orphaned');
+  });
+});
+
+/**
+ * H23 — a filter that hides everything left a blank pane with no explanation. The chips are still
+ * on screen, but "I hid them" is not a user's first hypothesis when a pane goes empty.
+ */
+describe('hiddenNotice', () => {
+  const counts = { open: 3, addressed: 2, orphaned: 1, resolved: 4 };
+
+  it('says nothing when the filter hides nothing', () => {
+    expect(hiddenNotice(counts, FILTERABLE)).toBeUndefined();
+  });
+
+  it('counts every comment the filter is hiding', () => {
+    expect(hiddenNotice(counts, ['open'])).toBe('7 comments hidden by filter');
+  });
+
+  it('is singular for one', () => {
+    expect(hiddenNotice({ open: 1, addressed: 0, orphaned: 0, resolved: 0 }, [])).toBe(
+      '1 comment hidden by filter',
+    );
+  });
+
+  it('says nothing when there is nothing to hide', () => {
+    expect(hiddenNotice({ open: 0, addressed: 0, orphaned: 0, resolved: 0 }, [])).toBeUndefined();
   });
 });

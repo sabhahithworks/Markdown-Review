@@ -184,7 +184,12 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
       before), not a wrong sentence. Comment 3 **orphaned instead of flipping**, so the header read
       `1 open, 1 addressed, 1 orphaned` rather than `1 open, 2 addressed`. That is **§10 D21**, not
       a run failure: its anchor stated an absence, and answering the comment necessarily deleted it.
-      Re-run this box once D21 is fixed.
+      **Both are now fixed (Plan 06 H0 and H8): re-run this box.** Comment 3 will still orphan —
+      an anchor whose text is genuinely gone has no position, and inventing one would be worse —
+      but its orphan row now carries "The text around this changed since you copied the prompt — it
+      may have been addressed rather than lost", so the row reads as *verify this* rather than as
+      loss. The clipping is repaired at the span end, so a before/after should no longer end
+      mid-word.
       Within ~400 ms of the agent's write (the `onDidChangeTextDocument` debounce; a
       write from outside the editor comes via the `FileSystemWatcher` instead and can take a beat
       longer):
@@ -272,6 +277,9 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
       > correction is that both sides are rendered plain text.
 - [ ] **B3c** — **Dismiss**, then edit the document again. The banner does not come back for a
       document that was already wrecked.
+      > The **Dismiss** button this step has always asked for did not exist until Plan 06 H7 — the
+      > banner had only **Review the diff** and cleared itself on the next render. If it is missing
+      > again, that is the fix regressing.
 
 Then `git checkout docs/fixtures/review-run.md` and re-open the pane before continuing.
 
@@ -281,12 +289,16 @@ The picker is `vscode.window.showOpenDialog` — a native OS dialog, which is pr
 process can answer it (§10 D9). Run this with B1's comments still in place, so there is something
 real to migrate.
 
-> **Still not exercised after the 2026-08-05 packaged-build run.** That run reached for **Re-anchor**
+> **Not exercised in either 2026-08-05 run.** The packaged-build attempt reached for **Re-anchor**
 > on an orphan card instead of **Locate file…** on the unreadable notice, and re-anchored a comment
 > by selecting text — the B2 gesture, not this one. The picker was never opened. See §10 D22: two
-> recovery actions are visible at once and the wrong one is the more discoverable, which is a finding
-> about the UI, not about the tester. **Read B4a–B4c carefully before the next attempt**: this box is
-> about the *file*, not the *comment*, and nothing in it involves selecting text.
+> recovery actions were visible at once and the wrong one was the more discoverable, which was a
+> finding about the UI, not about the tester.
+>
+> **That competition is now gone** (Plan 06 H7/H0): while the target is unreadable the pane clears
+> its content *and* empties the orphan section, so **Locate file…** is the only recovery action on
+> screen. B4a's expectation below is what the code now does rather than what it used to; if an
+> orphan card is visible under the notice, that is a regression in the fix, not a tester error.
 
 **Step 1 — break the link.**
 
@@ -294,10 +306,19 @@ real to migrate.
       `renamed.md` in the explorer (<kbd>F2</kbd>).
       > Expect, within a second: the pane replaces its content with a notice headed **"This file
       > could not be read"**, body "It may have been moved, renamed or deleted. The pane is still
-      > open, and nothing has been lost. (…)", and a **Locate file…** button.
+      > open, and nothing has been lost. (…)", and a **Locate file…** button — which takes focus,
+      > so <kbd>Enter</kbd> alone activates it.
+      >
+      > The document really is gone from the pane: no rendered prose underneath, no gutter cards,
+      > and **no orphan section** (Plan 06 H7). **Locate file…** is the only action offered.
       >
       > Also check: the pane **did not close**, and `.reviews/…review-run.md.json` is still on disk
       > with all its comments. Losing either is a PRD §11 violation — the comments outlive the file.
+      >
+      > **Note:** renaming inside VS Code now also migrates the review automatically (Plan 06 H30),
+      > so the pane may re-open on `renamed.md` by itself. To exercise the manual path this box is
+      > about, rename the file **outside** VS Code (in a terminal or Finder) so no rename event
+      > fires.
 
 **Step 2 — re-link.**
 

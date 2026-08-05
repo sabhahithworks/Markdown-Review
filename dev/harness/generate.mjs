@@ -262,6 +262,16 @@ async function main() {
         baselineAt: '2026-08-01T09:00:00.000Z',
       },
     },
+    outOfOrder: {
+      label: 'Out of document order',
+      description:
+        'The same three consecutive task-list items as "Overlapping", but declared in reverse — the order they would have if the user commented bottom-up. Comments are stored in insertion order, so this is what the webview really receives; every other scenario happens to declare them in document order, which is why H1 (the stacking pass reading store order while the render pass read document order) was invisible here for two phases. The cards must still land in document order, each beside its own highlight.',
+      review: review([
+        comment('oord0003', PASSAGES.listC, { body: 'Commented third, but it is highest.' }),
+        comment('oord0002', PASSAGES.listB, { body: 'Commented second.' }),
+        comment('oord0001', PASSAGES.listA, { body: 'Commented last, but it is lowest.' }),
+      ]),
+    },
     nearby: {
       label: 'Section changed',
       description:

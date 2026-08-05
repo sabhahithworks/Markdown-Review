@@ -12,6 +12,7 @@
 
 import { MIN_ANCHOR_LENGTH } from '../../src/panel/messages.js';
 import { blockOf, blockRef, blockText, offsetAt, textOfRange, verifyBlockMap } from './anchorSpace.js';
+import { modifierLabel } from './platform.js';
 
 /** Long enough to not fire mid-drag, short enough that the button feels attached to the mouse. */
 const SELECTION_DEBOUNCE_MS = 150;
@@ -65,10 +66,23 @@ interface Captured {
   rect: DOMRect;
 }
 
+/**
+ * Why a selection produced no Comment button.
+ *
+ * `undefined` means "nothing to say" — a selection outside the content, or one the user is still
+ * dragging. The two named reasons are worth telling the user about (H21): before this, a selection
+ * that was too short or landed in front matter simply produced no button, which is
+ * indistinguishable from the feature being broken.
+ */
+type Rejection = 'too-short' | 'front-matter' | undefined;
+
+type CaptureResult = { ok: true; value: Captured } | { ok: false; reason: Rejection };
+
 export function initSelection(options: SelectionOptions): SelectionController {
   const button = createCommentButton();
+  const hint = createHint();
   const popover = createPopover(options);
-  document.body.append(button, popover.element);
+  document.body.append(button, hint, popover.element);
 
   let captured: Captured | undefined;
   let debounce = 0;
@@ -101,13 +115,18 @@ export function initSelection(options: SelectionOptions): SelectionController {
 
     const range = selection.getRangeAt(0);
     const next = capture(range, options.root, options.onWarning);
-    if (!next) {
+    if (!next.ok) {
       hideButton();
+      // Say why, where the user is looking (H21). Silence here is indistinguishable from the
+      // feature not existing, and the too-short wording previously only appeared as a host toast
+      // *after* a submit that could no longer happen.
+      if (next.reason) showHint(hint, REJECTION_TEXT[next.reason], range.getBoundingClientRect());
       return;
     }
 
-    captured = next;
-    showButton(button, next.rect);
+    hideHint(hint);
+    captured = next.value;
+    showButton(button, next.value.rect);
   }
 
   document.addEventListener('selectionchange', () => {
@@ -115,8 +134,25 @@ export function initSelection(options: SelectionOptions): SelectionController {
     debounce = window.setTimeout(evaluate, SELECTION_DEBOUNCE_MS);
   });
 
+  // Both floating affordances are `position: fixed` and nothing re-places them on scroll, so they
+  // stayed pinned to the viewport while the text they describe moved away — the button ends up
+  // pointing at an unrelated paragraph (H25). Hiding is the honest response: the selection itself
+  // survives, so scrolling back and re-selecting is one gesture.
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (popover.isOpen()) return;
+      if (!button.hidden) hideButton();
+      hideHint(hint);
+    },
+    { passive: true, capture: true },
+  );
+
   button.addEventListener('click', () => {
     if (!captured) return;
+    // Captured before the button is hidden, so the popover has something real to restore focus to
+    // when it closes (H18).
+    const restoreFocusTo = document.activeElement === button ? options.root : document.activeElement;
     button.hidden = true;
 
     if (arming !== undefined) {
@@ -135,7 +171,7 @@ export function initSelection(options: SelectionOptions): SelectionController {
       return;
     }
 
-    popover.open(captured);
+    popover.open(captured, restoreFocusTo);
   });
 
   document.addEventListener('keydown', (event) => {
@@ -187,19 +223,21 @@ export function initSelection(options: SelectionOptions): SelectionController {
  * construction, and is rejected twice over: it lives outside `#content` *and* carries
  * `data-no-anchor` (Plan 02 §4).
  */
-function capture(
-  range: Range,
-  root: HTMLElement,
-  warn: (message: string) => void,
-): Captured | undefined {
-  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return undefined;
-  if (elementOf(range.startContainer)?.closest('[data-no-anchor]')) return undefined;
+function capture(range: Range, root: HTMLElement, warn: (message: string) => void): CaptureResult {
+  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) {
+    return { ok: false, reason: undefined };
+  }
+  if (elementOf(range.startContainer)?.closest('[data-no-anchor]')) {
+    return { ok: false, reason: 'front-matter' };
+  }
 
   const block = blockOf(range.startContainer);
-  if (!block) return undefined;
+  if (!block) return { ok: false, reason: undefined };
 
   const selectedText = textOfRange(range, root);
-  if (selectedText.trim().length < MIN_ANCHOR_LENGTH) return undefined;
+  if (selectedText.trim().length < MIN_ANCHOR_LENGTH) {
+    return { ok: false, reason: 'too-short' };
+  }
 
   const hintLine = nearestDataLine(range.startContainer);
 
@@ -215,17 +253,23 @@ function capture(
       `anchor-space mismatch in block at offset ${String(ref.start)}: ` +
         `DOM walk produced ${String(blockText(block).length)} chars, host expected ${String(ref.end - ref.start)}`,
     );
-    return { selectedText, offset: -1, hintLine, rect: range.getBoundingClientRect() };
+    return {
+      ok: true,
+      value: { selectedText, offset: -1, hintLine, rect: range.getBoundingClientRect() },
+    };
   }
 
   const offset = offsetAt(range.startContainer, range.startOffset);
 
   return {
-    selectedText,
-    // `-1` is the documented sentinel; the host recovers a position from `hintLine`.
-    offset: offset ?? -1,
-    hintLine,
-    rect: range.getBoundingClientRect(),
+    ok: true,
+    value: {
+      selectedText,
+      // `-1` is the documented sentinel; the host recovers a position from `hintLine`.
+      offset: offset ?? -1,
+      hintLine,
+      rect: range.getBoundingClientRect(),
+    },
   };
 }
 
@@ -285,9 +329,39 @@ function showButton(button: HTMLElement, rect: DOMRect): void {
   placeFixed(button, rect, 'above');
 }
 
+/**
+ * Why a selection cannot be commented on, in the words the user needs (H21).
+ *
+ * `too-short` interpolates the same constant `createAnchor` enforces, so it cannot drift; the
+ * host's `anchorRejectionMessage` says the same thing for the submit path that can still reach it.
+ */
+const REJECTION_TEXT: Record<Exclude<Rejection, undefined>, string> = {
+  'too-short': `Select at least ${String(MIN_ANCHOR_LENGTH)} characters to comment`,
+  'front-matter': 'Front matter cannot be commented on',
+};
+
+/** Transient, non-interactive, and never focus-stealing: the user is mid-drag. */
+function createHint(): HTMLElement {
+  const hint = document.createElement('div');
+  hint.className = 'mr-selection-hint';
+  hint.setAttribute('role', 'status');
+  hint.hidden = true;
+  return hint;
+}
+
+function showHint(hint: HTMLElement, text: string, rect: DOMRect): void {
+  hint.textContent = text;
+  hint.hidden = false;
+  placeFixed(hint, rect, 'above');
+}
+
+function hideHint(hint: HTMLElement): void {
+  hint.hidden = true;
+}
+
 interface Popover {
   element: HTMLElement;
-  open(at: Captured): void;
+  open(at: Captured, restoreFocusTo?: Element | null): void;
   isOpen(): boolean;
   onSubmit(handler: (body: string) => void): void;
   onCancel(handler: () => void): void;
@@ -381,8 +455,11 @@ function createPopover(options: SelectionOptions): Popover {
   return {
     element,
     isOpen: () => open,
-    open(at: Captured) {
-      previousFocus = document.activeElement;
+    open(at: Captured, restoreFocusTo?: Element | null) {
+      // The caller passes what had focus *before* it hid the Comment button. Reading
+      // `document.activeElement` here instead — as this did — always saw `<body>`, because hiding
+      // the button had already dropped focus, so `close()`'s restore was a silent no-op (H18).
+      previousFocus = restoreFocusTo ?? document.activeElement;
       open = true;
       element.hidden = false;
       placeFixed(element, at.rect, 'below');
@@ -414,6 +491,3 @@ function trapFocus(event: KeyboardEvent, order: HTMLElement[]): void {
   }
 }
 
-function modifierLabel(): string {
-  return navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl';
-}

@@ -61,13 +61,20 @@
 <body>
   <!-- Kept element-for-element identical to `getHtmlForWebview`. `requireElement` throws on a
        missing id, so a shell that drifts fails loudly on load instead of rendering subtly wrong. -->
+  <!-- This shell must stay identical to `ReviewPanel.getHtmlForWebview`'s: the real bundle calls
+       `requireElement` for each id and throws on the first one missing, so a shell that has drifted
+       does not degrade — it stops the webview booting, and every check below then passes vacuously
+       or fails for the wrong reason. -->
   <header id="header" hidden></header>
   <div id="notice" hidden></div>
   <section id="orphans" hidden aria-label="Comments that lost their anchor"></section>
+  <div id="empty-state" hidden></div>
   <div id="front-matter-root"></div>
   <main id="content"></main>
   <div id="highlight-overlay" aria-hidden="true"></div>
+  <div id="marker-layer"></div>
   <aside id="gutter" aria-label="Comments"></aside>
+  <div id="announcer" class="mr-visually-hidden" role="status" aria-live="polite"></div>
 
   <div id="mr-harness" data-no-anchor>
     <div>
@@ -209,6 +216,40 @@
         }
         if (pushed === 0) return fail('no card was pushed down, so the stacking pass never ran');
         return pass(`${pushed} of 3 cards displaced below their anchor`);
+      },
+
+      'cards follow document order, whatever order they were created in'() {
+        // The H1 regression guard. `render()` appends cards sorted by anchor start, but the
+        // stacking pass collected them in *store* order — so a comment made on an early paragraph
+        // after one on a late paragraph entered `stackTops` out of order and was shoved below the
+        // later card's bottom, far from its own highlight. Every other scenario declares its
+        // comments in document order, which is exactly why this went unseen; `outOfOrder` declares
+        // them reversed.
+        if (document.body.classList.contains('mr-narrow')) return skip('needs full width');
+        const scenario = fixture.scenarios[currentKey];
+
+        const pairs = [];
+        for (const comment of scenario.review.comments) {
+          const mark = document.querySelector(`#highlight-overlay .mr-highlight[data-comment-id="${comment.id}"]`);
+          const card = visibleCards().find((element) => element.textContent.includes(comment.body.slice(0, 20)));
+          if (!mark || !card) continue;
+          pairs.push({ id: comment.id, markTop: mark.getBoundingClientRect().top, cardTop: card.getBoundingClientRect().top });
+        }
+        if (pairs.length < 2) return skip('needs at least two placed cards');
+
+        pairs.sort((a, b) => a.markTop - b.markTop);
+        for (let i = 1; i < pairs.length; i++) {
+          if (pairs[i].cardTop < pairs[i - 1].cardTop - 0.5) {
+            return fail(`${pairs[i].id}'s card sits above ${pairs[i - 1].id}'s, but its highlight is below`);
+          }
+        }
+        // A card is never *above* its own anchor — stacking only ever pushes down.
+        for (const pair of pairs) {
+          if (pair.cardTop < pair.markTop - 1) {
+            return fail(`${pair.id}'s card is ${(pair.markTop - pair.cardTop).toFixed(1)}px above its highlight`);
+          }
+        }
+        return pass(`${pairs.length} card(s) in document order`);
       },
 
       'cards have a usable width'() {
@@ -477,11 +518,59 @@
           // A marker is anchored to a highlight, so a scenario with nothing locatable has none by
           // design — its comments are all in `#orphans`, which is in flow and needs no marker.
           if (nothingLocatable()) return skip('every anchor in this scenario is gone');
-          const markers = document.querySelectorAll('#highlight-overlay .mr-marker').length;
+          // In `#marker-layer`, not the overlay: the overlay is aria-hidden, and a focusable
+          // button inside it was unreachable by screen reader (H16).
+          if (document.querySelectorAll('#highlight-overlay .mr-marker').length > 0) {
+            return fail('markers are inside the aria-hidden overlay');
+          }
+          const markers = document.querySelectorAll('#marker-layer .mr-marker').length;
           if (markers === 0) return fail('narrow mode with no inline markers');
           return pass(`collapsed to ${markers} inline marker(s)`);
         }
         return pass(`gutter shown at ${window.innerWidth}px`);
+      },
+
+      'nothing focusable hides inside an aria-hidden subtree'() {
+        // The check that would have caught H16 three phases earlier. Focusable content inside
+        // `aria-hidden` is a hard ARIA violation: the element takes keyboard focus while being
+        // absent from the accessibility tree, so a screen-reader user lands on nothing.
+        const offenders = [];
+        for (const hidden of document.querySelectorAll('[aria-hidden="true"]')) {
+          for (const element of hidden.querySelectorAll('button, a[href], input, select, textarea, [tabindex]')) {
+            if (element.getAttribute('tabindex') === '-1') continue;
+            offenders.push(element.className || element.tagName);
+          }
+        }
+        return offenders.length === 0
+          ? pass('no focusable elements under aria-hidden')
+          : fail(`focusable inside aria-hidden: ${offenders.join(', ')}`);
+      },
+
+      'every card announces its status'() {
+        // Status reached assistive tech only through a CSS class before H18, so `open`, `orphaned`
+        // and `resolved` cards were indistinguishable to a screen reader.
+        const cards = [...document.querySelectorAll('#gutter .mr-card')];
+        if (cards.length === 0) return skip('no cards in this scenario');
+        const bare = cards.filter((card) => !card.getAttribute('aria-label'));
+        if (bare.length > 0) return fail(`${bare.length} card(s) with no accessible name`);
+        const statuses = ['open', 'addressed', 'anchor lost', 'resolved'];
+        const unnamed = cards.filter(
+          (card) => !statuses.some((status) => card.getAttribute('aria-label').includes(status)),
+        );
+        return unnamed.length === 0
+          ? pass(`${cards.length} card(s) name their status`)
+          : fail(`${unnamed.length} card(s) do not name a status`);
+      },
+
+      'an uncertain position says so in words'() {
+        // PRD §5 requires the phrase, not just the dashed underline (H17).
+        if (currentKey !== 'uncertain') return skip('other scenario');
+        const uncertain = [...document.querySelectorAll('#gutter .mr-card')].filter((card) =>
+          card.textContent.includes('position uncertain'),
+        );
+        return uncertain.length > 0
+          ? pass(`${uncertain.length} card(s) say "position uncertain"`)
+          : fail('the low-confidence card never says "position uncertain"');
       },
 
       'no uncaught errors'() {

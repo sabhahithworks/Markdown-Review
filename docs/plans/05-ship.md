@@ -22,7 +22,7 @@ green. **This document may be written now; it may not be executed until these cl
 
 | Open | What it is | Where |
 |---|---|---|
-| ~~Plan 04 §9 item 2~~ | ~~The real-agent run~~ — **closed 2026-08-05**, B1d and B1e both exercised on the packaged build | `04-acceptance-run.md` B1d, B1e |
+| Plan 04 §9 item 2 | The real-agent run — **passed 2026-08-05** (B1d/B1e exercised on the packaged build), but the box stays open for its two standing qualifications: D21's orphan, and a **blind** B1c re-run (the first was verified by an agent that had read the expectation) | `04-acceptance-run.md` B1b–B1e |
 | ~~Plan 04 §9 item 9~~ | ~~Clear addressed / clear all~~ — **closed 2026-08-05**, all five boxes | `04-acceptance-run.md` B5a–B5e |
 | Plan 04 §9 item 8 | Rename/delete of the target → re-link. **Still not exercised after two runs** — the 2026-08-05 attempt used the re-anchor gesture instead (§10 D22) | `04-acceptance-run.md` B4a–B4c |
 | Plan 04 §10 D21 | An anchor stating an absence orphans instead of flipping — a live defect the first real-agent run found | `04-prompt-and-detection.md` §10 |
@@ -32,9 +32,9 @@ The packaged run also produced a new Phase 4 finding, **§10 D22** — the re-li
 recovery actions compete for the same attention, and the wrong one is more discoverable. Recorded,
 not fixed: it is a UI change in Phase 4's surface, and this phase is explicitly no feature work.
 
-D19 ("the D17 note says *section* for a scope that is a block") is recorded as not-yet-fixed and is
-a wording bug in a user-facing notice. It is not a gate, but it is cheap and it will be read by every
-user, so fix it while the manifest work is in flight rather than shipping it.
+D19 ("the D17 note says *section* for a scope that is a block") was **fixed 2026-08-05** (commit
+`2db4759`) — the note now names no scope word; see `04-prompt-and-detection.md` §10 D19 for the
+resolution and the test that pins the wording.
 
 ## 2. Identity — name, publisher, repository
 
@@ -408,7 +408,7 @@ Then `05-acceptance-run.md`, against those bytes and not the dev host.
 - `npx --yes @vscode/vsce publish 0.1.0`, or upload the `.vsix` through the web UI for the first
   release — it gives a clearer error surface for the things that only fail on the server.
 - Post-publish: install from the Marketplace on a clean machine or profile and run the loop once.
-  Tag `v0.1.0`. Open issues for anything deferred, D19 and E7 included.
+  Tag `v0.1.0`. Open issues for anything deferred, D22 and E7 included.
 
 ## 11. CHANGELOG
 
@@ -450,8 +450,8 @@ the publisher id is still unclaimed and that gates everything downstream of it.
       404 beforehand
       — **manual**, and the only irreversible step in the phase (PRD §12 item 2)
 - [x] `publisher`, `author`, `repository`, `icon` applied and `private: true` removed **in one
-      commit** — **2026-08-05**, `558bf29`. `git remote add origin` done; **not yet pushed**, which
-      is what the README's absolute image URLs are waiting on
+      commit** — **2026-08-05**, `558bf29`. `git remote add origin` done and **pushed** (`main` ==
+      `origin/main`), so the README's absolute image URLs resolve
       — `git show --stat 558bf29`. The `vsce ls` half of this item as originally written was wrong:
       neither `private` nor a missing `publisher` blocks `package` in vsce 3.9.2 (§2, §13 E4)
 - [x] 128×128 `media/icon.png` in place, legible at 16 px, readable on dark and light (PRD §12 item 3)

@@ -174,7 +174,7 @@ research session (Plan 05 §10).
 - [ ] Repo pushed and public, so the README's raw image URLs resolve off-GitHub.
 - [ ] Published; the listing renders as C4 predicted.
 - [ ] Clean machine or profile: install from the Marketplace and run the loop once.
-- [ ] `v0.1.0` tagged; issues opened for D19 and E7.
+- [ ] `v0.1.0` tagged; issues opened for D22 and E7.
 
 ---
 

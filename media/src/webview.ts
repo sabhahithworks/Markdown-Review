@@ -83,8 +83,11 @@ const frontMatterRoot = requireElement('front-matter-root');
 const noticeRoot = requireElement('notice');
 const gutterRoot = requireElement('gutter');
 const overlayRoot = requireElement('highlight-overlay');
+const markerRoot = requireElement('marker-layer');
 const headerRoot = requireElement('header');
 const orphansRoot = requireElement('orphans');
+const announcerRoot = requireElement('announcer');
+const emptyStateRoot = requireElement('empty-state');
 
 /** Built on `init`, because the popover shows the author the host will attribute the comment to. */
 let comments: CommentsView | undefined;
@@ -113,6 +116,20 @@ function requireElement(id: string): HTMLElement {
  */
 function report(message: string): void {
   vscode.postMessage({ type: 'error', message });
+}
+
+/**
+ * Speaks a sentence through the pane's live region (H18).
+ *
+ * Cleared first, then set on the next frame: a screen reader announces a *change* of content, so
+ * re-setting the identical string — "Comment resolved." twice in a row — would otherwise be
+ * silent the second time.
+ */
+function announce(message: string): void {
+  announcerRoot.textContent = '';
+  requestAnimationFrame(() => {
+    announcerRoot.textContent = message;
+  });
 }
 
 window.addEventListener('error', (event) => {
@@ -179,6 +196,8 @@ function setContent(html: string, frontMatterHtml: string | undefined): void {
   // a map built against the old ones would point at detached nodes.
   resetBlockMaps();
   restoreScroll();
+  // After `restoreScroll`, so the measured tops describe where the content actually settled.
+  rebuildLineIndex();
   comments?.reposition();
 }
 
@@ -206,9 +225,11 @@ function startCommenting(author: string): CommentsView {
     root: contentRoot,
     author,
     onSubmit: ({ selectedText, offset, hintLine, body }) => {
+      announce('Comment added.');
       vscode.postMessage({ type: 'addComment', selectedText, offset, hintLine, body });
     },
     onReanchor: ({ id, selectedText, offset, hintLine }) => {
+      announce('Comment re-anchored to the selected text.');
       vscode.postMessage({ type: 'reanchorComment', id, selectedText, offset, hintLine });
     },
     onArmChange: (id) => orphans?.setArmed(id),
@@ -217,6 +238,7 @@ function startCommenting(author: string): CommentsView {
 
   orphans = initOrphans({
     root: orphansRoot,
+    announce,
     onDelete: (id) => {
       vscode.postMessage({ type: 'deleteComment', id });
     },
@@ -232,10 +254,20 @@ function startCommenting(author: string): CommentsView {
     onClearAddressed: () => {
       vscode.postMessage({ type: 'clearAddressed' });
     },
+    onClearAll: () => {
+      vscode.postMessage({ type: 'clearAll' });
+    },
     onFilterChange: (statuses) => {
       filter = statuses;
       saveState();
       comments?.setFilter(statuses);
+      // The orphan section filters on the same chips (H23).
+      orphans?.setFilter(statuses);
+      announce(
+        statuses.length === FILTERABLE.length
+          ? 'Showing all comments.'
+          : `Showing ${statuses.join(', ')} comments.`,
+      );
     },
   });
 
@@ -243,12 +275,15 @@ function startCommenting(author: string): CommentsView {
   // does not flash every comment and then hide half of them.
   if (filter) {
     header.setFilter(filter);
+    orphans.setFilter(filter);
   }
 
   return initComments({
     root: contentRoot,
     gutter: gutterRoot,
     overlay: overlayRoot,
+    markerLayer: markerRoot,
+    announce,
     onEdit: (id, body) => {
       vscode.postMessage({ type: 'editComment', id, body });
     },
@@ -272,7 +307,7 @@ function hideNotice(): void {
 }
 
 /** Built with `createElement`/`textContent`, never `innerHTML` — the habit matters more than the case. */
-function showNotice(heading: string, body: string, action?: { label: string; run: () => void }): void {
+function showNotice(heading: string, body: string, ...actions: { label: string; run: () => void }[]): void {
   const title = document.createElement('h2');
   title.textContent = heading;
 
@@ -281,15 +316,23 @@ function showNotice(heading: string, body: string, action?: { label: string; run
 
   noticeRoot.replaceChildren(title, text);
 
-  if (action) {
+  let firstButton: HTMLButtonElement | undefined;
+  for (const action of actions) {
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = action.label;
     button.addEventListener('click', action.run);
     noticeRoot.append(button);
+    firstButton ??= button;
   }
 
   noticeRoot.hidden = false;
+  // A document being rewritten under the user, or its file becoming unreadable, was announced to
+  // nobody (H18). `role="alert"` is set at build time rather than in the shell so it fires on
+  // *this* content; moving focus to the recovery action makes the notice actionable by keyboard
+  // without hunting for it.
+  noticeRoot.setAttribute('role', 'alert');
+  firstButton?.focus();
 }
 
 function formatBytes(bytes: number): string {
@@ -299,16 +342,52 @@ function formatBytes(bytes: number): string {
 
 // ---------------------------------------------------------------- scrolling
 
+/**
+ * `[data-line]` elements with their document-relative tops, rebuilt once per render (H26).
+ *
+ * `currentScrollLine` used to walk every `[data-line]` element calling `getBoundingClientRect()`
+ * until one intersected the viewport — a forced layout, proportional to the document, on every
+ * animation frame while scrolling. Positions only move when the content or the layout does, so
+ * they are measured once and searched.
+ */
+let lineIndex: Array<{ bottom: number; line: number }> = [];
+
+/** Page coordinates — the window is the scroller, so these are scroll-invariant. */
+function rebuildLineIndex(): void {
+  const next: Array<{ bottom: number; line: number }> = [];
+  for (const element of contentRoot.querySelectorAll('[data-line]')) {
+    const line = Number(element.getAttribute('data-line'));
+    if (!Number.isFinite(line)) continue;
+    next.push({ bottom: element.getBoundingClientRect().bottom + window.scrollY, line });
+  }
+  lineIndex = next;
+}
+
 function currentScrollLine(): number | undefined {
   // The topmost block still intersecting the viewport. Anchoring to a `data-line` rather than a
   // pixel offset means the position survives a re-render that changes layout.
-  for (const element of contentRoot.querySelectorAll('[data-line]')) {
-    if (element.getBoundingClientRect().bottom > 0) {
-      const line = Number(element.getAttribute('data-line'));
-      return Number.isFinite(line) ? line : undefined;
+  //
+  // The original walked every element calling `getBoundingClientRect()` until one intersected,
+  // every frame; this searches the memo instead and touches layout only through `scrollY`.
+  if (lineIndex.length === 0) return undefined;
+  const fold = window.scrollY;
+
+  // First entry whose bottom is still below the fold. Ascending by construction, so binary search.
+  let low = 0;
+  let high = lineIndex.length - 1;
+  let found: number | undefined;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const entry = lineIndex[mid];
+    if (!entry) break;
+    if (entry.bottom > fold) {
+      found = entry.line;
+      high = mid - 1;
+    } else {
+      low = mid + 1;
     }
   }
-  return undefined;
+  return found;
 }
 
 function restoreScroll(): void {
@@ -372,6 +451,74 @@ document.addEventListener('click', (event) => {
 
 // ---------------------------------------------------------------- host messages
 
+/**
+ * True while a notice has replaced the document (`tooLarge`, `targetUnreadable`). With no content
+ * there are no rectangles, so gutter cards would pile at the origin — and while the target is
+ * unreadable, the orphan section's **Re-anchor** competes with the notice's **Locate file…** and
+ * wins on discoverability, which is exactly how the B4 acceptance step went untested twice
+ * (§10 D22 / H7). While gone, the comment views are emptied; the data is untouched host-side.
+ */
+let documentGone = false;
+/** The last review state, so the notice cases can re-apply it with `documentGone` flipped. */
+let lastReviewState: Extract<HostMessage, { type: 'reviewState' }> | undefined;
+
+/**
+ * The first-run hint (H20).
+ *
+ * The pane's whole loop — select, comment, copy the prompt — was undiscoverable from a cold start:
+ * with no comments the header hides itself, so a new user saw a rendered document and nothing
+ * else. Shown only while the review is genuinely empty, dismissable for the session, and never
+ * shown again once the pane is carrying a comment.
+ */
+let emptyStateDismissed = false;
+
+function paintEmptyState(isEmpty: boolean): void {
+  if (!isEmpty || emptyStateDismissed || documentGone) {
+    emptyStateRoot.hidden = true;
+    emptyStateRoot.replaceChildren();
+    return;
+  }
+  if (!emptyStateRoot.hidden) return; // already up; do not rebuild under the user
+
+  const title = document.createElement('p');
+  title.className = 'mr-empty-title';
+  title.textContent = 'Select any text to leave a comment';
+
+  const body = document.createElement('p');
+  body.className = 'mr-empty-body';
+  body.textContent =
+    'Then use Copy review prompt to hand your comments to any AI agent. It edits the file as ordinary prose — this pane works out which comments were addressed.';
+
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.className = 'mr-button-secondary';
+  dismiss.textContent = 'Got it';
+  dismiss.addEventListener('click', () => {
+    emptyStateDismissed = true;
+    paintEmptyState(true);
+  });
+
+  emptyStateRoot.replaceChildren(title, body, dismiss);
+  emptyStateRoot.hidden = false;
+}
+
+function applyReviewState(message: Extract<HostMessage, { type: 'reviewState' }>): void {
+  paintEmptyState(message.review.comments.length === 0);
+  // Order matters, and not cosmetically. `#header` and `#orphans` are both in normal flow
+  // *above* `#content`, so showing or resizing either one moves every block below it. Cards and
+  // highlights are placed from measured rectangles, so they have to be measured last — updating
+  // them first left every highlight offset by the height of whatever appeared above it, which
+  // showed up as highlights landing on the wrong line.
+  header?.setState(message.review);
+  if (documentGone) {
+    orphans?.setState([], {});
+    comments?.setState({ ...message.review, comments: [] }, {}, []);
+    return;
+  }
+  orphans?.setState(message.review.comments, message.located, message.sectionChanged);
+  comments?.setState(message.review, message.located, message.sectionChanged);
+}
+
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
   const message = event.data as HostMessage;
   if (typeof message !== 'object' || message === null) return;
@@ -384,14 +531,8 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
       break;
 
     case 'reviewState':
-      // Order matters, and not cosmetically. `#header` and `#orphans` are both in normal flow
-      // *above* `#content`, so showing or resizing either one moves every block below it. Cards and
-      // highlights are placed from measured rectangles, so they have to be measured last — updating
-      // them first left every highlight offset by the height of whatever appeared above it, which
-      // showed up as highlights landing on the wrong line.
-      header?.setState(message.review);
-      orphans?.setState(message.review.comments, message.located);
-      comments?.setState(message.review, message.located, message.sectionChanged);
+      lastReviewState = message;
+      applyReviewState(message);
       break;
 
     case 'rewriteDetected':
@@ -404,16 +545,25 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
             vscode.postMessage({ type: 'showRewriteDiff' });
           },
         },
+        {
+          // The banner otherwise stays until the next render (H7): a user who has taken it in has
+          // no way to get it off the screen.
+          label: 'Dismiss',
+          run: hideNotice,
+        },
       );
       break;
 
     case 'setContent':
+      documentGone = false;
       setContent(message.html, message.frontMatterHtml);
       break;
 
     case 'tooLarge':
+      documentGone = true;
       contentRoot.replaceChildren();
       frontMatterRoot.replaceChildren();
+      if (lastReviewState) applyReviewState(lastReviewState);
       showNotice(
         'This file is large',
         `Rendering ${formatBytes(message.sizeBytes)} of Markdown may make the pane slow to open and scroll.`,
@@ -427,6 +577,13 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
       break;
 
     case 'targetUnreadable':
+      // The notice replaces the document (H7): stale content under "this file could not be read"
+      // reads as the file still being there, and the orphan section must not offer Re-anchor
+      // against text that no longer has a source.
+      documentGone = true;
+      contentRoot.replaceChildren();
+      frontMatterRoot.replaceChildren();
+      if (lastReviewState) applyReviewState(lastReviewState);
       showNotice(
         'This file could not be read',
         `It may have been moved, renamed or deleted. The pane is still open, and nothing has been lost. (${message.reason})`,

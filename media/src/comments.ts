@@ -12,9 +12,11 @@ import type { Comment, CommentStatus, Located, ReviewSummary } from '../../src/p
 import { UNCERTAIN_BELOW, truncateQuote } from '../../src/panel/messages.js';
 import { domRangeFor } from './anchorSpace.js';
 import { FILTERABLE } from './header.js';
+import { modifierLabel, prefersReducedMotion } from './platform.js';
 
 /** Below this width the margin cannot hold a readable card, so it collapses (PRD §6). */
 const NARROW_BREAKPOINT_PX = 700;
+
 
 /** Vertical breathing room between stacked cards. */
 const CARD_GAP_PX = 8;
@@ -23,12 +25,16 @@ export interface CommentsOptions {
   root: HTMLElement;
   gutter: HTMLElement;
   overlay: HTMLElement;
+  /** Narrow-mode markers live here, not in the `aria-hidden` overlay (H16). */
+  markerLayer: HTMLElement;
   onEdit(id: string, body: string): void;
   onDelete(id: string): void;
   /** Also "Looks good" on an addressed card — the same terminal `resolved` either way. */
   onResolve(id: string): void;
   /** The user rejects an `addressed` inference (PRD §8). */
   onReopen(id: string): void;
+  /** Speaks a sentence through the pane's live region (H18). */
+  announce(message: string): void;
 }
 
 export interface CommentsView {
@@ -117,7 +123,11 @@ export function initComments(options: CommentsOptions): CommentsView {
     active = id;
 
     for (const [commentId, card] of cards) {
-      card.classList.toggle('mr-card-active', commentId === id);
+      const isActive = commentId === id;
+      card.classList.toggle('mr-card-active', isActive);
+      // Conveys the pairing to assistive tech, which cannot see the highlight light up (H18).
+      if (isActive) card.setAttribute('aria-current', 'true');
+      else card.removeAttribute('aria-current');
     }
     for (const mark of options.overlay.querySelectorAll('.mr-highlight')) {
       mark.classList.toggle('mr-highlight-active', mark.getAttribute('data-comment-id') === id);
@@ -159,8 +169,10 @@ export function initComments(options: CommentsOptions): CommentsView {
     const ordered = [...live].sort((a, b) => anchorStart(a) - anchorStart(b));
 
     for (const comment of ordered) {
+      const position = located[comment.id];
       const card = buildCard(comment, options, () => toggleExpanded(comment.id), {
         sectionChanged: sectionChanged.has(comment.id),
+        uncertain: position !== null && position !== undefined && position.confidence < UNCERTAIN_BELOW,
       });
       card.addEventListener('mouseenter', () => {
         setActive(comment.id);
@@ -168,8 +180,16 @@ export function initComments(options: CommentsOptions): CommentsView {
       card.addEventListener('mouseleave', () => {
         setActive(undefined);
       });
-      card.addEventListener('focus', () => {
+      // `focusin`/`focusout` rather than `focus`: `focus` does not bubble, so tabbing to the card's
+      // own Edit or Delete button left the highlight unlit, and nothing ever cleared the active
+      // state again once set by keyboard (H18).
+      card.addEventListener('focusin', () => {
         setActive(comment.id);
+      });
+      card.addEventListener('focusout', (event) => {
+        // Moving between two buttons inside the same card is not leaving it.
+        if (card.contains(event.relatedTarget as Node | null)) return;
+        setActive(undefined);
       });
       cards.set(comment.id, card);
       options.gutter.append(card);
@@ -185,6 +205,18 @@ export function initComments(options: CommentsOptions): CommentsView {
   }
 
   function toggleExpanded(id: string): void {
+    // In wide mode every card is already visible, so toggling `expanded` changed nothing on screen
+    // while still tearing down and rebuilding the whole overlay (H27). Make the click mean
+    // something instead: select the card and bring its highlight into view.
+    if (!isNarrow()) {
+      setActive(id);
+      const mark = options.overlay.querySelector(`.mr-highlight[data-comment-id="${id}"]`);
+      mark?.scrollIntoView({
+        block: 'nearest',
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      });
+      return;
+    }
     expanded = expanded === id ? undefined : id;
     reposition();
   }
@@ -195,10 +227,14 @@ export function initComments(options: CommentsOptions): CommentsView {
    */
   function reposition(): void {
     options.overlay.replaceChildren();
+    options.markerLayer.replaceChildren();
     const narrow = isNarrow();
     document.body.classList.toggle('mr-narrow', narrow);
+    // Reclaims the margin on a document with nothing in the gutter (H20).
+    document.body.classList.toggle('mr-no-cards', cards.size === 0);
 
     const overlayOrigin = originOf(options.overlay);
+    const markerOrigin = originOf(options.markerLayer);
     const gutterOrigin = originOf(options.gutter);
     const placed: Array<{ card: HTMLElement; top: number }> = [];
     hotspots = [];
@@ -233,8 +269,15 @@ export function initComments(options: CommentsOptions): CommentsView {
       if (!first) continue;
 
       if (narrow) {
-        options.overlay.append(
-          buildMarker(comment, first, overlayOrigin, () => toggleExpanded(comment.id)),
+        // Into the marker layer, never the overlay: the overlay is `aria-hidden` (H16).
+        options.markerLayer.append(
+          buildMarker(
+            comment,
+            first,
+            markerOrigin,
+            () => toggleExpanded(comment.id),
+            expanded === comment.id,
+          ),
         );
       }
       placed.push({ card, top: first.top - gutterOrigin.top });
@@ -248,6 +291,12 @@ export function initComments(options: CommentsOptions): CommentsView {
 
     for (const card of cards.values()) card.hidden = false;
 
+    // `stackTops` assumes ascending desired tops — its floor only ever moves down. `placed` is
+    // collected in store insertion order (the loop above walks `comments` as they arrived), so a
+    // comment added on an early paragraph *after* one on a late paragraph would enter out of order
+    // and be shoved below the later card's bottom, hundreds of pixels from its own highlight (H1).
+    placed.sort((a, b) => a.top - b.top);
+
     const tops = stackTops(
       placed.map((entry) => entry.top),
       placed.map((entry) => entry.card.offsetHeight),
@@ -255,6 +304,16 @@ export function initComments(options: CommentsOptions): CommentsView {
     );
     for (const [index, entry] of placed.entries()) {
       entry.card.style.top = `${String(tops[index] ?? entry.top)}px`;
+    }
+
+    // The resolved group follows the conversation rather than sitting at the gutter's absolute
+    // bottom, which on a long document was thousands of pixels from anything (H27).
+    const group = options.gutter.querySelector<HTMLElement>('.mr-resolved-group');
+    if (group) {
+      const last = placed.length - 1;
+      const below =
+        last >= 0 ? (tops[last] ?? 0) + (placed[last]?.card.offsetHeight ?? 0) + CARD_GAP_PX : 0;
+      group.style.top = `${String(below)}px`;
     }
   }
 
@@ -281,14 +340,27 @@ export function initComments(options: CommentsOptions): CommentsView {
   // position above is measured against them, so scrolling cannot move anything out of alignment.
   // Rebuilding the overlay on each scroll event would be pure churn on a long document.
 
+  // Throttled to one frame: a linear scan of every highlight box per `mousemove` is fine at ten
+  // comments and not at two hundred (H26). The scan itself stays linear — hotspots are rectangles
+  // that can share a row, so they do not order cleanly enough for a search — but it now runs at
+  // most once a frame instead of once per pointer event.
+  let hoverFrame = 0;
+  let hoverPoint: { x: number; y: number } | undefined;
   options.root.addEventListener('mousemove', (event) => {
-    const origin = originOf(options.overlay);
-    const x = event.clientX - origin.left;
-    const y = event.clientY - origin.top;
-    const hit = hotspots.find(
-      (box) => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom,
-    );
-    setActive(hit?.id);
+    hoverPoint = { x: event.clientX, y: event.clientY };
+    if (hoverFrame !== 0) return;
+    hoverFrame = window.requestAnimationFrame(() => {
+      hoverFrame = 0;
+      const point = hoverPoint;
+      if (!point) return;
+      const origin = originOf(options.overlay);
+      const x = point.x - origin.left;
+      const y = point.y - origin.top;
+      const hit = hotspots.find(
+        (box) => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom,
+      );
+      setActive(hit?.id);
+    });
   });
   options.root.addEventListener('mouseleave', () => {
     setActive(undefined);
@@ -332,12 +404,19 @@ function buildMarker(
   rect: DOMRect,
   origin: Origin,
   onClick: () => void,
+  expanded: boolean,
 ): HTMLElement {
   const marker = document.createElement('button');
   marker.type = 'button';
   marker.className = 'mr-marker';
-  marker.textContent = '💬';
-  marker.setAttribute('aria-label', `Comment by ${comment.author}`);
+  // Not the 💬 emoji: it renders in the OS emoji font, ignores the theme, and is invisible to
+  // forced-colors (H19). A glyph the stylesheet owns responds to both.
+  marker.textContent = '●';
+  marker.setAttribute(
+    'aria-label',
+    `${expanded ? 'Hide' : 'Show'} comment by ${comment.author}: ${truncateQuote(comment.body, 60)}`,
+  );
+  marker.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   marker.style.top = `${String(rect.top - origin.top)}px`;
   marker.style.left = `${String(rect.right - origin.left + 2)}px`;
   marker.addEventListener('click', onClick);
@@ -348,6 +427,26 @@ function buildMarker(
 interface CardSignals {
   /** The comment's region differs from the review baseline, though its own anchor does not (D17). */
   sectionChanged: boolean;
+  /**
+   * `located.confidence < UNCERTAIN_BELOW`. PRD §5 requires this to be *surfaced as "position
+   * uncertain"*; before H17 the only trace was a 1 px dashed border on an `aria-hidden` overlay,
+   * so the phrase the spec names appeared nowhere in the product.
+   */
+  uncertain: boolean;
+}
+
+/** What a card announces itself as. `open` is the unmarked case and says nothing extra. */
+function statusLabel(status: CommentStatus): string {
+  switch (status) {
+    case 'addressed':
+      return 'addressed';
+    case 'orphaned':
+      return 'anchor lost';
+    case 'resolved':
+      return 'resolved';
+    default:
+      return 'open';
+  }
 }
 
 function buildCard(
@@ -359,8 +458,17 @@ function buildCard(
   const card = document.createElement('article');
   card.className = `mr-card mr-card-${comment.status}`;
   if (signals.sectionChanged) card.classList.add('mr-card-nearby');
+  if (signals.uncertain) card.classList.add('mr-card-uncertain');
   card.dataset['commentId'] = comment.id;
   card.tabIndex = 0;
+
+  // Status reached assistive tech through a CSS class and, for `addressed` only, a visual badge —
+  // so `open`, `orphaned` and `resolved` cards all announced identically (H18). The label carries
+  // what the card's styling conveys to a sighted reader, and nothing the body already says.
+  const labelParts = [`Comment by ${comment.author}`, statusLabel(comment.status)];
+  if (signals.uncertain) labelParts.push('position uncertain');
+  if (signals.sectionChanged) labelParts.push('surrounding text changed');
+  card.setAttribute('aria-label', labelParts.join(', '));
 
   const header = document.createElement('header');
   header.className = 'mr-card-header';
@@ -377,6 +485,14 @@ function buildCard(
   header.append(author, time);
 
   if (comment.status === 'addressed') header.append(badge('addressed'));
+  // PRD §5's required wording, as text rather than as a dashed underline nobody can read (H17).
+  if (signals.uncertain) {
+    const mark = badge('position uncertain');
+    mark.classList.add('mr-badge-uncertain');
+    mark.title =
+      'This comment was relocated by an approximate match, so the highlight may be in the wrong place.';
+    header.append(mark);
+  }
 
   const body = document.createElement('p');
   body.className = 'mr-card-body';
@@ -397,6 +513,15 @@ function buildCard(
 
   card.append(buildMenu(comment, options, card, body, signals));
   card.addEventListener('click', onToggle);
+  // The card was focusable with a click listener and no key handler, so in narrow mode — where the
+  // card *is* the disclosure — a keyboard user could reach it and never open it (H18).
+  card.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    // Buttons and the edit textarea handle their own keys; only the card itself toggles.
+    if (event.target !== card) return;
+    event.preventDefault();
+    onToggle();
+  });
   return card;
 }
 
@@ -465,8 +590,28 @@ function buildMenu(
     startEditing(comment, options, card, body);
   });
 
+  // Two-step, because this is the *only* unprotected destructive path in the product (H22): the
+  // bulk clears are modal-confirmed and write a `.bak` first, while a single stray click here
+  // removed a comment outright with no undo. The confirm lives on the button rather than in a
+  // dialog so it stays inside the card the user is looking at.
   const remove = action('Delete', `Delete comment by ${comment.author}`, () => {
-    options.onDelete(comment.id);
+    if (remove.dataset['confirming'] === 'true') {
+      options.announce(`Comment by ${comment.author} deleted.`);
+      options.onDelete(comment.id);
+      return;
+    }
+    remove.dataset['confirming'] = 'true';
+    remove.textContent = 'Delete?';
+    remove.classList.add('mr-card-action-danger');
+    remove.setAttribute('aria-label', `Confirm deleting the comment by ${comment.author}`);
+    const reset = (): void => {
+      delete remove.dataset['confirming'];
+      remove.textContent = 'Delete';
+      remove.classList.remove('mr-card-action-danger');
+      remove.setAttribute('aria-label', `Delete comment by ${comment.author}`);
+    };
+    remove.addEventListener('blur', reset, { once: true });
+    card.addEventListener('mouseleave', reset, { once: true });
   });
 
   actions.append(edit, remove);
@@ -476,9 +621,11 @@ function buildMenu(
     // extension made, not making a judgement from scratch. Same terminal status either way.
     actions.append(
       action('Looks good', `Accept the change and resolve ${comment.author}'s comment`, () => {
+        options.announce('Comment resolved.');
         options.onResolve(comment.id);
       }),
       action('Reopen', `Reject the change and reopen ${comment.author}'s comment`, () => {
+        options.announce('Comment reopened.');
         options.onReopen(comment.id);
       }),
     );
@@ -492,6 +639,7 @@ function buildMenu(
     const label = signals.sectionChanged ? 'Looks good' : 'Resolve';
     actions.append(
       action(label, `Resolve comment by ${comment.author}`, () => {
+        options.announce('Comment resolved.');
         options.onResolve(comment.id);
       }),
     );
@@ -526,12 +674,34 @@ function startEditing(
   editor.rows = 3;
   editor.setAttribute('aria-label', 'Edit comment text');
 
+  // The editor had no visible affordances at all — no hint, no buttons — and saved on blur, which
+  // for text the user may be part-way through rewriting is a surprising default (H24). The popover
+  // that *creates* a comment has always shown both; matching it costs a row of markup.
+  const controls = document.createElement('div');
+  controls.className = 'mr-editor-controls';
+
+  const hint = document.createElement('span');
+  hint.className = 'mr-editor-hint';
+  hint.textContent = `${modifierLabel()}+Enter to save · Esc to cancel`;
+
   const finish = (save: boolean): void => {
     const next = editor.value.trim();
     editor.remove();
+    controls.remove();
     body.hidden = false;
-    if (save && next.length > 0 && next !== comment.body) options.onEdit(comment.id, next);
+    if (save && next.length > 0 && next !== comment.body) {
+      options.announce('Comment updated.');
+      options.onEdit(comment.id, next);
+    }
   };
+
+  const cancel = action('Cancel', 'Discard these edits', () => {
+    finish(false);
+  });
+  const save = action('Save', 'Save these edits', () => {
+    finish(true);
+  });
+  controls.append(hint, cancel, save);
 
   editor.addEventListener('keydown', (event) => {
     event.stopPropagation();
@@ -543,17 +713,15 @@ function startEditing(
       finish(true);
     }
   });
-  editor.addEventListener('blur', () => {
-    finish(true);
-  });
   editor.addEventListener('click', (event) => {
     event.stopPropagation();
   });
 
   body.hidden = true;
-  body.after(editor);
+  body.after(editor, controls);
   editor.focus();
 }
+
 
 function buildResolvedGroup(resolved: Comment[], options: CommentsOptions): HTMLElement {
   const group = document.createElement('details');
@@ -565,7 +733,9 @@ function buildResolvedGroup(resolved: Comment[], options: CommentsOptions): HTML
 
   for (const comment of resolved) {
     // `resolved` is terminal and never re-anchored, so there is no signal to carry here.
-    group.append(buildCard(comment, options, () => undefined, { sectionChanged: false }));
+    group.append(
+      buildCard(comment, options, () => undefined, { sectionChanged: false, uncertain: false }),
+    );
   }
   return group;
 }

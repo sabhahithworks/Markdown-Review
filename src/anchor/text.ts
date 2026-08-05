@@ -53,6 +53,55 @@ export function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
 }
 
+/** Letters, digits and combining marks — what a slice boundary must not land inside (H8). */
+const WORD_CHAR = /[\p{L}\p{N}\p{M}]/u;
+
+/** The code point *ending* at `index` (surrogate-aware), or `undefined` at the text's edge. */
+function codePointBefore(text: string, index: number): string | undefined {
+  if (index <= 0) return undefined;
+  const back =
+    isLowSurrogate(text.charCodeAt(index - 1)) && isHighSurrogate(text.charCodeAt(index - 2))
+      ? index - 2
+      : index - 1;
+  const code = text.codePointAt(back);
+  return code === undefined ? undefined : String.fromCodePoint(code);
+}
+
+/**
+ * Extends a slice *end* that landed mid-word forward to the end of that word, up to `maxExtend`
+ * code units (H8, Plan 04 §10 D18/D21).
+ *
+ * `fuzzy.ts`'s `verify` window ends at `candidate + exact.length + pad`, so when the anchored text
+ * *grew*, the verified span stops short by the growth — mid-word, which on an addressed card reads
+ * as corrupted text rather than as a shortened quote ("…so they do no"). The *status* is computed
+ * from normalized text and is already correct; this repairs only where the span ends.
+ *
+ * If the word runs past `maxExtend`, the original index is returned: clipping at a different
+ * arbitrary mid-word point would repair nothing.
+ */
+export function snapToWordEnd(text: string, index: number, maxExtend: number): number {
+  const i = clamp(index, 0, text.length);
+  if (i <= 0 || i >= text.length) return i;
+
+  const before = codePointBefore(text, i);
+  const atCode = text.codePointAt(i);
+  const at = atCode === undefined ? undefined : String.fromCodePoint(atCode);
+  // Not mid-word: either side of the boundary is already a non-word character.
+  if (before === undefined || at === undefined) return i;
+  if (!WORD_CHAR.test(before) || !WORD_CHAR.test(at)) return i;
+
+  const limit = Math.min(text.length, i + maxExtend);
+  let end = i;
+  while (end < limit) {
+    const code = text.codePointAt(end);
+    if (code === undefined) break;
+    const char = String.fromCodePoint(code);
+    if (!WORD_CHAR.test(char)) return end;
+    end += char.length;
+  }
+  return end >= text.length ? end : i;
+}
+
 /** PRD §7: quoted anchor text longer than this is truncated with a middle ellipsis. */
 export const MAX_QUOTE_LENGTH = 100;
 

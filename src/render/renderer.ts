@@ -162,7 +162,15 @@ export function createRenderMarkdownIt(): MarkdownIt.MarkdownIt {
     const resolve = readEnv(env).resolveImage;
     const src = token?.attrGet('src');
 
-    if (token && resolve && typeof src === 'string') {
+    // A remote image URL in reviewed content must never become an outbound request (PRD §2/§13:
+    // no network calls, ever — H6). Neutralized here rather than left to CSP so the pane shows the
+    // alt text with the URL on hover instead of a broken image plus a console violation. The
+    // element stays an `<img>` with its alt intact, so anchor space is untouched.
+    if (token && typeof src === 'string' && /^(https?:|\/\/)/i.test(src)) {
+      token.attrSet('src', '');
+      token.attrSet('title', src);
+      token.attrJoin('class', 'mr-remote-image');
+    } else if (token && resolve && typeof src === 'string') {
       const mapped = resolve(src);
       if (mapped !== null) token.attrSet('src', mapped);
     }
