@@ -20,6 +20,14 @@ describe('isWebviewMessage', () => {
     { type: 'editComment', id: 'abc12345', body: 'reworded' },
     { type: 'deleteComment', id: 'abc12345' },
     { type: 'resolveComment', id: 'abc12345' },
+    { type: 'showRewriteDiff' },
+    { type: 'relinkTarget' },
+    { type: 'copyPrompt' },
+    { type: 'clearAddressed' },
+    { type: 'reopenComment', id: 'abc12345' },
+    { type: 'reanchorComment', id: 'abc12345', selectedText: 'new text', offset: 42, hintLine: 7 },
+    // The same "could not map" sentinel `addComment` uses; the host recovers via `hintLine`.
+    { type: 'reanchorComment', id: 'abc12345', selectedText: 'new text', offset: -1, hintLine: 7 },
   ];
 
   it.each(valid.map((message) => [JSON.stringify(message), message] as const))(
@@ -37,6 +45,26 @@ describe('isWebviewMessage', () => {
     ['an array', []],
     ['an empty object', {}],
     ['an unknown type', { type: 'nope' }],
+    // Host -> webview messages must never be accepted coming back the other way.
+    ['a rewriteDetected host message travelling the wrong way', { type: 'rewriteDetected', orphaned: 3 }],
+    ['reopenComment without an id', { type: 'reopenComment' }],
+    ['reopenComment with a numeric id', { type: 'reopenComment', id: 7 }],
+    ['reanchorComment without an id', { type: 'reanchorComment', selectedText: 'a', offset: 1, hintLine: 1 }],
+    [
+      'reanchorComment with a NaN offset',
+      { type: 'reanchorComment', id: 'a', selectedText: 'a', offset: NaN, hintLine: 1 },
+    ],
+    [
+      'reanchorComment with an Infinity hintLine',
+      { type: 'reanchorComment', id: 'a', selectedText: 'a', offset: 1, hintLine: Infinity },
+    ],
+    [
+      'reanchorComment with a non-string selectedText',
+      { type: 'reanchorComment', id: 'a', selectedText: null, offset: 1, hintLine: 1 },
+    ],
+    // Pins Plan 04 §9 D4: the filter lives in `setState`, not in a message the host would ignore.
+    ['setFilter, which is deliberately not a message', { type: 'setFilter', statuses: ['open'] }],
+    ['a reviewState host message travelling the wrong way', { type: 'reviewState', review: {}, located: {} }],
     ['openExternal without url', { type: 'openExternal' }],
     ['openExternal with a non-string url', { type: 'openExternal', url: 42 }],
     ['openExternal with a null url', { type: 'openExternal', url: null }],

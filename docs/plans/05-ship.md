@@ -12,11 +12,70 @@ Phase 4 acceptance checklist (Plan 04 §9) passes, including the manual real-age
 
 ## 2. Name & identity (do first — it gates everything else)
 
-- PRD §1: `markdown-review` is a working name. Check Marketplace availability; pick the final
-  `name`/`displayName` and a publisher id, update `package.json`, README, and this repo's
-  references in one commit. Every artifact below uses the final name.
-- Icon: 128×128 PNG at `media/icon.png`, legible at 16 px, works on dark and light Marketplace
-  backgrounds. Referenced from the manifest `icon` field.
+It gates everything else because two of the three identifiers are effectively permanent: the
+extension is addressed as `publisher.name`, and changing either after the first publish means a new
+listing, with installs, ratings and URLs left behind on the old one. `displayName` can change
+whenever you like.
+
+Starting point: `package.json` today has **no `publisher` and `private: true`**, which is why
+`vsce` refuses to package the repo as-is. `~/.mdcm-local-build/reinstall.sh` fabricates
+`local-dev` for local installs — a placeholder, and not a candidate.
+
+### The three identifiers
+
+| Field | Rules | Where it appears |
+| --- | --- | --- |
+| `publisher` | **Globally unique.** Lowercase letters, digits, hyphens. Claimed once at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage) and never renamed | Extension id, listing URL, "More info" panel |
+| `name` | Unique **only within the publisher**, so `markdown-review` being taken elsewhere does not block us. Lowercase, no spaces | Extension id, listing URL, `code --install-extension <id>` |
+| `displayName` | Free text, aim for under ~40 characters so it is not truncated in the Extensions view. Freely changeable | Marketplace title, Extensions view, search results |
+
+### How to check availability
+
+- **Publisher** — the only hard collision. Try to claim it in the Marketplace management portal; the
+  form rejects a taken id immediately. Do this before writing the id anywhere else.
+- **Extension id** — `https://marketplace.visualstudio.com/items?itemName=<publisher>.<name>` returns
+  404 if free. Only meaningful once the publisher is settled.
+- **Display name** — not enforced, so this is a judgement call rather than a check. Search the
+  Marketplace for the candidate and for "markdown comment" / "markdown review". If something in the
+  first page of results has a near-identical title, pick differently: the cost is being mistaken for
+  another extension in a list of twenty, not a rejected upload.
+
+### Choosing
+
+`name` should match the repo directory so the two cannot drift; keeping `markdown-review` is the
+cheap and correct default unless the display name moves far away from it.
+
+`displayName` carries the discovery weight — Marketplace search ranks over display name, description
+and `keywords` — so it should contain the words someone would actually type. For this extension that
+is *markdown*, plus *review* or *comment*. Constraints worth applying, in order:
+
+1. Says what it does to someone who has never heard of it. "Markdown Review" passes; an invented
+   word does not.
+2. Contains at least one high-traffic search term, and is not confusable with the several existing
+   *Markdown Preview* extensions — the word *preview* is worth avoiding for that reason alone.
+3. No other product's trademark, including "VS Code" and "Visual Studio" (Microsoft's Marketplace
+   naming rules prohibit implying an official relationship).
+4. Survives the PRD §1 positioning sentence sitting directly under it without redundancy.
+
+**Decided: `markdown-review` / "Markdown Review".** The alternatives considered were *Review
+Markdown with AI* and *Comment & Review for Markdown*; both buy search coverage at the cost of
+reading like a category rather than a product, and the second also dates badly. The working name was
+already the shortest option that satisfies all four constraints, so PRD §1's "working name" becomes
+the final one.
+
+Both fields already hold these values, so there is nothing to rename. The discovery coverage the
+longer candidates would have bought is bought instead through `description` and `keywords`, which
+are ranked alongside `displayName` and cost nothing in the title.
+
+### Still outstanding
+
+The publisher id, which is the only globally-unique identifier and the only one that has to be
+claimed. Apply it together with removing `private: true` — **one commit**, so no artifact below is
+ever built against a half-applied manifest. Until then `vsce` cannot package the repo, and local
+installs go on using the `local-dev` placeholder.
+
+Icon: 128×128 PNG at `media/icon.png`, legible at 16 px, works on dark and light Marketplace
+backgrounds. Referenced from the manifest `icon` field.
 
 ## 3. Listing assets
 
@@ -66,7 +125,7 @@ Audit steps:
 ## 6. Publish
 
 - Azure DevOps org + PAT scoped **Marketplace: Manage**, all accessible organizations (PRD §12).
-- Create the publisher; `publisher` field must match exactly.
+- The publisher was claimed in §2; confirm the `publisher` field matches it exactly.
 - `npx @vscode/vsce publish 0.1.0` (or upload the `.vsix` via the web UI for the first release —
   it gives a clearer error surface).
 - Post-publish: install from the Marketplace on a clean machine/profile, run the loop once. Tag
@@ -74,7 +133,9 @@ Audit steps:
 
 ## 7. Acceptance checklist
 
-- [ ] Final name/publisher applied everywhere; Marketplace name confirmed available
+- [x] `name` / `displayName` decided: `markdown-review` / "Markdown Review" (§2), already applied
+- [ ] Publisher id claimed; `items?itemName=<publisher>.markdown-review` returns 404; `publisher`
+      applied and `private: true` removed, in one commit
 - [ ] `npx @vscode/vsce package` succeeds; `.vsix` < 500 KB; `vsce ls` output reviewed
 - [ ] README leads with the positioning line; GIF plays; all image URLs absolute
 - [ ] LICENSE + CHANGELOG(0.1.0) + 128×128 icon in place

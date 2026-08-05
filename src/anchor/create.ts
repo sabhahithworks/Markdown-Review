@@ -3,8 +3,7 @@
  * that `locate` will use to find the same passage in a rewritten document.
  */
 
-import { normalizeAnchorText } from '../render/plaintext.js';
-import { offsetToSourceLine } from '../render/plaintext.js';
+import { blockAt, normalizeAnchorText, offsetToSourceLine } from '../render/plaintext.js';
 import { clamp, safeSlice } from './text.js';
 import {
   CONTEXT_LENGTH,
@@ -34,9 +33,7 @@ export interface CreateAnchorInput {
 export function createAnchor(input: CreateAnchorInput): CreateResult {
   const { doc } = input;
 
-  // Re-normalize defensively. The caller should already have — but Phase 3's DOM walk is a second
-  // implementation of the same rules, and this is cheap insurance against the two drifting apart.
-  const exact = normalizeAnchorText(input.selectedText);
+  const exact = normalizeSelection(input);
 
   if (exact.length < MIN_ANCHOR_LENGTH) return { ok: false, reason: 'too-short' };
   if (exact.length > MAX_ANCHOR_LENGTH) return { ok: false, reason: 'too-long' };
@@ -59,6 +56,37 @@ export function createAnchor(input: CreateAnchorInput): CreateResult {
       hintOffset: start,
     },
   };
+}
+
+/**
+ * Normalizes the selection **the way anchor space does** — which is not the same rule everywhere.
+ *
+ * `walkSpans` collapses whitespace in every block *except* code, where content is preserved verbatim
+ * (PRD §5). Applying `normalizeAnchorText` unconditionally therefore produced an `exact` that could
+ * not appear in `doc.text` at all: every newline and every run of indentation in a fence had been
+ * flattened to a single space. Tiers 1 and 2 could never match it, so a comment on a code block sat
+ * permanently at fuzzy confidence — and, worse, the fuzzy span came up a few characters short of the
+ * block, so `reanchor` compared it against `anchor.exact`, found a difference, and flipped the
+ * comment to `addressed` on a document nobody had edited. A false `addressed` is the most expensive
+ * bug this design can have; the status is the one thing the user is asked to trust.
+ *
+ * The webview was already right: `anchorSpace.ts::buildBlockMap` keys off `isCodeBlock(el)` and
+ * sends code verbatim. The "defensive re-normalize" here — insurance against the two implementations
+ * drifting apart — was itself the drift, destroying a correct value on the way in.
+ *
+ * The block is chosen by the selection's *start*. A selection running out of a fence and into the
+ * prose below spans two normalization regimes and can be faithful to neither, so it takes the
+ * collapsing path, which is what every non-code selection wants.
+ */
+function normalizeSelection(input: CreateAnchorInput): string {
+  const verbatim = input.selectedText.normalize('NFC');
+  if (input.offset < 0) return normalizeAnchorText(input.selectedText);
+
+  const block = blockAt(input.doc, input.offset);
+  if (block?.kind !== 'code') return normalizeAnchorText(input.selectedText);
+
+  // Only when the whole selection stays inside the one code block.
+  return input.offset + verbatim.length <= block.end ? verbatim : normalizeAnchorText(verbatim);
 }
 
 /**

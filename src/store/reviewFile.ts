@@ -17,6 +17,20 @@ export const SIDECAR_VERSION = 1;
 /** Two-space indent: PRD §4 requires the sidecar be human-readable and hand-editable. */
 const INDENT = 2;
 
+/**
+ * The largest rendered plain text that will be stored as `baselineText` (Plan 04 §9 D2).
+ *
+ * PRD §4 puts the whole snapshot in the sidecar, which makes the sidecar as large as the document —
+ * on a 2 MB target (legal: it is under the render guard) that is a multi-megabyte JSON string,
+ * rewritten on every later save and committed to git. That contradicts the same section's
+ * "human-readable" promise and PRD §11's "shareable through git".
+ *
+ * Above this, the baseline is skipped: the rewrite banner is unavailable for that file and nothing
+ * else changes. Orphan triage, status inference and the prompt itself never read the baseline —
+ * `anchor.exact` is the per-comment comparison basis (PRD §5), not this.
+ */
+export const BASELINE_MAX_CHARS = 256 * 1024;
+
 const STATUSES: readonly CommentStatus[] = ['open', 'addressed', 'orphaned', 'resolved'];
 
 export type ParseFailure =

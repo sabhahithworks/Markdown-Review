@@ -260,6 +260,41 @@ function inlineText(children: readonly MarkdownIt.Token[]): string {
 }
 
 /**
+ * Index of the block containing `offset`.
+ *
+ * Offsets falling on one of the `\n` joiners belong to no block, and resolve to the block that
+ * *follows* — a selection starting on a block boundary is entering that block. Returns `-1` for a
+ * document with no blocks, or an offset past the last one.
+ *
+ * Binary search, because this runs once per comment and a 5 MB document has tens of thousands of
+ * blocks. Shared rather than reimplemented: `offsetToSourceLine`, `createAnchor` and
+ * `detect/scope.ts` all need exactly this question answered exactly this way.
+ */
+export function blockIndexAt(doc: PlainTextDoc, offset: number): number {
+  const { blocks } = doc;
+
+  let lo = 0;
+  let hi = blocks.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const block = blocks[mid];
+    if (!block) break;
+
+    if (offset < block.start) hi = mid - 1;
+    else if (offset >= block.end) lo = mid + 1;
+    else return mid;
+  }
+
+  return lo < blocks.length ? lo : -1;
+}
+
+/** The block containing `offset`, by the rules of {@link blockIndexAt}. */
+export function blockAt(doc: PlainTextDoc, offset: number): BlockSpan | undefined {
+  const index = blockIndexAt(doc, offset);
+  return index === -1 ? undefined : doc.blocks[index];
+}
+
+/**
  * Maps an offset in `doc.text` to a 0-based source line in the original file.
  *
  * Returns `-1` for a document with no blocks. Offsets are clamped into range, so callers do not
@@ -272,34 +307,16 @@ export function offsetToSourceLine(doc: PlainTextDoc, offset: number): number {
   // `text` never ends with a joiner, so the last character is always inside a block.
   const target = Math.min(Math.max(offset, 0), Math.max(text.length - 1, 0));
 
-  let lo = 0;
-  let hi = blocks.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const block = blocks[mid];
-    if (!block) break;
+  const index = blockIndexAt(doc, target);
+  const block = index === -1 ? blocks[blocks.length - 1] : blocks[index];
+  if (!block) return -1;
 
-    if (target < block.start) {
-      hi = mid - 1;
-    } else if (target >= block.end) {
-      lo = mid + 1;
-    } else {
-      // Inside a code block a single BlockSpan can cover hundreds of lines, so count the newlines
-      // we have passed; without this every offset in a long fence reports the same line.
-      if (block.kind === 'code') {
-        return block.sourceLineStart + countLines(text.slice(block.start, target));
-      }
-      return block.sourceLineStart;
-    }
+  // Inside a code block a single BlockSpan can cover hundreds of lines, so count the newlines we
+  // have passed; without this every offset in a long fence reports the same line.
+  if (block.kind === 'code' && target >= block.start && target < block.end) {
+    return block.sourceLineStart + countLines(text.slice(block.start, target));
   }
-
-  // A joiner offset, belonging to no block: `lo` is the following block. A selection starting on a
-  // block boundary is entering that block.
-  const following = blocks[lo];
-  if (following) return following.sourceLineStart;
-
-  const last = blocks[blocks.length - 1];
-  return last ? last.sourceLineStart : -1;
+  return block.sourceLineStart;
 }
 
 function headingLevelFromTag(tag: string): number | undefined {

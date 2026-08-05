@@ -23,12 +23,36 @@ export interface SelectionPayload {
   body: string;
 }
 
+/** The same shape as `SelectionPayload` minus the body: a re-anchor has nothing new to type. */
+export interface ReanchorPayload {
+  id: string;
+  selectedText: string;
+  offset: number;
+  hintLine: number;
+}
+
 export interface SelectionOptions {
   root: HTMLElement;
   /** Shown in the popover so it is clear whose name the comment will carry. */
   author: string;
   onSubmit(payload: SelectionPayload): void;
+  onReanchor(payload: ReanchorPayload): void;
+  /** Mirrors the armed state into the orphan section, which shows which row is waiting. */
+  onArmChange(id: string | undefined): void;
   onWarning(message: string): void;
+}
+
+/**
+ * Re-anchor mode (PRD §6).
+ *
+ * Arming lives entirely in the webview. Plan 04 §6 originally had the host hold the mode, but a
+ * host-side mode survives a reload the webview does not, and can be left armed for a comment the
+ * user can no longer see (Plan 04 §9 D5).
+ */
+export interface SelectionController {
+  armReanchor(id: string): void;
+  disarm(): void;
+  isArmed(): boolean;
 }
 
 interface Captured {
@@ -38,17 +62,29 @@ interface Captured {
   rect: DOMRect;
 }
 
-export function initSelection(options: SelectionOptions): void {
+export function initSelection(options: SelectionOptions): SelectionController {
   const button = createCommentButton();
   const popover = createPopover(options);
   document.body.append(button, popover.element);
 
   let captured: Captured | undefined;
   let debounce = 0;
+  /** The orphan waiting for a new anchor, if re-anchor mode is armed. */
+  let arming: string | undefined;
 
   function hideButton(): void {
     button.hidden = true;
     captured = undefined;
+  }
+
+  function setArming(id: string | undefined): void {
+    if (arming === id) return;
+    arming = id;
+    // The button commits immediately while armed, so it has to say so.
+    button.textContent = id === undefined ? 'Comment' : 'Re-anchor here';
+    button.classList.toggle('mr-selection-button-arming', id !== undefined);
+    hideButton();
+    options.onArmChange(id);
   }
 
   function evaluate(): void {
@@ -79,7 +115,28 @@ export function initSelection(options: SelectionOptions): void {
   button.addEventListener('click', () => {
     if (!captured) return;
     button.hidden = true;
+
+    if (arming !== undefined) {
+      // No popover: the comment already has a body, and asking for one again would imply the old
+      // text is being replaced rather than re-pointed.
+      const payload = captured;
+      const id = arming;
+      hideButton();
+      setArming(undefined);
+      options.onReanchor({
+        id,
+        selectedText: payload.selectedText,
+        offset: payload.offset,
+        hintLine: payload.hintLine,
+      });
+      return;
+    }
+
     popover.open(captured);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && arming !== undefined) setArming(undefined);
   });
 
   // A click that lands outside both affordances is a dismissal.
@@ -105,6 +162,18 @@ export function initSelection(options: SelectionOptions): void {
       body,
     });
   });
+
+  return {
+    armReanchor(id): void {
+      setArming(id);
+    },
+    disarm(): void {
+      setArming(undefined);
+    },
+    isArmed(): boolean {
+      return arming !== undefined;
+    },
+  };
 }
 
 /**

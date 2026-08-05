@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The review loop, host side (Phase 4a).** Copy a prompt, let any agent edit the prose, and the
+  extension works out which comments were addressed. Nothing is visible in the pane yet — the
+  header bar, before/after cards, orphan section and rewrite banner are Phase 4b.
+  - `markdownReview.copyPrompt` builds the PRD §7 prompt from the open comments, copies it, and
+    snapshots the rendered text as the diff baseline. The format is asserted byte-for-byte against
+    the PRD's own worked example, in a unit test and again on the real clipboard in the integration
+    suite. Comments are re-anchored first, so a sentence the agent already deleted is never quoted
+    back at it.
+  - Change detection (PRD §8): `onDidChangeTextDocument` and a `FileSystemWatcher` on the target
+    feed one 400 ms coalescer, so an editor edit, a direct write to disk, and a save that is both
+    all cost exactly one pass. Statuses flip to `addressed` (with before/after) or `orphaned` on
+    their own, and `markdownReview.autoDetectResolution: false` suppresses the inference without
+    suppressing orphaning.
+  - `markdownReview.clearAddressed` and `markdownReview.clearAll`, each behind a modal naming the
+    count. Both write a `.json.bak` first and abandon the whole operation if that backup cannot be
+    written — a destructive user action is only defensible while it stays recoverable.
+  - Re-linking a review onto a different file (PRD §11), for a target that was renamed or deleted.
+    Comments move to the new file's sidecar before the old one is emptied, so a failure leaves them
+    somewhere rather than nowhere. The old sidecar is emptied, never deleted.
+  - A read-only `markdown-review:` diff behind the rewrite banner, with **both sides rendered as
+    plain text**. Plan 04 §6 had it comparing the stored baseline against the Markdown source, which
+    would have made every line differ — the baseline is plain text and the file is not.
+  - `baselineText` is capped at 256 KB. PRD §4 puts the whole snapshot in the sidecar, which on a
+    2 MB document means a multi-megabyte JSON file rewritten on every save and committed to git.
+    Over the cap the baseline is skipped and only the rewrite diff is unavailable.
+- **The review pane's status UI (Phase 4b).** Everything Phase 4a inferred is now visible and
+  actionable.
+  - A sticky header bar with per-status counts that double as filter chips, a primary **Copy review
+    prompt** button (disabled at zero open comments) and **Clear addressed**. The active filter
+    persists through `getState`/`setState`, so a window reload keeps the view you were working in.
+  - Addressed cards show the before/after the extension inferred, with **Looks good** and
+    **Reopen**. `addressed` is a suggestion the user confirms (PRD §8), and without the evidence on
+    the card "Looks good" would be asking for trust in an inference nobody can see.
+  - Orphaned comments moved out of the gutter into a section of their own (PRD §6), each quoting the
+    text it was attached to, with **Delete** and **Re-anchor**. Re-anchoring arms the pane; the next
+    selection re-attaches the comment, keeping its id, body, author and creation time.
+  - A banner when a single pass orphans every located comment, offering a diff of the review
+    baseline against the document now.
+  - "Locate file…" on the unreadable-file notice, for a target that was renamed or deleted.
 - Verification harnesses, closing out the Phase 3 acceptance checklist. Two of its ten items were
   machine-checked before; eight are now. Neither harness ships in the `.vsix` and neither is in
   `npm run check` — one launches VS Code, the other needs a browser.
@@ -30,6 +69,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A comment on a heading can now tell you the agent did something.** Anchored to a section
+  heading, the natural way to say "this section needs work", it could never be inferred `addressed`:
+  the agent rewrites the prose below, the heading is untouched, and `addressed` means *the text you
+  selected* changed. The comment stayed `open` forever and the pane looked identical to one where
+  the agent had never run. Found by the first real-agent acceptance run, on its first use.
+
+  The cause is not headings. `anchor.exact` does two jobs — the passage you pointed at, and the
+  evidence your comment was acted on — and those coincide only when the fix lands inside your
+  selection. They come apart for any anchor that *labels* the thing to fix: a heading, a list's
+  intro line, a sentence followed by "add a caveat after this".
+
+  Rather than widen `addressed`, which would trade the one status you are asked to trust for a
+  guess, an `open` comment whose *region* differs from the review baseline now carries a note —
+  "This section changed since you copied the prompt" — and a **Looks good**. The region is the
+  enclosing section for a heading anchor and the covered blocks otherwise. It is not a status, it is
+  recomputed per render and never stored, so there is no sidecar change; it is suppressed with no
+  baseline, for comments written after one was taken, and by `autoDetectResolution: false`.
+- **A comment on a code block no longer reports itself `addressed` on a document nobody edited.**
+  Anchor creation collapsed whitespace in every selection, but anchor space keeps fenced and
+  indented code *verbatim* — so a multi-line code anchor could never match exactly. It fell to a
+  fuzzy match whose span stopped a few characters short of the block, and that shortfall was read as
+  an edit. The card then showed a before/after that looks identical, because apart from the clipped
+  tail it is. A false `addressed` is the most expensive bug this design can have: the status is the
+  one thing you are asked to trust, and its value is that it is narrow.
+
+  The webview had this right all along — it sends code verbatim — and the host's "defensive
+  re-normalize" was throwing that away on arrival. Anchor creation now picks its rule from the block
+  the selection starts in. Anchors already written the old way still work: `locate` gained a tier for
+  a code block that matches once whitespace is ignored, which also covers sidecars edited by hand,
+  since PRD §11 invites that and nobody retypes a fence's indentation.
+
+  It survived Phase 1's test matrix because the required "anchor inside a fenced code block" case
+  used a *single line* of code, which has no newline to flatten and passes either way.
+- The review prompt now says `On the section "## …"` for an anchor covering *part* of a heading,
+  where it previously fell back to `On: "…"` and quoted the fragment. Selecting a heading without
+  its manual numbering or list marker is the ordinary gesture, and the old rule — exact span
+  equality — meant `buildPrompt` and the change detector disagreed about what a heading anchor
+  means. They now share one `scopeOf`, which is also what the section signal above measures.
+- Orphaned comments no longer stack on top of each other. Cards are absolutely positioned from their
+  anchor's rectangle, and an orphan has no rectangle — so every one of them was skipped before the
+  stacking pass ran, never got a `top`, and they all landed at the same point. They now live in a
+  section in normal flow, where the problem cannot occur. Placement is decided by *position* rather
+  than status, because the two legitimately disagree: an externally hand-edited sidecar reaches the
+  pane saying `open` with an anchor that cannot be found.
+- Anchor highlights no longer land on the wrong line. The header and orphan sections sit above the
+  content, so showing either one moves every block below it — and they were being updated *after*
+  the highlights had been measured. Long paragraphs absorbed the offset; short blocks did not.
+- The rewrite banner is no longer rendered below the entire document. Its container was the last
+  element in the pane, which suited the two states that clear the document first but not this one.
 - The review pane no longer files a spurious error into its output channel every time it is dragged
   past the 700 px breakpoint. `reposition()` mutates layout, so calling it directly from the
   `ResizeObserver` callback produced "ResizeObserver loop completed with undelivered notifications",

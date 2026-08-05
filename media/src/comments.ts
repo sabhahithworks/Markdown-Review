@@ -8,9 +8,10 @@
  * ranges that cross element boundaries for free.
  */
 
-import type { Comment, Located, ReviewFile } from '../../src/panel/messages.js';
-import { UNCERTAIN_BELOW } from '../../src/panel/messages.js';
+import type { Comment, CommentStatus, Located, ReviewSummary } from '../../src/panel/messages.js';
+import { UNCERTAIN_BELOW, truncateQuote } from '../../src/panel/messages.js';
 import { domRangeFor } from './anchorSpace.js';
+import { FILTERABLE } from './header.js';
 
 /** Below this width the margin cannot hold a readable card, so it collapses (PRD §6). */
 const NARROW_BREAKPOINT_PX = 700;
@@ -24,12 +25,43 @@ export interface CommentsOptions {
   overlay: HTMLElement;
   onEdit(id: string, body: string): void;
   onDelete(id: string): void;
+  /** Also "Looks good" on an addressed card — the same terminal `resolved` either way. */
   onResolve(id: string): void;
+  /** The user rejects an `addressed` inference (PRD §8). */
+  onReopen(id: string): void;
 }
 
 export interface CommentsView {
-  setState(review: ReviewFile, located: Record<string, Located | null>): void;
+  setState(
+    review: ReviewSummary,
+    located: Record<string, Located | null>,
+    sectionChanged: readonly string[],
+  ): void;
+  setFilter(statuses: readonly CommentStatus[]): void;
   reposition(): void;
+}
+
+/** Before/after text is truncated to keep a reworded paragraph from filling the gutter. */
+const DIFF_QUOTE_LENGTH = 160;
+
+/**
+ * Whether a comment belongs in the orphan section rather than the gutter.
+ *
+ * **Position decides, not status.** A gutter card is placed by its anchor's rectangle, so a comment
+ * with no position has nothing to be placed against — it would keep `position: absolute` with no
+ * `top`, land at the container origin, and pile up on every other one (Plan 04 §9 D6).
+ *
+ * Status alone is not enough, because the two can disagree: `applyReanchor` is what sets
+ * `orphaned`, and it runs on a re-render, while `postReviewState` also fires on any store change.
+ * An externally hand-edited sidecar (PRD §11 invites one) therefore reaches the webview saying
+ * `open` with an anchor that cannot be found, and that is exactly the case this predicate catches.
+ *
+ * `resolved` is exempt: it is terminal and never re-anchored, so an unlocatable resolved comment is
+ * normal and belongs in the collapsed group, not in a triage list asking the user to act on it.
+ */
+function belongsInOrphans(comment: Comment, located: Record<string, Located | null>): boolean {
+  if (comment.status === 'resolved') return false;
+  return comment.status === 'orphaned' || !located[comment.id];
 }
 
 /**
@@ -38,6 +70,8 @@ export interface CommentsView {
  * Pure and exported so the geometry is testable without a layout engine — jsdom reports every
  * rectangle as zero, so this is the only part of the layout that *can* be asserted.
  */
+export { belongsInOrphans };
+
 export function stackTops(desired: number[], heights: number[], gap: number): number[] {
   const tops: number[] = [];
   let floor = Number.NEGATIVE_INFINITY;
@@ -53,6 +87,13 @@ export function stackTops(desired: number[], heights: number[], gap: number): nu
 export function initComments(options: CommentsOptions): CommentsView {
   let comments: Comment[] = [];
   let located: Record<string, Located | null> = {};
+  /**
+   * Ids of open comments whose region changed since the baseline (D17). Not a status — it never
+   * reaches `filter`, and the header still counts these as `open`, because they are.
+   */
+  let sectionChanged = new Set<string>();
+  /** Statuses currently shown. Everything, until the header says otherwise. */
+  let filter: CommentStatus[] = [...FILTERABLE];
   /** Card element per comment id, for the positioning pass. */
   const cards = new Map<string, HTMLElement>();
   let expanded: string | undefined;
@@ -87,9 +128,20 @@ export function initComments(options: CommentsOptions): CommentsView {
     return options.root.clientWidth > 0 && window.innerWidth < NARROW_BREAKPOINT_PX;
   }
 
-  function setState(review: ReviewFile, next: Record<string, Located | null>): void {
-    comments = review.comments;
+  function setState(
+    review: ReviewSummary,
+    next: Record<string, Located | null>,
+    nextSectionChanged: readonly string[],
+  ): void {
     located = next;
+    sectionChanged = new Set(nextSectionChanged);
+    // The gutter takes only what it can place. `orphans.ts` takes the rest.
+    comments = review.comments.filter((comment) => !belongsInOrphans(comment, next));
+    render();
+  }
+
+  function setFilter(next: readonly CommentStatus[]): void {
+    filter = [...next];
     render();
   }
 
@@ -98,15 +150,18 @@ export function initComments(options: CommentsOptions): CommentsView {
     options.gutter.replaceChildren();
     options.overlay.replaceChildren();
 
-    const live = comments.filter((comment) => comment.status !== 'resolved');
-    const resolved = comments.filter((comment) => comment.status === 'resolved');
+    const shown = comments.filter((comment) => filter.includes(comment.status));
+    const live = shown.filter((comment) => comment.status !== 'resolved');
+    const resolved = shown.filter((comment) => comment.status === 'resolved');
 
     // Document order, so stacking never reorders the conversation. Comments whose anchor is gone
     // sort last — they have no position to sort by.
     const ordered = [...live].sort((a, b) => anchorStart(a) - anchorStart(b));
 
     for (const comment of ordered) {
-      const card = buildCard(comment, options, () => toggleExpanded(comment.id));
+      const card = buildCard(comment, options, () => toggleExpanded(comment.id), {
+        sectionChanged: sectionChanged.has(comment.id),
+      });
       card.addEventListener('mouseenter', () => {
         setActive(comment.id);
       });
@@ -150,11 +205,12 @@ export function initComments(options: CommentsOptions): CommentsView {
 
     for (const comment of comments) {
       const card = cards.get(comment.id);
+      // Filtered out, or orphaned and therefore living in `#orphans` instead. Either way there is
+      // no card to place and no highlight to draw.
+      if (!card) continue;
+
       const position = located[comment.id];
-      if (!position) {
-        card?.classList.add('mr-card-orphaned');
-        continue;
-      }
+      if (!position) continue;
 
       const range = domRangeFor(options.root, position.start, position.end);
       if (!range) continue;
@@ -181,7 +237,7 @@ export function initComments(options: CommentsOptions): CommentsView {
           buildMarker(comment, first, overlayOrigin, () => toggleExpanded(comment.id)),
         );
       }
-      if (card) placed.push({ card, top: first.top - gutterOrigin.top });
+      placed.push({ card, top: first.top - gutterOrigin.top });
     }
 
     if (narrow) {
@@ -238,7 +294,7 @@ export function initComments(options: CommentsOptions): CommentsView {
     setActive(undefined);
   });
 
-  return { setState, reposition };
+  return { setState, setFilter, reposition };
 }
 
 // ---------------------------------------------------------------- elements
@@ -288,13 +344,21 @@ function buildMarker(
   return marker;
 }
 
+/** Per-card facts that are derived rather than stored, so they do not live on `Comment`. */
+interface CardSignals {
+  /** The comment's region differs from the review baseline, though its own anchor does not (D17). */
+  sectionChanged: boolean;
+}
+
 function buildCard(
   comment: Comment,
   options: CommentsOptions,
   onToggle: () => void,
+  signals: CardSignals,
 ): HTMLElement {
   const card = document.createElement('article');
   card.className = `mr-card mr-card-${comment.status}`;
+  if (signals.sectionChanged) card.classList.add('mr-card-nearby');
   card.dataset['commentId'] = comment.id;
   card.tabIndex = 0;
 
@@ -312,15 +376,61 @@ function buildCard(
 
   header.append(author, time);
 
-  if (comment.status === 'orphaned') header.append(badge('anchor lost'));
+  if (comment.status === 'addressed') header.append(badge('addressed'));
 
   const body = document.createElement('p');
   body.className = 'mr-card-body';
   body.textContent = comment.body;
 
-  card.append(header, body, buildMenu(comment, options, card, body));
+  card.append(header, body);
+
+  // `addressed` is a suggestion the user confirms (PRD §8), so the evidence for it has to be on the
+  // card: without the before/after, "Looks good" is a button asking the user to trust an inference
+  // they cannot see.
+  const diff = buildDiff(comment);
+  if (diff) card.append(diff);
+
+  // Deliberately a sentence rather than a before/after. The region is a whole section, which does
+  // not truncate into a diff honestly, and the pane is already showing the section a few inches to
+  // the left — pointing at it beats paraphrasing it badly (D17).
+  if (signals.sectionChanged) card.append(sectionNote());
+
+  card.append(buildMenu(comment, options, card, body, signals));
   card.addEventListener('click', onToggle);
   return card;
+}
+
+function buildDiff(comment: Comment): HTMLElement | undefined {
+  const resolution = comment.resolution;
+  if (comment.status !== 'addressed' || !resolution) return undefined;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'mr-diff';
+
+  const before = document.createElement('del');
+  before.className = 'mr-diff-before';
+  before.textContent = truncateQuote(resolution.previousText, DIFF_QUOTE_LENGTH);
+
+  const after = document.createElement('ins');
+  after.className = 'mr-diff-after';
+  after.textContent = truncateQuote(resolution.currentText, DIFF_QUOTE_LENGTH);
+
+  wrapper.append(before, after);
+  return wrapper;
+}
+
+/**
+ * The D17 note. Phrased as an observation the user judges, not a claim about their comment.
+ *
+ * "This section changed" is a fact — the text differs from the snapshot taken when the prompt was
+ * copied. "Your comment was addressed" would be a guess, and it is the guess the extension is
+ * deliberately not making here: `addressed` keeps meaning that the anchored text itself changed.
+ */
+function sectionNote(): HTMLElement {
+  const note = document.createElement('p');
+  note.className = 'mr-card-note';
+  note.textContent = 'This section changed since you copied the prompt';
+  return note;
 }
 
 function badge(label: string): HTMLElement {
@@ -339,6 +449,7 @@ function buildMenu(
   options: CommentsOptions,
   card: HTMLElement,
   body: HTMLElement,
+  signals: CardSignals,
 ): HTMLElement {
   const actions = document.createElement('div');
   actions.className = 'mr-card-actions';
@@ -353,9 +464,27 @@ function buildMenu(
 
   actions.append(edit, remove);
 
-  if (comment.status !== 'resolved') {
+  if (comment.status === 'addressed') {
+    // "Looks good" rather than "Resolve" (PRD §8): the user is confirming an inference the
+    // extension made, not making a judgement from scratch. Same terminal status either way.
     actions.append(
-      action('Resolve', `Resolve comment by ${comment.author}`, () => {
+      action('Looks good', `Accept the change and resolve ${comment.author}'s comment`, () => {
+        options.onResolve(comment.id);
+      }),
+      action('Reopen', `Reject the change and reopen ${comment.author}'s comment`, () => {
+        options.onReopen(comment.id);
+      }),
+    );
+    return actions;
+  }
+
+  if (comment.status !== 'resolved') {
+    // "Looks good" when there is something to confirm, matching the addressed card. The user is
+    // still accepting a suggestion the extension volunteered, just a weaker one; "Resolve" would
+    // read as an unprompted judgement and lose the connection to the note directly above it.
+    const label = signals.sectionChanged ? 'Looks good' : 'Resolve';
+    actions.append(
+      action(label, `Resolve comment by ${comment.author}`, () => {
         options.onResolve(comment.id);
       }),
     );
@@ -428,7 +557,8 @@ function buildResolvedGroup(resolved: Comment[], options: CommentsOptions): HTML
   group.append(summary);
 
   for (const comment of resolved) {
-    group.append(buildCard(comment, options, () => undefined));
+    // `resolved` is terminal and never re-anchored, so there is no signal to carry here.
+    group.append(buildCard(comment, options, () => undefined, { sectionChanged: false }));
   }
   return group;
 }

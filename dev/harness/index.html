@@ -59,11 +59,15 @@
   </style>
 </head>
 <body>
+  <!-- Kept element-for-element identical to `getHtmlForWebview`. `requireElement` throws on a
+       missing id, so a shell that drifts fails loudly on load instead of rendering subtly wrong. -->
+  <header id="header" hidden></header>
+  <div id="notice" hidden></div>
+  <section id="orphans" hidden aria-label="Comments that lost their anchor"></section>
   <div id="front-matter-root"></div>
   <main id="content"></main>
   <div id="highlight-overlay" aria-hidden="true"></div>
   <aside id="gutter" aria-label="Comments"></aside>
-  <div id="notice" hidden></div>
 
   <div id="mr-harness" data-no-anchor>
     <div>
@@ -128,7 +132,12 @@
       currentKey = key;
       const scenario = fixture.scenarios[key];
       post({ type: 'setContent', html: fixture.html, frontMatterHtml: fixture.frontMatterHtml });
-      post({ type: 'reviewState', review: scenario.review, located: scenario.located });
+      post({ type: 'reviewState', review: scenario.review, located: scenario.located, sectionChanged: scenario.sectionChanged ?? [] });
+      // Only the host can detect a rewrite — it needs the state from *before* the re-anchor pass —
+      // so the scenario declares the outcome and the page plays the host's part.
+      if (scenario.rewriteDetected) {
+        post({ type: 'rewriteDetected', orphaned: scenario.rewriteDetected });
+      }
     }
 
     // The webview posts `ready` synchronously as its bundle finishes, so by the time this script
@@ -139,7 +148,7 @@
     themeSelect.addEventListener('change', () => {
       document.documentElement.dataset.theme = themeSelect.value;
       // Colour changes cannot move layout, but the reposition is free and keeps the two in step.
-      post({ type: 'reviewState', review: fixture.scenarios[currentKey].review, located: fixture.scenarios[currentKey].located });
+      post({ type: 'reviewState', review: fixture.scenarios[currentKey].review, located: fixture.scenarios[currentKey].located, sectionChanged: fixture.scenarios[currentKey].sectionChanged ?? [] });
     });
     scenarioSelect.addEventListener('change', () => loadScenario(scenarioSelect.value));
 
@@ -157,8 +166,19 @@
     const fail = (detail) => ({ verdict: 'FAIL', detail });
     const skip = (detail) => ({ verdict: 'SKIP', detail });
 
+    /**
+     * True when no comment in the scenario can be located.
+     *
+     * A rewritten document has no highlights and no gutter cards *by design*, so the geometry
+     * checks have to bail out rather than report the demonstrated behaviour as a failure.
+     */
+    function nothingLocatable() {
+      return Object.values(fixture.scenarios[currentKey].located).every((position) => !position);
+    }
+
     const checks = {
       'cards do not overlap'() {
+        if (nothingLocatable()) return skip('every anchor in this scenario is gone');
         const rects = visibleCards()
           .map((card) => card.getBoundingClientRect())
           .sort((a, b) => a.top - b.top);
@@ -191,6 +211,7 @@
       },
 
       'cards have a usable width'() {
+        if (nothingLocatable()) return skip('every anchor in this scenario is gone');
         // Deliberately not compared against `window.innerWidth`: narrow mode can be forced by
         // overriding that getter when the window manager refuses a resize, and then it no longer
         // describes the real layout. "Escapes the pane" above is the honest overflow check.
@@ -208,7 +229,7 @@
         // stops being a containing block and anything left `position: absolute; width: 100%` inside
         // it resolves against the page instead.
         const right = document.body.getBoundingClientRect().right;
-        for (const element of document.querySelectorAll('#gutter .mr-card, #gutter .mr-resolved-group')) {
+        for (const element of document.querySelectorAll('#gutter .mr-card, #gutter .mr-resolved-group, #orphans > *, #header')) {
           const rect = element.getBoundingClientRect();
           if (rect.height === 0) continue;
           if (rect.right > right + 1) {
@@ -219,6 +240,7 @@
       },
 
       'highlights have real geometry'() {
+        if (nothingLocatable()) return skip('every anchor in this scenario is gone');
         const marks = [...document.querySelectorAll('#highlight-overlay .mr-highlight')];
         if (marks.length === 0) return fail('no highlights drawn');
         for (const mark of marks) {
@@ -228,6 +250,7 @@
         return pass(`${marks.length} highlight rect(s)`);
       },
 
+
       'highlights land on their anchored text'() {
         // The strongest available alignment check: take the centre of each highlight, ask the
         // document what is underneath it (the overlay is pointer-events:none, so this reaches the
@@ -235,10 +258,12 @@
         const scenario = fixture.scenarios[currentKey];
         const byId = new Map(scenario.review.comments.map((comment) => [comment.id, comment]));
         const scrollY = window.scrollY;
-        // The harness bar is `position: fixed`, so it would answer `elementFromPoint` for anything
-        // it happens to cover. It is chrome, not content — hide it for the duration.
-        const bar = document.getElementById('mr-harness');
-        bar.style.visibility = 'hidden';
+        // Anything painting over the content would answer `elementFromPoint` in its place. The
+        // harness bar is `position: fixed` chrome; the header is `position: sticky` and legitimately
+        // covers text scrolled under it. `visibility: hidden` keeps both in layout, so hiding them
+        // cannot move the very highlights being measured.
+        const covering = [document.getElementById('mr-harness'), document.getElementById('header')];
+        for (const element of covering) element.style.visibility = 'hidden';
         let checked = 0;
 
         try {
@@ -276,7 +301,7 @@
             checked++;
           }
         } finally {
-          bar.style.visibility = '';
+          for (const element of covering) element.style.visibility = '';
           window.scrollTo({ top: scrollY });
         }
         return pass(`${checked} highlight(s) verified against the text underneath`);
@@ -285,10 +310,155 @@
       'uncertain and orphaned render distinctly'() {
         if (currentKey !== 'uncertain') return skip('other scenario');
         const uncertain = document.querySelectorAll('.mr-highlight-uncertain').length;
-        const orphaned = document.querySelectorAll('.mr-card-orphaned').length;
+        // Orphans moved out of the gutter in Phase 4b — they have no anchor to align a card to.
+        const orphaned = document.querySelectorAll('#orphans .mr-orphan').length;
         if (uncertain === 0) return fail('no "position uncertain" highlight for the low-confidence anchor');
-        if (orphaned === 0) return fail('the orphaned comment has no distinct card state');
-        return pass(`${uncertain} uncertain highlight(s), ${orphaned} orphaned card(s)`);
+        if (orphaned === 0) return fail('the orphaned comment is not listed in #orphans');
+        return pass(`${uncertain} uncertain highlight(s), ${orphaned} orphan row(s)`);
+      },
+
+      'orphans are listed once each and do not overlap'() {
+        if (currentKey !== 'orphans') return skip('other scenario');
+        // The Plan 04 §9 D6 regression guard. Before orphans moved into their own section every one
+        // of them was skipped before `stackTops` ran, so none got a `top` and all three landed on
+        // top of each other. This check fails against that code and passes against this.
+        const expected = fixture.scenarios.orphans.review.comments.length;
+        const rows = [...document.querySelectorAll('#orphans .mr-orphan')];
+        if (rows.length !== expected) return fail(`expected ${expected} orphan rows, found ${rows.length}`);
+
+        const ids = new Set(rows.map((row) => row.dataset.commentId));
+        if (ids.size !== expected) return fail('the same orphan is listed more than once');
+
+        const rects = rows.map((row) => row.getBoundingClientRect()).sort((a, b) => a.top - b.top);
+        for (let i = 1; i < rects.length; i++) {
+          if (rects[i].top < rects[i - 1].bottom - 0.5) {
+            return fail(`orphan ${i} overlaps the previous row (top ${rects[i].top.toFixed(1)} vs bottom ${rects[i - 1].bottom.toFixed(1)})`);
+          }
+        }
+        // No card should have been left in the gutter for them either.
+        if (visibleCards().length > 0) return fail('an orphan is still rendering as a gutter card');
+        return pass(`${rows.length} distinct, non-overlapping orphan rows`);
+      },
+
+      'addressed cards show a before and after'() {
+        if (currentKey !== 'addressed') return skip('other scenario');
+        const befores = [...document.querySelectorAll('#gutter .mr-diff-before')];
+        const afters = [...document.querySelectorAll('#gutter .mr-diff-after')];
+        if (befores.length === 0 || befores.length !== afters.length) {
+          return fail(`${befores.length} before(s) against ${afters.length} after(s)`);
+        }
+        for (const element of [...befores, ...afters]) {
+          if ((element.textContent || '').trim().length === 0) return fail('an empty diff line');
+        }
+        // Colour is the only thing distinguishing them, so it has to actually differ per theme.
+        const beforeColour = getComputedStyle(befores[0]).color;
+        const afterColour = getComputedStyle(afters[0]).color;
+        if (beforeColour === afterColour) {
+          return fail(`before and after render the same colour (${beforeColour})`);
+        }
+        // The UA underlines <ins> by default, which reads as a link.
+        if (getComputedStyle(afters[0]).textDecorationLine.includes('underline')) {
+          return fail('the "after" line is underlined and reads as a link');
+        }
+        return pass(`${befores.length} before/after pair(s), ${beforeColour} vs ${afterColour}`);
+      },
+
+      'the section-change note lands only on the flagged card'() {
+        if (currentKey !== 'nearby') return skip('other scenario');
+        const scenario = fixture.scenarios[currentKey];
+        const flagged = new Set(scenario.sectionChanged);
+
+        const noted = [...document.querySelectorAll('#gutter .mr-card')].filter((card) => card.querySelector('.mr-card-note'));
+        const notedIds = new Set(noted.map((card) => card.dataset.commentId));
+        if (notedIds.size !== flagged.size) return fail(`${notedIds.size} card(s) carry the note, expected ${flagged.size}`);
+        for (const id of flagged) {
+          if (!notedIds.has(id)) return fail(`${id} was flagged but carries no note`);
+        }
+
+        // The note must not read as the addressed diff. Those are the evidence for an inference the
+        // extension made; this is a weaker claim, and rendering them alike invites confusing the two.
+        const note = noted[0].querySelector('.mr-card-note');
+        if ((note.textContent || '').trim().length === 0) return fail('the note is empty');
+        if (noted[0].querySelector('.mr-diff')) return fail('a flagged open card is also showing a before/after');
+
+        const addressed = document.querySelector('#gutter .mr-card-addressed .mr-diff-before');
+        if (!addressed) return fail('the scenario lost its addressed card, so the comparison is untested');
+        if (getComputedStyle(note).color === getComputedStyle(addressed).color) {
+          return fail('the note renders the same colour as an addressed diff');
+        }
+
+        // "Looks good" rather than "Resolve": the user is confirming something, not judging cold.
+        const labels = [...noted[0].querySelectorAll('.mr-card-action')].map((button) => button.textContent);
+        if (!labels.includes('Looks good')) return fail(`no "Looks good" action, found ${labels.join(', ')}`);
+        return pass(`note on ${notedIds.size} of ${scenario.review.comments.length} card(s), distinct from the diff`);
+      },
+
+      'the header does not swallow content'() {
+        const header = document.getElementById('header');
+        if (header.hidden) return fail('the header is hidden despite comments existing');
+        if (getComputedStyle(header).position !== 'sticky') return fail('the header is not sticky');
+
+        // Opaque, or text scrolls through it.
+        const background = getComputedStyle(header).backgroundColor;
+        if (background === 'transparent' || background === 'rgba(0, 0, 0, 0)') {
+          return fail('the header background is transparent; content will show through it');
+        }
+
+        // Above the highlight overlay, or highlights paint over the bar.
+        const headerZ = Number(getComputedStyle(header).zIndex);
+        const overlayZ = Number(getComputedStyle(document.getElementById('highlight-overlay')).zIndex);
+        if (!(headerZ > overlayZ)) return fail(`header z-index ${headerZ} is not above the overlay's ${overlayZ}`);
+
+        // At the top of the document it must sit above the content, not over it.
+        window.scrollTo({ top: 0 });
+        const firstBlock = document.querySelector('#content [data-ap-start]');
+        if (firstBlock && header.getBoundingClientRect().bottom > firstBlock.getBoundingClientRect().top + 1) {
+          return fail('the header overlaps the first block at scroll top');
+        }
+        return pass(`sticky, opaque, z-index ${headerZ} over ${overlayZ}`);
+      },
+
+      'filter chips hide the card and its highlight together'() {
+        if (currentKey !== 'filtered') return skip('other scenario');
+        // In narrow mode every card is hidden except the expanded one, so `visibleCards()` is
+        // already zero and cannot show a change. The highlights still tell the story, but the
+        // card half of this assertion only means anything at full width.
+        if (document.body.classList.contains('mr-narrow')) return skip('needs the gutter');
+        const chip = document.querySelector('#header .mr-chip[data-status="open"]');
+        if (!chip) return fail('no "open" filter chip');
+
+        const before = { cards: visibleCards().length, marks: document.querySelectorAll('.mr-highlight').length };
+        chip.click();
+        const during = { cards: visibleCards().length, marks: document.querySelectorAll('.mr-highlight').length };
+        chip.click();
+        const after = { cards: visibleCards().length, marks: document.querySelectorAll('.mr-highlight').length };
+
+        if (during.cards >= before.cards) return fail('hiding "open" did not remove a card');
+        // A highlight with no card is confusing — the two have to move together.
+        if (during.marks >= before.marks) return fail('hiding "open" left its highlight behind');
+        if (after.cards !== before.cards || after.marks !== before.marks) {
+          return fail(`toggling back did not restore (${after.cards}/${after.marks} vs ${before.cards}/${before.marks})`);
+        }
+        return pass(`${before.cards} → ${during.cards} cards, ${before.marks} → ${during.marks} highlights`);
+      },
+
+      'the rewrite banner offers the diff'() {
+        if (currentKey !== 'rewrite') return skip('other scenario');
+        const notice = document.getElementById('notice');
+        if (notice.hidden) return fail('no banner for a rewritten document');
+        const button = notice.querySelector('button');
+        if (!button) return fail('the banner has no action');
+        if (!/diff/i.test(button.textContent || '')) return fail(`unexpected action "${button.textContent}"`);
+
+        // Existing is not the same as visible. `#notice` used to be the last element in the body,
+        // which is fine for the two states that clear the document first — but this one fires over
+        // a full one, and a banner below the whole document is a banner nobody reads.
+        window.scrollTo({ top: 0 });
+        const rect = notice.getBoundingClientRect();
+        if (rect.top > window.innerHeight || rect.bottom < 0) {
+          return fail(`the banner is off-screen at scroll top (top ${rect.top.toFixed(0)}px, viewport ${window.innerHeight}px)`);
+        }
+        return pass(`banner on screen with "${button.textContent}"`);
       },
 
       'resolved comments collapse into a group'() {
@@ -303,6 +473,9 @@
         const expected = window.innerWidth < 700;
         if (narrow !== expected) return fail(`body.mr-narrow is ${narrow} at ${window.innerWidth}px (expected ${expected})`);
         if (narrow) {
+          // A marker is anchored to a highlight, so a scenario with nothing locatable has none by
+          // design — its comments are all in `#orphans`, which is in flow and needs no marker.
+          if (nothingLocatable()) return skip('every anchor in this scenario is gone');
           const markers = document.querySelectorAll('#highlight-overlay .mr-marker').length;
           if (markers === 0) return fail('narrow mode with no inline markers');
           return pass(`collapsed to ${markers} inline marker(s)`);

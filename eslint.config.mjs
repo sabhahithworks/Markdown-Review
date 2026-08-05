@@ -45,6 +45,19 @@ export default tseslint.config(
       // vscode-facing half.
       'src/store/sidecarPath.ts',
       'src/store/reviewFile.ts',
+      // Phase 4: the debounce behind change detection. `changeWatcher.ts` is deliberately *not* on
+      // this list — it is the `vscode` half — but the timing rules are pulled out here so they can
+      // be asserted with fake timers instead of a stopwatch in the integration suite.
+      'src/detect/coalesce.ts',
+      // The rewrite trigger rule, kept pure so it is a unit test rather than something only
+      // reproducible by wrecking a file in a dev host.
+      'src/detect/rewrite.ts',
+      // D17. `scopeOf` decides what region a comment is about and `changedRanges` decides what moved
+      // since the baseline; between them they hold every edge case the section signal can hit
+      // (partial headings, nested levels, deletions at a block seam). All of it is reachable from a
+      // string and a `PlainTextDoc`, so none of it should need a dev host to test.
+      'src/detect/scope.ts',
+      'src/detect/changedRanges.ts',
     ],
     rules: {
       'no-restricted-imports': [

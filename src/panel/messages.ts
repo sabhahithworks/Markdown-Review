@@ -18,6 +18,33 @@ import type { CommentStatus, Located, ReviewFile } from '../anchor/types.js';
  */
 export type { Anchor, Comment, CommentStatus, Located, ReviewFile } from '../anchor/types.js';
 export { MAX_ANCHOR_LENGTH, MIN_ANCHOR_LENGTH, UNCERTAIN_BELOW } from '../anchor/types.js';
+/** PRD §7's quote truncation. Re-exported because addressed cards quote text webview-side too. */
+export { MAX_QUOTE_LENGTH, truncateQuote } from '../anchor/text.js';
+
+/**
+ * A `ReviewFile` without the diff baseline.
+ *
+ * `baselineText` is a whole-document snapshot — up to `BASELINE_MAX_CHARS` — and `reviewState` is
+ * posted on *every* state change, so shipping it would push a quarter of a megabyte across the
+ * webview channel each time a status flips. The webview never renders it (the rewrite diff is opened
+ * host-side), so it is stripped at the boundary, and this type makes forgetting a compile error.
+ */
+export type ReviewSummary = Omit<ReviewFile, 'baselineText'>;
+
+/**
+ * Drops the baseline on its way to the webview.
+ *
+ * Written out field by field rather than by rest-destructuring so that adding a *required* field to
+ * `ReviewFile` fails to compile here until someone decides whether the webview should see it.
+ */
+export function toReviewSummary(review: ReviewFile): ReviewSummary {
+  return {
+    version: review.version,
+    targetPath: review.targetPath,
+    comments: review.comments,
+    baselineAt: review.baselineAt,
+  };
+}
 
 /** Webview view type. Shared by `createWebviewPanel` and the serializer registration. */
 export const REVIEW_VIEW_TYPE = 'markdownReview.panel';
@@ -44,8 +71,28 @@ export type HostMessage =
    * confidence cascade out of the webview keeps `diff-match-patch` out of that bundle (Plan 03 §9
    * C2). A `null` entry means the anchor could not be found; the comment is orphaned. The webview's
    * only job is mapping these offsets onto the DOM via `data-ap-start`.
+   *
+   * `sectionChanged` lists the ids of `open` comments whose *region* differs from the review
+   * baseline even though their own anchored text does not (D17) — a heading comment whose section
+   * the agent rewrote, say. It is a weaker claim than `addressed` on purpose and is never a status:
+   * nothing is inferred, nothing is persisted, and the user confirms with "Looks good". Sent as a
+   * sparse array because the common case is empty and this message goes out on every state change.
    */
-  | { type: 'reviewState'; review: ReviewFile; located: Record<string, Located | null> };
+  | {
+      type: 'reviewState';
+      review: ReviewSummary;
+      located: Record<string, Located | null>;
+      sectionChanged: string[];
+    }
+  /**
+   * A single re-anchor pass lost every comment that was previously located, and a baseline exists
+   * (PRD §11). Evaluated host-side because only the host knows the state *before* the pass.
+   *
+   * An event, not a state: the next `setContent` clears the notice it renders into, so it fires on
+   * the transition rather than re-appearing on every later render of an already-wrecked document.
+   * The durable, actionable UI for this is the orphan section.
+   */
+  | { type: 'rewriteDetected'; orphaned: number };
 
 /** webview -> extension */
 export type WebviewMessage =
@@ -66,7 +113,23 @@ export type WebviewMessage =
   | { type: 'addComment'; selectedText: string; offset: number; hintLine: number; body: string }
   | { type: 'editComment'; id: string; body: string }
   | { type: 'deleteComment'; id: string }
-  | { type: 'resolveComment'; id: string };
+  /** Also the "Looks good" button on an addressed card — same host action, different label. */
+  | { type: 'resolveComment'; id: string }
+  /** The user disagrees with an inference: `addressed` back to `open` (PRD §8). */
+  | { type: 'reopenComment'; id: string }
+  /**
+   * Re-attach an orphan to a fresh selection (PRD §6). Carries the selection rather than arming a
+   * mode host-side, so the "pick some text" state lives entirely in the webview and cannot be left
+   * stuck by a reload. The payload mirrors `addComment` so both go through the same validation.
+   */
+  | { type: 'reanchorComment'; id: string; selectedText: string; offset: number; hintLine: number }
+  /** Header actions. The palette commands are the same code paths. */
+  | { type: 'copyPrompt' }
+  | { type: 'clearAddressed' }
+  /** The rewrite banner's action: open baseline ↔ current as a diff (PRD §11). */
+  | { type: 'showRewriteDiff' }
+  /** "Locate file…" on the unreadable notice: point this review at a file that still exists. */
+  | { type: 'relinkTarget' };
 
 /**
  * Serializer state, and what the webview writes via `setState`. `scrollLine` is a `data-line`
@@ -94,6 +157,10 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
   switch (value['type']) {
     case 'ready':
     case 'renderAnyway':
+    case 'showRewriteDiff':
+    case 'relinkTarget':
+    case 'copyPrompt':
+    case 'clearAddressed':
       return true;
     case 'openExternal':
       return typeof value['url'] === 'string';
@@ -112,7 +179,15 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
       return typeof value['id'] === 'string' && typeof value['body'] === 'string';
     case 'deleteComment':
     case 'resolveComment':
+    case 'reopenComment':
       return typeof value['id'] === 'string';
+    case 'reanchorComment':
+      return (
+        typeof value['id'] === 'string' &&
+        typeof value['selectedText'] === 'string' &&
+        isFiniteNumber(value['offset']) &&
+        isFiniteNumber(value['hintLine'])
+      );
     default:
       return false;
   }

@@ -15,7 +15,7 @@ import {
   UNCERTAIN_BELOW,
   type Anchor,
 } from '../anchor/types.js';
-import { renderPlainText } from '../render/plaintext.js';
+import { collapse, normalizeAnchorText, renderPlainText } from '../render/plaintext.js';
 import { anchorOn, anchorOnNth, docOf, offsetOf, offsetOfNth, readFixture } from './helpers.js';
 
 const KITCHEN_SINK = readFixture('kitchen-sink.md');
@@ -296,6 +296,96 @@ describe('locate — anchors across markdown constructs (kitchen sink)', () => {
 
   it('preserves code content verbatim rather than normalizing it', () => {
     expect(doc.text).toContain('keeps    its    interior    spacing.');
+  });
+
+  /**
+   * The case above anchors a *single line* of code, which is why this survived to be found by hand
+   * during the Phase 4 acceptance run: one line has no newline to flatten, so it matches either way.
+   *
+   * `createAnchor` used to collapse every selection, while `walkSpans` keeps code verbatim — so a
+   * multi-line code anchor could not appear in `doc.text` at all. It fell to a fuzzy match whose
+   * span came up a few characters short, and `reanchor` then read that shortfall as an edit and
+   * flipped the comment to `addressed` on a document nobody had touched.
+   */
+  describe('multi-line code anchors', () => {
+    const MULTILINE = 'const header = decodeHeader(token);\n  const key = keys.find(header.kid);';
+
+    it('keeps the selection verbatim, newlines and indentation intact', () => {
+      const anchor = anchorOn(doc, MULTILINE);
+
+      expect(anchor.exact).toBe(MULTILINE);
+      expect(anchor.exact).toContain('\n');
+    });
+
+    it('locates exactly, not fuzzily, and returns the whole selection', () => {
+      const found = locate(anchorOn(doc, MULTILINE), doc);
+
+      expect(found?.confidence).toBe(CONFIDENCE.EXACT_WITH_CONTEXT);
+      expect(doc.text.slice(found?.start, found?.end)).toBe(MULTILINE);
+    });
+
+    it('locates a whole fence, boundary to boundary', () => {
+      const fence = doc.blocks.find(
+        (block) => block.kind === 'code' && doc.text.slice(block.start, block.end).includes('verify'),
+      );
+      const whole = doc.text.slice(fence?.start, fence?.end);
+      const found = locate(anchorOn(doc, whole), doc);
+
+      expect(found?.start).toBe(fence?.start);
+      expect(found?.end).toBe(fence?.end);
+    });
+
+    it('collapses a selection that runs out of the fence into the prose after it', () => {
+      // Two normalization regimes in one selection: it can be faithful to neither, so it takes the
+      // rule every non-code selection wants.
+      const fence = doc.blocks.find(
+        (block) => block.kind === 'code' && doc.text.slice(block.start, block.end).includes('curl'),
+      );
+      const start = (fence?.start ?? 0) + 5;
+      const selection = doc.text.slice(start, (fence?.end ?? 0) + 40);
+
+      const result = createAnchor({ selectedText: selection, offset: start, doc });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.anchor.exact).not.toContain('\n');
+    });
+  });
+
+  /**
+   * Tier 2b. Anchors whose code has been flattened still have to work: sidecars written before the
+   * fix carry them, and PRD §11 invites hand-editing, where nobody retypes a fence's indentation.
+   */
+  describe('collapsed code anchors (legacy and hand-written)', () => {
+    const flattened = (needle: string): Anchor => ({
+      exact: collapse(needle),
+      prefix: '',
+      suffix: '',
+      hintLine: 0,
+      hintOffset: 0,
+    });
+
+    it('locates a flattened whole fence onto the real block', () => {
+      const fence = doc.blocks.find(
+        (block) => block.kind === 'code' && doc.text.slice(block.start, block.end).includes('verify'),
+      );
+      const verbatim = doc.text.slice(fence?.start, fence?.end);
+
+      const found = locate(flattened(verbatim), doc);
+
+      expect(found?.confidence).toBe(CONFIDENCE.EXACT_UNIQUE);
+      expect(found?.start).toBe(fence?.start);
+      expect(found?.end).toBe(fence?.end);
+      // The point of the whole exercise: what is found normalizes back to what was asked for, so
+      // `reanchor` sees no change and does not invent an `addressed`.
+      expect(normalizeAnchorText(doc.text.slice(found?.start, found?.end))).toBe(
+        collapse(verbatim),
+      );
+    });
+
+    it('leaves prose anchors on the ordinary tiers', () => {
+      const found = locate(anchorOn(doc, 'Nested lists'), doc);
+      expect(found?.confidence).toBe(CONFIDENCE.EXACT_WITH_CONTEXT);
+    });
   });
 
   it('never leaks synthesised markup into anchor space', () => {

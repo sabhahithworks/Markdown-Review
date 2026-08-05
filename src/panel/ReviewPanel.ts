@@ -12,24 +12,22 @@ import { nanoid } from 'nanoid';
 import * as vscode from 'vscode';
 import { createAnchor } from '../anchor/create.js';
 import { createLocator } from '../anchor/locate.js';
-import type { Comment, Located, PlainTextDoc } from '../anchor/types.js';
+import type { Comment, Located, PlainTextDoc, ReviewFile } from '../anchor/types.js';
+import { showRewriteDiff } from '../detect/baselineDocuments.js';
+import { changedRanges, touches } from '../detect/changedRanges.js';
+import { createChangeWatcher } from '../detect/changeWatcher.js';
+import { detectRewrite } from '../detect/rewrite.js';
+import type { TextRange } from '../detect/scope.js';
+import { scopeOf } from '../detect/scope.js';
 import { renderPlainText } from '../render/plaintext.js';
 import type { ImageResolver } from '../render/renderer.js';
 import { renderMarkdown } from '../render/renderer.js';
 import { ReviewStore } from '../store/ReviewStore.js';
 import type { HostMessage } from './messages.js';
-import { REVIEW_VIEW_TYPE, isWebviewMessage } from './messages.js';
+import { REVIEW_VIEW_TYPE, isWebviewMessage, toReviewSummary } from './messages.js';
 import { anchorRejectionMessage } from './notices.js';
-
-/**
- * PRD §11 requires a warning before rendering a very large file. v1 degrades rather than
- * virtualizing: virtualized rendering would put a second, partial view of the document between the
- * user's selection and anchor space, which is exactly the desync Phase 3 cannot afford.
- */
-const TOO_LARGE_BYTES = 2 * 1024 * 1024;
-
-/** Matches Plan 04 §5's interval, so the watcher that supersedes this one feels identical. */
-const REFRESH_DEBOUNCE_MS = 400;
+import type { ReadResult } from './readTarget.js';
+import { readTarget } from './readTarget.js';
 
 const ALLOWED_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 
@@ -61,7 +59,6 @@ export class ReviewPanel {
   private ready = false;
   /** Guards against a slow read overwriting the result of a newer one. */
   private renderGeneration = 0;
-  private debounce: ReturnType<typeof setTimeout> | undefined;
   /** Set by `renderAnyway`; in-memory only, so a reload re-arms the size guard. */
   private forceRender = false;
 
@@ -74,6 +71,9 @@ export class ReviewPanel {
    * and is `undefined` only before the first successful render.
    */
   private doc: PlainTextDoc | undefined;
+
+  /** Memo for the baseline diff behind the section-change signal; see `changedRanges` below. */
+  private changedMemo: { baselineAt: string; text: string; ranges: TextRange[] | null } | undefined;
 
   static createOrShow(
     context: vscode.ExtensionContext,
@@ -190,21 +190,44 @@ export class ReviewPanel {
           case 'resolveComment':
             this.store.setStatus(raw.id, 'resolved');
             break;
+          case 'showRewriteDiff':
+            void showRewriteDiff(this.target);
+            break;
+          case 'relinkTarget':
+            void this.relink();
+            break;
+          case 'reopenComment':
+            // The inference was wrong, or the agent's change did not actually address the point.
+            // Clearing `resolution` too, so the card stops showing a before/after that no longer
+            // describes anything the user agrees happened.
+            this.store.reopen(raw.id);
+            break;
+          case 'reanchorComment':
+            this.reanchor(raw.id, raw.selectedText, raw.offset, raw.hintLine);
+            break;
+          case 'copyPrompt':
+            void vscode.commands.executeCommand('markdownReview.copyPrompt', this.target);
+            break;
+          case 'clearAddressed':
+            void vscode.commands.executeCommand('markdownReview.clearAddressed', this.target);
+            break;
         }
       },
       null,
       this.disposables,
     );
 
-    // Interim live refresh. Plan 04 §5's changeWatcher (dual-source, store-integrated) supersedes
-    // this; deliberately no FileSystemWatcher here, so there is only ever one watch design.
-    vscode.workspace.onDidChangeTextDocument(
-      (event) => {
-        if (event.document.uri.toString() !== this.target.toString()) return;
-        this.scheduleRefresh();
-      },
-      null,
-      this.disposables,
+    // PRD §8: editor edits and direct disk writes both have to land, and a save (which is both)
+    // must cost one refresh. The watcher owns the debounce, so there is no second timer here.
+    this.disposables.push(
+      createChangeWatcher({
+        target,
+        onChanged: () => void this.refresh(),
+        // `refresh()`'s read fails and reports `targetUnreadable`, which is already the right state
+        // for a deleted target (PRD §11). The re-link action on that notice arrives in Phase 4b.
+        onDeleted: () => void this.refresh(),
+        onCreated: () => void this.refresh(),
+      }),
     );
   }
 
@@ -212,7 +235,6 @@ export class ReviewPanel {
     if (this.disposed) return;
     this.disposed = true;
 
-    if (this.debounce !== undefined) clearTimeout(this.debounce);
     // Flush, don't dispose: the store outlives this panel and may still be held by the command
     // layer or a panel in another column. `ReviewStore.disposeAll()` on deactivate owns teardown.
     void this.store.flush();
@@ -221,14 +243,6 @@ export class ReviewPanel {
     for (const disposable of this.disposables.splice(0)) {
       disposable.dispose();
     }
-  }
-
-  private scheduleRefresh(): void {
-    if (this.debounce !== undefined) clearTimeout(this.debounce);
-    this.debounce = setTimeout(() => {
-      this.debounce = undefined;
-      void this.refresh();
-    }, REFRESH_DEBOUNCE_MS);
   }
 
   private post(message: HostMessage): void {
@@ -244,21 +258,13 @@ export class ReviewPanel {
 
     const generation = ++this.renderGeneration;
 
-    let source: string;
-    try {
-      const read = await this.readSource();
-      if (this.disposed || generation !== this.renderGeneration) return;
-      if (read === undefined) return; // size guard already reported
-      source = read;
-    } catch (error) {
-      if (this.disposed || generation !== this.renderGeneration) return;
-      // PRD §11: keep the pane and the user's data, say what happened. The re-link action arrives
-      // in Phase 4; Phase 2 shows the state and stops.
-      const reason = error instanceof Error ? error.message : String(error);
-      this.output.appendLine(`[panel] cannot read ${this.target.fsPath}: ${reason}`);
-      this.post({ type: 'targetUnreadable', reason });
+    const read = await readTarget(this.target, { force: this.forceRender });
+    if (this.disposed || generation !== this.renderGeneration) return;
+    if (!read.ok) {
+      this.reportReadFailure(read);
       return;
     }
+    const source = read.text;
 
     const rendered = renderMarkdown(source, { resolveImage: this.makeImageResolver() });
     // Rendering both from the same source string on the same code path is what keeps anchor space
@@ -284,7 +290,26 @@ export class ReviewPanel {
     // highlights at stale positions.
     await this.store.ensureLoaded();
     if (this.disposed || generation !== this.renderGeneration) return;
+
+    // Relocate against what was just rendered, *after* the sidecar is loaded (re-anchoring a
+    // placeholder would be a no-op that then races the real read) and *before* the state post, so
+    // the statuses and the `located` offsets in the same message describe the same document.
+    //
+    // When this changes something the store fires `onDidChange`, which posts state again. Both
+    // posts are computed from this same `doc` and the same store state, so the second is identical
+    // to the first — accepted rather than suppressed, because every state change round-tripping
+    // through the store is the invariant that keeps one path from data to view.
+    const before = this.store.getState();
+    const changed = this.store.applyReanchor(plain);
+    const rewrite = detectRewrite(before, this.store.getState());
+
     this.postReviewState();
+
+    // After the state post, so the orphan list the banner refers to is already on screen. Only on
+    // the transition — `changed` is what makes this a one-shot rather than a permanent fixture.
+    if (changed && rewrite.rewritten) {
+      this.post({ type: 'rewriteDetected', orphaned: rewrite.orphaned });
+    }
   }
 
   /**
@@ -307,7 +332,80 @@ export class ReviewPanel {
       for (const comment of review.comments) located[comment.id] = null;
     }
 
-    this.post({ type: 'reviewState', review, located });
+    const sectionChanged = this.doc ? this.sectionChanged(review, this.doc, located) : [];
+
+    // The baseline is stripped here rather than left to the webview to ignore: it is the one field
+    // that can be hundreds of kilobytes, and this message goes out on every state change.
+    this.post({ type: 'reviewState', review: toReviewSummary(review), located, sectionChanged });
+  }
+
+  /**
+   * Open comments whose *region* changed since the prompt was copied, though their own anchored
+   * text did not (D17).
+   *
+   * `anchor.exact` is both the passage the user pointed at and the evidence for `addressed`, and
+   * those only coincide when the fix lands inside the selection. They come apart for every comment
+   * whose anchor *labels* the thing to fix rather than being it — a heading above a section the
+   * agent rewrote is the case that found this. Such a comment stays `open` forever and the pane
+   * says nothing, which is indistinguishable from the agent never having run.
+   *
+   * This is deliberately **not** a status. `reanchor.ts` remains the only code that sets one, the
+   * result is derived per render and never persisted, and the card asks rather than asserts.
+   */
+  private sectionChanged(
+    review: ReviewFile,
+    doc: PlainTextDoc,
+    located: Record<string, Located | null>,
+  ): string[] {
+    // Not a status, but still the extension volunteering a theory about what the agent did.
+    if (!this.store.inferAddressed) return [];
+
+    const baseline = review.baselineText;
+    // No baseline means the prompt was never copied, or the document was too large to snapshot
+    // (Plan 04 §10 D2). "Changed since you asked" has no meaning before you asked.
+    if (!baseline) return [];
+
+    const ranges = this.changedRanges(baseline, review.baselineAt ?? '', doc.text);
+    if (!ranges) return [];
+
+    // A comment written after the prompt was copied was never in it, so the baseline predates the
+    // claim and cannot be evidence about it. An unparseable date — which PRD §11's hand-editable
+    // sidecar allows — leaves the comment in rather than out: over-reporting is the safe direction.
+    const baselineTime = Date.parse(review.baselineAt ?? '');
+
+    const ids: string[] = [];
+    for (const comment of review.comments) {
+      // `addressed` and `orphaned` already carry stronger evidence, and `resolved` is terminal.
+      if (comment.status !== 'open') continue;
+
+      const found = located[comment.id];
+      if (!found) continue;
+
+      if (!Number.isNaN(baselineTime)) {
+        const created = Date.parse(comment.createdAt);
+        if (!Number.isNaN(created) && created > baselineTime) continue;
+      }
+
+      const scope = scopeOf(doc, found);
+      if (scope && touches(ranges, scope)) ids.push(comment.id);
+    }
+    return ids;
+  }
+
+  /**
+   * The baseline diff, memoized.
+   *
+   * `refresh()` deliberately posts state twice when a status flips — both posts are computed from
+   * the same document and the same store state, so they are byte-identical — and diffing a pair of
+   * 256 KB documents twice for an identical answer is the one part of that which is not free.
+   */
+  private changedRanges(baseline: string, baselineAt: string, text: string): TextRange[] | null {
+    const memo = this.changedMemo;
+    if (memo && memo.baselineAt === baselineAt && memo.text === text) return memo.ranges;
+
+    const ranges = changedRanges(baseline, text);
+    this.changedMemo = { baselineAt, text, ranges };
+    return ranges;
   }
 
   /**
@@ -350,33 +448,72 @@ export class ReviewPanel {
     this.store.addComment(comment);
   }
 
-  /** Returns the document text, or `undefined` when the size guard fired and reported it. */
-  private async readSource(): Promise<string | undefined> {
-    const open = vscode.workspace.textDocuments.find(
-      (document) => document.uri.toString() === this.target.toString(),
+  /**
+   * Re-attaches an orphaned comment to the text the user just selected (PRD §6).
+   *
+   * Identical validation to `addComment` — same `-1` sentinel, same rejection wording — because the
+   * webview sends the same payload shape for both. The only difference is what happens on success.
+   */
+  private reanchor(id: string, selectedText: string, offset: number, hintLine: number): void {
+    const doc = this.doc;
+    if (!doc) return;
+
+    const result = createAnchor({ selectedText, offset, doc, hintLine });
+    if (!result.ok) {
+      void vscode.window.showWarningMessage(anchorRejectionMessage(result.reason));
+      return;
+    }
+    this.store.reattach(id, result.anchor);
+  }
+
+  /**
+   * Points this review at a different file (PRD §11).
+   *
+   * The panel and its store are both keyed by target URI, so re-linking cannot be done in place:
+   * the comments migrate to the new file's store and a fresh pane opens on it. This one closes
+   * afterwards, so there is never a pane pointing at a file that is gone.
+   */
+  private async relink(): Promise<void> {
+    const picked = await vscode.window.showOpenDialog({
+      title: `Re-link ${path.basename(this.target.fsPath)}`,
+      openLabel: 'Re-link review',
+      canSelectMany: false,
+      filters: { Markdown: ['md', 'markdown', 'mdown', 'mkd', 'mdx'] },
+    });
+
+    const next = picked?.[0];
+    if (!next || this.disposed) return;
+
+    const result = await ReviewStore.relink(this.context, this.target, next, this.output);
+    if (!result.ok) {
+      void vscode.window.showWarningMessage(
+        result.reason === 'same-file'
+          ? 'That is the same file this review is already attached to.'
+          : 'Markdown Review could not move the comments, so nothing has been changed.',
+      );
+      return;
+    }
+
+    ReviewPanel.createOrShow(this.context, next, this.output);
+    void vscode.window.showInformationMessage(
+      `Re-linked ${String(result.moved)} comment${result.moved === 1 ? '' : 's'} to ${path.basename(next.fsPath)}.`,
     );
+    this.panel.dispose();
+  }
 
-    if (open) {
-      // Fresher than disk: an unsaved buffer is what the user is looking at.
-      const text = open.getText();
-      const size = Buffer.byteLength(text, 'utf8');
-      if (!this.forceRender && size > TOO_LARGE_BYTES) {
-        this.post({ type: 'tooLarge', sizeBytes: size });
-        return undefined;
-      }
-      return text;
+  /**
+   * Turns a failed read into the matching webview state.
+   *
+   * PRD §11: keep the pane and the user's data, say what happened. The re-link action on the
+   * unreadable notice arrives in Phase 4b; the state itself has been correct since Phase 2.
+   */
+  private reportReadFailure(read: Extract<ReadResult, { ok: false }>): void {
+    if (read.reason === 'too-large') {
+      this.post({ type: 'tooLarge', sizeBytes: read.sizeBytes });
+      return;
     }
-
-    // `stat` first: reading a multi-hundred-megabyte file just to measure it is the failure the
-    // guard exists to prevent.
-    const stat = await vscode.workspace.fs.stat(this.target);
-    if (!this.forceRender && stat.size > TOO_LARGE_BYTES) {
-      this.post({ type: 'tooLarge', sizeBytes: stat.size });
-      return undefined;
-    }
-
-    const bytes = await vscode.workspace.fs.readFile(this.target);
-    return new TextDecoder().decode(bytes);
+    this.output.appendLine(`[panel] cannot read ${this.target.fsPath}: ${read.detail}`);
+    this.post({ type: 'targetUnreadable', reason: read.detail });
   }
 
   /**
@@ -470,13 +607,22 @@ export class ReviewPanel {
   <link rel="stylesheet" href="${styleUri.toString()}">
 </head>
 <body>
+  <!-- Counts, status filters and the primary actions. Sticky, so "Copy review prompt" is reachable
+       without scrolling back to the top of a long document. -->
+  <header id="header" hidden></header>
+  <!-- Above the content, not after it. Two of its three uses clear the document first, but the
+       rewrite banner fires over a full one — at the end of the body it would sit below everything
+       and never be seen. -->
+  <div id="notice" hidden></div>
+  <!-- Orphans live outside the gutter: they have no anchor to align to, so they cannot be
+       positioned like a card, and PRD §6 asks for them in a section of their own. -->
+  <section id="orphans" hidden aria-label="Comments that lost their anchor"></section>
   <div id="front-matter-root"></div>
   <main id="content"></main>
   <!-- Highlights are absolutely-positioned rectangles over the content, never wrappers around it:
        wrapping would split the text nodes anchor offsets are measured against. -->
   <div id="highlight-overlay" aria-hidden="true"></div>
   <aside id="gutter" aria-label="Comments"></aside>
-  <div id="notice" hidden></div>
   <script nonce="${nonce}" src="${scriptUri.toString()}"></script>
 </body>
 </html>`;

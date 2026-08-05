@@ -655,3 +655,182 @@ body:not(.mr-narrow) {
   pointer-events: auto;
   cursor: pointer;
 }
+
+/* ==========================================================================
+ * Header bar, before/after diffs and orphan triage (Phase 4b; PRD §6, §8, §11)
+ *
+ * Every colour below is a `--vscode-*` variable that the stylesheet already used before this
+ * section existed, which is deliberate: `check-theme-vars.mjs` is two-way, so a new variable would
+ * have to be added to the base, light and high-contrast blocks of `dev/harness/themes.css` in the
+ * same commit or the build fails.
+ * ========================================================================== */
+
+/*
+ * Sticky, so the primary action stays reachable in a long document. In flow for layout, so the
+ * absolutely-positioned overlay and gutter are unaffected — their origins are measured at runtime.
+ * The background must be opaque or scrolled text renders through it.
+ */
+#header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  max-width: var(--mr-measure);
+  margin-bottom: var(--mr-gap);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background-color: var(--vscode-editor-background);
+}
+
+#header[hidden],
+#orphans[hidden] {
+  display: none;
+}
+
+.mr-header-counts,
+.mr-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.mr-chip {
+  padding: 2px 10px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 10px;
+  background-color: var(--vscode-textBlockQuote-background);
+  color: var(--vscode-editor-foreground);
+  font-family: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.mr-chip:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.mr-chip:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+/* Filtered off. Dimmed rather than hidden, so the way back is obvious. */
+.mr-chip-off {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+/* ---------- Before / after on an addressed card ---------- */
+
+.mr-diff {
+  margin-top: 6px;
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.mr-diff-before,
+.mr-diff-after {
+  display: block;
+}
+
+.mr-diff-before {
+  color: var(--vscode-charts-red);
+  text-decoration: line-through;
+}
+
+/* `text-decoration: none` is required: the UA default underlines `<ins>`, which reads as a link. */
+.mr-diff-after {
+  color: var(--vscode-charts-green);
+  text-decoration: none;
+}
+
+/* ---------- The section-change note (D17) ---------- */
+
+/*
+ * Deliberately quieter than `.mr-diff` above. That block is the evidence for `addressed` and is
+ * coloured like a diff, because it is one. This is a weaker claim — the region around the comment
+ * moved, which may or may not mean the comment was answered — and giving it the same red/green
+ * would invite reading it as the same thing. A rule rather than a colour keeps it legible under
+ * forced-colors, where a background would be stripped by the OS.
+ */
+.mr-card-note {
+  margin: 6px 0 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--vscode-panel-border);
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Orphan triage ---------- */
+
+/*
+ * In normal flow, unlike gutter cards. An orphan has no anchor to align to, so there is nothing to
+ * position it against — and before this section existed every orphan was skipped by the stacking
+ * pass and piled up at the same point (Plan 04 §9 D6).
+ */
+#orphans {
+  max-width: var(--mr-measure);
+  margin-bottom: var(--mr-gap);
+  padding: 12px 14px;
+  border: 1px solid var(--vscode-panel-border);
+  border-left: 3px solid var(--vscode-editorWarning-foreground);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-editorWidget-background);
+}
+
+.mr-orphans-heading {
+  margin: 0 0 8px;
+  border: none;
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.mr-orphan-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mr-orphan + .mr-orphan {
+  margin-top: 10px;
+  border-top: 1px solid var(--vscode-panel-border);
+  padding-top: 10px;
+}
+
+.mr-orphan-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mr-orphan-detail {
+  margin: 4px 0 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+.mr-orphan-quote {
+  font-style: italic;
+}
+
+.mr-orphan-armed {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 4px;
+}
+
+.mr-orphan-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+/* The floating button commits immediately while armed, so it reads differently too. */
+.mr-selection-button-arming {
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
