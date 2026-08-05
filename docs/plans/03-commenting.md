@@ -137,8 +137,13 @@ section when it passes.
       of a comment in the JSON while the panel is open updates the card
       — `store.spec.ts` (placement, 2-space print, nested `__` flattening, external edit adopted);
       the card re-render is step 3
-- [ ] Comments persist across window reload (serializer + sidecar)
-      — **manual**, step 4. No automated coverage: the serializer path needs a real window reload
+- [x] Comments persist across window reload (serializer + sidecar)
+      — **manual**, step 4; no automated coverage, because the serializer path needs a real window
+      reload. Verified 2026-08-05 on an installed build against `docs/fixtures/review-run.md` (the
+      serializer restores by path, so the fixture does not matter): the pane came back on the same
+      tab with its three comments, its scroll position and the filter chip still switched off, so
+      `PanelState` round-tripped through `vscode.setState`. The pane-as-only-editor repeat is
+      outstanding — see [04-acceptance-run.md](04-acceptance-run.md) A2 step 5
 - [x] Corrupt the sidecar by hand → warning shown, `.bak` created, panel functions with empty state
       — `store.spec.ts`, both the unparseable and the future-version case, asserting the backup is
       byte-identical. The notification *text* is not observable from inside the host

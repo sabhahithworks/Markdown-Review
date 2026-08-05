@@ -72,8 +72,12 @@ only unchecked boxes in Plan 03 §8, and the ones with no automated coverage of 
       > relative to the selection, and whether the highlight and card read as connected. Worth thirty
       > seconds in a real pane, but it is no longer the gate.
 
-- [ ] **A2 — window reload** (Plan 03 step 4). The `WebviewPanelSerializer` path, which has no
+- [x] **A2 — window reload** (Plan 03 step 4). The `WebviewPanelSerializer` path, which has no
       automated coverage of any kind — `@vscode/test-electron` cannot reload its own window.
+      **Passed 2026-08-05** on an installed build, against `review-run.md` rather than
+      `kitchen-sink.md` — the serializer restores by path, so the document is immaterial. Steps 1–4
+      only; **step 5 is still outstanding**, and it is the one that actually exercises the
+      activation gap the note below describes.
 
   1. Open `kitchen-sink.md` → *Markdown Review: Open Review Pane*. Leave two comments on different
      paragraphs if the sidecar is empty (commenting never edits the document, so this is safe).
@@ -359,8 +363,11 @@ rm -f .reviews/docs__fixtures__renamed.md.json*           # left emptied by B4
 
 ## Recording the outcome
 
-- Plan 03 §8 — tick A1 and A2, date the section.
-- Plan 04 §9 — tick items 2 (B1), 4 (B2), 8 (B4) and 9 (B5), date the section.
+- Plan 03 §8 — tick A2, date the section. A1 is already ticked: the gesture harness drives the
+  create flow, so the run only re-confirms how it feels.
+- Plan 04 §9 — tick items 2 (B1), 8 (B4) and 9 (B5), date the section. B2, B3 and B6 have no box
+  left to tick — items 3, 4, 5 and 6 are already green from `detection.spec.ts` and the harness,
+  and those steps are confirmations in a real pane rather than the gate.
 - Tick the boxes in **this** document as you go, and leave a one-line note next to anything you
   skipped or could not reach. A skipped box left blank is indistinguishable from one that failed.
 - Anything that failed goes in Plan 04 §10 as a new defect, in the same D-numbered form, before it

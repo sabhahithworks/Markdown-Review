@@ -235,8 +235,8 @@ this phase's entry gate. Date this section when it passes.
       — `store.spec.ts` covers backup, removal and the backup-failure abort; the **modals are
       manual** (§10 D9)
 - [x] Integration test suite green alongside `npm test`
-      — 421 unit, 39 integration. Plus, outside `npm run check`: 195 harness checks wide and 183
-      narrow, across eight scenarios and three themes
+      — 465 unit, 40 integration. Plus, outside `npm run check`: 195 harness checks wide and 183
+      narrow, across eight scenarios and three themes, and three gesture checks
 
 ## 10. Spec corrections applied in this phase
 
