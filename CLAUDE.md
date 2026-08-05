@@ -12,9 +12,9 @@ A VS Code extension (working name `markdown-review`) that renders any Markdown f
 
 ## Current state
 
-**Phases 1–4 are built.** Anchoring core (`src/anchor/`, `src/render/`), the read-only preview pane (`src/panel/`, `media/`), commenting (`src/store/`, `media/src/{anchorSpace,selection,comments}.ts`) and the review loop (`src/prompt/`, `src/detect/`, `src/commands/`) are implemented and tested — `npm run check` = typecheck (three tsconfig projects) + lint + 465 vitest tests, plus 40 host-side assertions in `npm run test:integration`.
+**Phases 1–4 are built.** Anchoring core (`src/anchor/`, `src/render/`), the read-only preview pane (`src/panel/`, `media/`), commenting (`src/store/`, `media/src/{anchorSpace,selection,comments}.ts`) and the review loop (`src/prompt/`, `src/detect/`, `src/commands/`) are implemented and tested — `npm run check` = typecheck (three tsconfig projects) + lint + the vitest suites, plus the host-side assertions in `npm run test:integration`.
 
-**Phase 5 (ship) is executed; Phase 6 (production hardening) has landed its code.** A verified `markdown-review-0.1.0.vsix` exists (~139 KB against the 500 KB budget). `docs/plans/06-production-hardening.md` is the current plan and the ledger for the 2026-08-05 full-codebase audit — H0–H34, all fixed or explicitly accepted in its §4. That closed D21 and D22 from Plan 04's ledger.
+**Phase 5 (ship) is executed; Phase 6 (production hardening) has landed its code.** A verified `markdown-review-0.1.0.vsix` exists (~139 KB against the 500 KB budget). `docs/plans/06-production-hardening.md` is the current plan and the ledger for the 2026-08-05 full-codebase audit — H0–H37, all fixed or explicitly accepted in its §4. That closed D21 and D22 from Plan 04's ledger.
 
 **What is still open is manual and cannot be automated:** `docs/plans/05-acceptance-run.md` Part A — the Phase 4 acceptance remainder, including a blind real-agent run and the B4 re-link flow that has never once been exercised — and then the publisher claim, which is the single irreversible step. Phase 5 was scoped *package, not publish*; the Marketplace publish is written down and still outside a definition of done.
 
