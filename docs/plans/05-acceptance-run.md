@@ -99,8 +99,24 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C3 — lazy activation on a fresh profile — §12 item 14, PRD §9
 
-- [ ] **C3** — **NOT RUN 2026-08-05**, and the only Part B box left. `code --profile mdcm-fresh`, install the `.vsix` into it, open a folder containing
-      Markdown, and **without running any command** open *Developer: Show Running Extensions*.
+- [x] **C3** — **passed 2026-08-05.** Markdown Review was **absent** from *Show Running Extensions*
+      on a fresh profile with a Markdown folder open and no command run, and appeared only after
+      *Open Review Pane*. `code --profile mdcm-fresh`, install the `.vsix` into it, open a folder
+      containing Markdown, and **without running any command** open
+      *Developer: Show Running Extensions*.
+      >
+      > **Reload the window between installing and looking.** Installing into an already-open
+      > profile does not leave you with the cold start this box is about.
+      >
+      > Do the static half first — it fails faster. Unzip the `.vsix` and check
+      > `extension/package.json` has **no `activationEvents`**, a `main`, four `contributes.commands`
+      > and `engines.vscode` ≥ 1.74. Confirmed on the shipped bytes 2026-08-05. That establishes the
+      > precondition; only the Running Extensions view establishes the behaviour.
+      >
+      > **Do not try to automate this by reading `exthost.log`.** An isolated `--extensions-dir` /
+      > `--user-data-dir` instance was tried on 2026-08-05: it installed and launched but wrote no
+      > extension-host log and did not answer `code --status`. Four attempts, no evidence. The
+      > profile route plus a human takes two minutes.
 
 > Expect: Markdown Review is **not** in the list. Then run *Markdown Review: Open Review Pane* and
 > look again — now it is, with an activation reason naming the command.

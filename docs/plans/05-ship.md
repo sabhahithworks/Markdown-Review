@@ -432,6 +432,19 @@ Each item records *how* it is verified, following Plan 03 §8 and Plan 04 §9. P
 phase entry with no *Acceptance:* line of its own — PRD §12 stands in, and every one of its eight
 items appears below. Date this section when it passes.
 
+**Status 2026-08-05: 13 of 16 ticked, and every box that a machine or this repo can close is
+closed.** `05-acceptance-run.md` Part B is 5/5 — the packaged `.vsix` installs into stable VS Code,
+runs the full loop, activates lazily, renders its listing and survives all three themes. The three
+that remain are not work items in the ordinary sense:
+
+- **The publisher claim** — a human action at a web form, and the one irreversible step here.
+- **The Windows pass** — not performable, recorded as §13 E7 with what stays untested.
+- **The publish itself** — explicitly outside this phase's definition of done (see the scope note
+  at the top).
+
+So the phase has delivered what it set out to: a verified package. It is not *finished*, because
+the publisher id is still unclaimed and that gates everything downstream of it.
+
 - [x] `name` / `displayName` decided: `markdown-review` / "Markdown Review" (§2), already applied
 - [ ] Publisher id `sabhahithworks` claimed; `items?itemName=sabhahithworks.markdown-review` returns
       404 beforehand
@@ -482,11 +495,12 @@ items appears below. Date this section when it passes.
       — **passed 2026-08-05**, `05-acceptance-run.md` C1–C2. Comments anchored, prompt copied, a
       real agent's edit flipped a card to `addressed` with a true before/after, **Looks good**
       resolved and **Reopen** reverted — all from the packaged archive, not a build directory
-- [ ] Lazy activation confirmed on a fresh profile: inactive until first command use, no
+- [x] Lazy activation confirmed on a fresh profile: inactive until first command use, no
       `onStartupFinished` (PRD §9)
-      — **manual**, `05-acceptance-run.md` C3, via the Running Extensions view. **Not run
-      2026-08-05** — the only Part B box left, and the last thing between here and a publishable
-      0.1.0 on this checklist
+      — **passed 2026-08-05**, `05-acceptance-run.md` C3. Absent from *Show Running Extensions* on a
+      fresh profile with a Markdown folder open; present only after the command ran. The shipped
+      manifest inside the `.vsix` was checked separately and carries no `activationEvents` at all,
+      so the inference from `contributes.commands` is doing the work PRD §9 says it should
 - [x] Listing renders: README and CHANGELOG tabs, settings table matches the real Settings UI;
       theme pass on the installed bytes
       — **passed 2026-08-05**, `05-acceptance-run.md` C4–C5. No images to resolve yet, so that half
