@@ -13,10 +13,18 @@
  */
 
 :root {
-  --mr-measure: 72ch;
+  /*
+   * The reading measure. 72ch was chosen for a pane that opened `Beside` and so never had much
+   * width to give away; the pane now opens in the active column, where 72ch left a wide window
+   * two-thirds empty. 90ch is still inside the range prose stays readable at, and it is a *cap* —
+   * a pane narrower than this simply fills.
+   */
+  --mr-measure: 90ch;
   --mr-gap: 16px;
   --mr-radius: 4px;
   --mr-code-pad: 12px;
+  /* The page's own side padding. Named because the centring `max-width` below has to add it back. */
+  --mr-page-pad: clamp(16px, 3vw, 32px);
 }
 
 body {
@@ -26,8 +34,20 @@ body {
   line-height: 1.6;
   color: var(--vscode-editor-foreground);
   background-color: var(--vscode-editor-background);
-  margin: 0;
-  padding: 24px 32px 64px;
+  /*
+   * Centred, capped, and sized to the measure — a page, not a viewport-filling document. Left flush
+   * to the left edge, a wide window pushed the prose and its comment margin to opposite sides with a
+   * few hundred pixels of nothing between them, and the eye has to cross that gap on every card.
+   *
+   * `box-sizing` because this cap includes the side padding, and `margin: 0 auto` rather than a
+   * transform so `#gutter`'s absolute positioning still resolves against the padding box.
+   */
+  box-sizing: border-box;
+  max-width: calc(var(--mr-measure) + var(--mr-page-pad) * 2);
+  margin: 0 auto;
+  /* Side padding scales down with the pane: 32 px each side is comfortable on a wide window and a
+   * tenth of the usable width on a narrow one. */
+  padding: 24px var(--mr-page-pad) 64px;
 }
 
 #content {
@@ -368,9 +388,19 @@ li:has(> input[type='checkbox']) {
  * hardcoded tint would otherwise do.
  * ========================================================================== */
 
+/*
+ * The margin column is fluid, not a fixed 280 px. Between the narrow breakpoint (700 px, where the
+ * gutter is dropped entirely for inline markers) and a wide window, a flat 280 px + 48 px of gaps
+ * took ~47% of a 700 px pane and left the prose in a ribbon. `clamp` gives the gutter a share of
+ * the width instead: 200 px at the breakpoint, its old 280 px again by ~1270 px.
+ *
+ * `vw` is the webview viewport, which *is* the pane, so this tracks the pane being resized or
+ * dragged into a split with no JS involved — `comments.ts` never reads these values, it only
+ * measures the boxes that come out of them.
+ */
 :root {
-  --mr-gutter-width: 280px;
-  --mr-gutter-gap: 24px;
+  --mr-gutter-width: clamp(200px, 22vw, 300px);
+  --mr-gutter-gap: clamp(12px, 1.8vw, 24px);
 }
 
 /* The positioning context for the highlight overlay and the card gutter. */
@@ -387,6 +417,11 @@ body {
  */
 body:not(.mr-narrow):not(.mr-no-cards) {
   padding-right: calc(var(--mr-gutter-width) + var(--mr-gutter-gap) * 2);
+  /* The page grew a margin column, so the cap it is centred within has to grow by the same amount —
+   * otherwise the gutter is centred and the prose is not. */
+  max-width: calc(
+    var(--mr-measure) + var(--mr-page-pad) + var(--mr-gutter-width) + var(--mr-gutter-gap) * 2
+  );
 }
 
 /* ---------- Anchor highlights ---------- */

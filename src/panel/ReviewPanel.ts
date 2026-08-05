@@ -99,14 +99,21 @@ export class ReviewPanel {
   ): void {
     const existing = ReviewPanel.panels.get(registryKey(target.toString()));
     if (existing) {
-      existing.panel.reveal(vscode.ViewColumn.Beside);
+      // No column argument: reveal it where it already is. Moving a pane the user has arranged —
+      // dragged to another group, or left beside the source — would be the command undoing their
+      // layout every time they re-ran it.
+      existing.panel.reveal();
       return;
     }
 
+    // `Active`, not `Beside`: the pane is a reading surface, not a live preview to diff against the
+    // source. It needs the whole editor width — the prose column plus a 280 px comment margin does
+    // not fit in half a window, and splitting by default meant every open started cramped. Users who
+    // do want it side-by-side can drag the tab into a split, and `reveal()` above keeps it there.
     const panel = vscode.window.createWebviewPanel(
       REVIEW_VIEW_TYPE,
       path.basename(target.fsPath),
-      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
+      { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
       ReviewPanel.webviewOptions(context, target),
     );
 
@@ -122,9 +129,9 @@ export class ReviewPanel {
   ): void {
     const existing = ReviewPanel.panels.get(registryKey(target.toString()));
     if (existing) {
-      // Two panels for one file would be two sources of truth. Keep the live one.
+      // Two panels for one file would be two sources of truth. Keep the live one, in its column.
       panel.dispose();
-      existing.panel.reveal(vscode.ViewColumn.Beside);
+      existing.panel.reveal();
       return;
     }
 

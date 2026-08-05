@@ -165,6 +165,41 @@ deleted once recorded; a finding judged not worth fixing moves to §4 with its r
   *Fixed 2026-08-05 — three standing checks added: focusable-inside-`aria-hidden`, every card names
   its status, and the uncertain card says "position uncertain".*
 
+### Found during the manual run
+
+- **H35 — the pane always opened `Beside`, and that was never a decision so much as a default.**
+  `ReviewPanel.createOrShow` hardcoded `ViewColumn.Beside` (Plan 02 §4). The pane is a *reading*
+  surface, not a preview to diff against the source, and it carries a 280 px comment margin — in
+  half a window that leaves the prose in a ribbon, on every first open, for every user. *Fixed
+  2026-08-05 — opens in `ViewColumn.Active`. Both `reveal()` calls dropped their column argument so
+  re-running the command never yanks a pane the user has since arranged. `detection.spec.ts`'s
+  buffer test opened the editor first specifically to dodge the old `Beside` behaviour and now opens
+  the pane first, editor into column Two — under `Active` its old order hid the editor, and a hidden
+  `TextEditor` cannot be `edit()`ed.*
+- **H36 — the content column was sized for a pane that no longer exists.** `--mr-measure: 72ch`
+  plus a flat `--mr-gutter-width: 280px` and 48 px of gaps: ~47% of a 700 px pane reserved for the
+  margin, and a hard cap that left a wide window two-thirds empty. *Fixed 2026-08-05 — measure to
+  90ch, gutter to `clamp(200px, 22vw, 300px)` with a matching fluid gap, body side padding to
+  `clamp(16px, 3vw, 32px)`. Pure CSS: `comments.ts` reads none of these, it measures the boxes that
+  come out of them, so the fluid gutter needs no JS. The 700 px narrow breakpoint is unchanged — the
+  clamp floor is what the gutter is worth immediately above it. The page is also **centred** — body
+  `max-width` + `margin: 0 auto`, widened by exactly the gutter when one is shown — because with the
+  cap raised and the page left-flush, a full-window pane pushed the prose and its comments to
+  opposite edges with a few hundred pixels of nothing in between. Verified in `dev/harness/`: 30
+  scenario × theme combinations and the gesture run, plus an iframe probe at 1400/1000/820/720 px,
+  which is the only way to exercise the fluid widths on a maximised window. Prose at a 720 px pane
+  goes from 360 px to 457 px; at 1400 px, from a 590 px cap to 737 px.*
+
+- **H37 — the integration suite reads the sidecar through the store's own rename window.**
+  Surfaced while re-running the suite for H35: `coalesces a burst…` failed with `EntryNotFound` on a
+  store that was working correctly. `ReviewStore` writes temp-then-`rename(overwrite)` (H3), and VS
+  Code's disk provider implements that overwrite as delete-then-move, so the sidecar is briefly
+  absent — and a `waitFor` predicate that *throws* aborts the wait rather than being retried, so the
+  race reads as a hard failure. A flaky suite is worse than a slow one here: it teaches you to re-run
+  and shrug, which is exactly the reflex the manual run cannot afford. *Fixed 2026-08-05 —
+  `readSettledText` in `context.ts` retries once, 50 ms, and **only** on a missing file; parse and
+  permission errors still surface. Both polled sidecar readers use it.*
+
 ## 2. Execution order
 
 1. **H1–H15** (correctness/data safety, panel lifecycle) — each lands with its test.
