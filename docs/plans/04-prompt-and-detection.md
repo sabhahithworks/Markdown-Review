@@ -401,6 +401,38 @@ the signal needs none: it maps the diff into the current document, where the blo
 just rendered. The conclusion the claim supported (that `anchor.exact`, not `baselineText`, is the
 `addressed` comparison basis) is unaffected and stands.
 
+**D18 — a comment on a code block reported itself `addressed` on an unedited document.** The second
+defect from the same acceptance run, and a false positive on the one status the design asks the user
+to trust.
+
+`createAnchor` ran `normalizeAnchorText` over every selection, collapsing whitespace. `walkSpans`
+keeps code **verbatim** (PRD §5). So a multi-line code anchor's `exact` — newlines and indentation
+flattened to single spaces — could not occur in `doc.text` at all: tiers 1 and 2 could never match
+it, tier 3 found it fuzzily at 0.5, and the fuzzy span came up a few characters short of the block.
+`reanchor` read that shortfall as an edit and flipped the comment to `addressed`, with a before/after
+that looks identical to a human because it *is* identical apart from the clipped tail.
+
+The webview was already right — `anchorSpace.ts::buildBlockMap` keys off `isCodeBlock(el)` and sends
+code verbatim. The line that broke it was `createAnchor`'s "defensive re-normalize", added as
+insurance against the host and the webview drifting apart; it was itself the drift, destroying a
+correct value on arrival.
+
+Why it survived Phase 1's test matrix: PRD §5 requires a case for "anchor inside a fenced code
+block", and there is one — on a *single line* of code. One line has no newline to flatten, so it
+passes either way. The new cases are multi-line.
+
+Fixed in three places: `createAnchor` picks its normalization from the block kind at the selection's
+start; `locate` gains tier 2b for anchors already written the old way (and for hand-edited sidecars,
+which PRD §11 invites); and `blockIndexAt` moves into `plaintext.ts` so `offsetToSourceLine`,
+`createAnchor` and `scope.ts` stop keeping three copies of the same binary search.
+
+**Found by D18 and left alone: `fuzzy.verify` under-reports the end of a match when the text grew.**
+It scores an unpadded window of exactly `exact.length` against a padded one, and — as its own
+comment explains — `diff_main`'s global alignment scatters the padding through the match rather than
+emitting it as a clean leading run, so the unpadded window usually wins and the span stops short by
+however much the text lengthened. The *status* is correct; only the before/after on the card is
+clipped. `reanchor.test.ts` documents it with an assertion that holds before and after a fix.
+
 ### Noted, not changed
 
 - `#notice` remains a single slot shared by `tooLarge`, `targetUnreadable` and `rewriteDetected`.

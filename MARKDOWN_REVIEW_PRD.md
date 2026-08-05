@@ -179,7 +179,12 @@ always re-renders the document first, so both ends of the round trip work in the
 
 ### `create(selection, doc): Anchor`
 
-1. Normalize the selected string the same way `plaintext.ts` normalizes.
+1. Normalize the selected string the same way `plaintext.ts` normalizes — which is **not one rule**:
+   whitespace is collapsed in every block *except* code, whose content is preserved verbatim. A
+   selection inside a fenced or indented code block therefore keeps its newlines and indentation.
+   Applying the collapsing rule to all selections alike produces an `exact` that cannot occur in
+   `doc.text`, so the anchor can never match at tiers 1–2 and the comment reports a spurious
+   `addressed` off the resulting short fuzzy span (D18).
 2. Capture up to 32 chars of normalized context either side.
 3. Walk the DOM up from the selection start to the nearest `[data-line]` ancestor → `hintLine`.
 4. Record `hintOffset`.
@@ -193,6 +198,10 @@ Try in order, stopping at first success:
 1. **Exact + context.** Search for `prefix + exact + suffix`. Confidence `1.0`.
 2. **Exact, nearest to hint.** All occurrences of `exact`; pick the one closest to `hintOffset`.
    Confidence `0.9` if unique, `0.7` if disambiguated by proximity.
+2b. **A code block matching once whitespace is ignored.** Whole blocks only, same confidences. Code
+   is verbatim in anchor space, so an anchor whose newlines have been flattened cannot match above —
+   which is the shape of every anchor written before D18, and of any a human writes by hand, since
+   §11 invites hand-editing and nobody retypes a fence's indentation.
 3. **Fuzzy near hint.** `diff-match-patch.match_main(text, exact, hintOffset)` with
    `Match_Threshold = 0.4`, `Match_Distance = 1000`. Confidence `0.5`.
 4. **Fuzzy, whole document.** Same, `hintOffset = 0`, `Match_Threshold = 0.3`, and

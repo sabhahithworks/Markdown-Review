@@ -86,6 +86,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   enclosing section for a heading anchor and the covered blocks otherwise. It is not a status, it is
   recomputed per render and never stored, so there is no sidecar change; it is suppressed with no
   baseline, for comments written after one was taken, and by `autoDetectResolution: false`.
+- **A comment on a code block no longer reports itself `addressed` on a document nobody edited.**
+  Anchor creation collapsed whitespace in every selection, but anchor space keeps fenced and
+  indented code *verbatim* — so a multi-line code anchor could never match exactly. It fell to a
+  fuzzy match whose span stopped a few characters short of the block, and that shortfall was read as
+  an edit. The card then showed a before/after that looks identical, because apart from the clipped
+  tail it is. A false `addressed` is the most expensive bug this design can have: the status is the
+  one thing you are asked to trust, and its value is that it is narrow.
+
+  The webview had this right all along — it sends code verbatim — and the host's "defensive
+  re-normalize" was throwing that away on arrival. Anchor creation now picks its rule from the block
+  the selection starts in. Anchors already written the old way still work: `locate` gained a tier for
+  a code block that matches once whitespace is ignored, which also covers sidecars edited by hand,
+  since PRD §11 invites that and nobody retypes a fence's indentation.
+
+  It survived Phase 1's test matrix because the required "anchor inside a fenced code block" case
+  used a *single line* of code, which has no newline to flatten and passes either way.
 - The review prompt now says `On the section "## …"` for an anchor covering *part* of a heading,
   where it previously fell back to `On: "…"` and quoted the fragment. Selecting a heading without
   its manual numbering or list marker is the ordinary gesture, and the old rule — exact span

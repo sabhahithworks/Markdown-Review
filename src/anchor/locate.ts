@@ -8,6 +8,7 @@
  */
 
 import DiffMatchPatch from 'diff-match-patch';
+import { collapse } from '../render/plaintext.js';
 import { fuzzyFindWith } from './fuzzy.js';
 import { CONFIDENCE, type Anchor, type Located, type PlainTextDoc } from './types.js';
 
@@ -34,9 +35,30 @@ export type Locator = (anchor: Anchor) => Located | null;
  * per-anchor path. `reanchor` builds one of these and reuses it across every comment in the file
  * rather than allocating an engine per comment.
  */
+interface CollapsedBlock {
+  start: number;
+  end: number;
+  collapsed: string;
+}
+
 export function createLocator(doc: PlainTextDoc): Locator {
   const dmp = new DiffMatchPatch();
   const { text } = doc;
+
+  /**
+   * Built at most once per document, and only when some anchor actually reaches tier 2b. On a
+   * document whose anchors all match exactly — the overwhelmingly common case, and the one the
+   * 5 MB performance budget is measured against — this never runs at all.
+   */
+  let collapsedCode: CollapsedBlock[] | undefined;
+  const collapsedCodeBlocks = (): CollapsedBlock[] =>
+    (collapsedCode ??= doc.blocks
+      .filter((block) => block.kind === 'code')
+      .map((block) => ({
+        start: block.start,
+        end: block.end,
+        collapsed: collapse(text.slice(block.start, block.end)),
+      })));
 
   return (anchor: Anchor): Located | null => {
     const { exact, prefix, suffix, hintOffset } = anchor;
@@ -64,6 +86,26 @@ export function createLocator(doc: PlainTextDoc): Locator {
       }
       const nearest = nearestOccurrence(text, exact, hintOffset);
       return located(nearest === -1 ? first : nearest, exact.length, CONFIDENCE.EXACT_NEAREST);
+    }
+
+    // --- Tier 2b: a code block that matches once whitespace is ignored ------------------------
+    //
+    // Code is preserved verbatim in anchor space, so an anchor whose newlines and indentation have
+    // been flattened to single spaces cannot match above. Two ways that happens, neither of them a
+    // corrupt sidecar: one written before `createAnchor` respected the distinction, and one
+    // hand-edited by a human — which PRD §11 explicitly invites, and no human retypes a fence's
+    // exact indentation.
+    //
+    // Whole blocks only. Mapping a collapsed *substring* back onto verbatim offsets would need a
+    // per-character index, and the fuzzy tiers below already handle partial code selections.
+    if (!exact.includes('\n')) {
+      const blocks = collapsedCodeBlocks().filter((block) => block.collapsed === exact);
+      const block = blocks.length > 1 ? nearestBlock(blocks, hintOffset) : blocks[0];
+      if (block) {
+        const confidence =
+          blocks.length === 1 ? CONFIDENCE.EXACT_UNIQUE : CONFIDENCE.EXACT_NEAREST;
+        return { start: block.start, end: block.end, confidence };
+      }
     }
 
     // --- Tier 3: fuzzy, near the hint ---------------------------------------------------------
@@ -104,6 +146,20 @@ export function locate(anchor: Anchor, doc: PlainTextDoc): Located | null {
 
 function located(start: number, length: number, confidence: number): Located {
   return { start, end: start + length, confidence };
+}
+
+/** Ties break to the earlier block, matching `nearestOccurrence`. */
+function nearestBlock(blocks: readonly CollapsedBlock[], hint: number): CollapsedBlock | undefined {
+  let best: CollapsedBlock | undefined;
+  let bestDistance = Infinity;
+  for (const block of blocks) {
+    const distance = Math.abs(block.start - hint);
+    if (distance < bestDistance) {
+      best = block;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 /**

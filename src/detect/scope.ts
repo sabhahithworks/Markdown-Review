@@ -25,6 +25,7 @@
  */
 
 import type { BlockSpan, PlainTextDoc } from '../anchor/types.js';
+import { blockIndexAt } from '../render/plaintext.js';
 
 export type ScopeKind = 'section' | 'block';
 
@@ -90,7 +91,7 @@ export function scopeOf(doc: PlainTextDoc, found: TextRange): Scope | null {
   const start = Math.max(0, Math.min(found.start, doc.text.length));
   const end = Math.max(start + 1, Math.min(found.end, doc.text.length));
 
-  const firstIndex = indexOfBlockCovering(blocks, start);
+  const firstIndex = blockIndexAt(doc, start);
   if (firstIndex === -1) return null;
 
   let lastIndex = firstIndex;
@@ -138,29 +139,4 @@ function sectionFrom(doc: PlainTextDoc, headingIndex: number, heading: BlockSpan
 
 function within(block: BlockSpan, start: number, end: number): boolean {
   return start >= block.start && end <= block.end;
-}
-
-/**
- * Index of the block containing `offset`, or of the block that follows it when the offset is one of
- * the `\n` joiners between blocks (which belong to no block — see the invariant in `plaintext.ts`).
- *
- * Binary search rather than `find`, for the same reason `offsetToSourceLine` uses one: this runs
- * once per comment, and a 5 MB document has tens of thousands of blocks.
- */
-function indexOfBlockCovering(blocks: readonly BlockSpan[], offset: number): number {
-  let lo = 0;
-  let hi = blocks.length - 1;
-
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const block = blocks[mid];
-    if (!block) break;
-
-    if (offset < block.start) hi = mid - 1;
-    else if (offset >= block.end) lo = mid + 1;
-    else return mid;
-  }
-
-  // A joiner offset: `lo` is the following block. Past the last block, there is nothing to return.
-  return lo < blocks.length ? lo : -1;
 }

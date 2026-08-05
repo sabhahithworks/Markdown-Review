@@ -313,3 +313,84 @@ describe('reanchor — no comment is ever deleted', () => {
     }
   });
 });
+
+/**
+ * The symptom that found the `createAnchor` collapse bug during the Phase 4 acceptance run: a
+ * comment on a fenced code block reported itself `addressed` on a document nobody had edited.
+ *
+ * A false `addressed` is the most expensive failure this design has — the status is the one thing
+ * the user is asked to trust, and its whole value is that it is narrow. Worth its own test even
+ * though the fix is two modules away.
+ */
+describe('reanchor — code blocks on an unedited document', () => {
+  const WITH_CODE = [
+    '# Rate limiting',
+    '',
+    'Requests are counted per API key.',
+    '',
+    '```ts',
+    'export function allow(key: string, now: number): boolean {',
+    '  const bucket = buckets.get(key) ?? refill(key, now);',
+    '  return bucket.tokens >= 1;',
+    '}',
+    '```',
+    '',
+    'Counters live in memory.',
+    '',
+  ].join('\n');
+
+  it('leaves a whole-fence comment open, with no resolution', () => {
+    const doc = docOf(WITH_CODE);
+    const fence = doc.blocks.find((block) => block.kind === 'code');
+    const review = makeReviewFile([
+      makeComment(anchorOn(doc, doc.text.slice(fence?.start, fence?.end))),
+    ]);
+
+    const result = reanchor(review, doc, { now: fixedClock() });
+
+    expect(result.changed).toBe(false);
+    expect(result.reviewFile.comments[0]?.status).toBe('open');
+    expect(result.reviewFile.comments[0]?.resolution).toBeUndefined();
+  });
+
+  it('leaves a multi-line selection inside a fence open', () => {
+    const doc = docOf(WITH_CODE);
+    const review = makeReviewFile([
+      makeComment(
+        anchorOn(doc, '  const bucket = buckets.get(key) ?? refill(key, now);\n  return bucket.tokens >= 1;'),
+      ),
+    ]);
+
+    const result = reanchor(review, doc, { now: fixedClock() });
+
+    expect(result.reviewFile.comments[0]?.status).toBe('open');
+  });
+
+  it('still flips to addressed when the code genuinely changes', () => {
+    const doc = docOf(WITH_CODE);
+    const fence = doc.blocks.find((block) => block.kind === 'code');
+    const review = makeReviewFile([
+      makeComment(anchorOn(doc, doc.text.slice(fence?.start, fence?.end))),
+    ]);
+
+    const edited = docOf(WITH_CODE.replace('bucket.tokens >= 1', 'bucket.tokens >= cost'));
+    const result = reanchor(review, edited, { now: fixedClock() });
+    const resolution = result.reviewFile.comments[0]?.resolution;
+
+    expect(result.reviewFile.comments[0]?.status).toBe('addressed');
+    expect(resolution?.previousText).toBe(doc.text.slice(fence?.start, fence?.end));
+
+    // `currentText` is a prefix of the new block, not necessarily all of it.
+    //
+    // An edit that *lengthens* the anchored text sends `locate` to the fuzzy tiers, and
+    // `fuzzy.ts::verify` scores an unpadded window of exactly `exact.length` against a padded one —
+    // where, as its own comment explains, `diff_main`'s global alignment scatters the padding
+    // through the match instead of emitting it as a clean leading/trailing run. The unpadded window
+    // usually wins, so the reported span stops `n` characters early and the before/after on the card
+    // is clipped by the amount the text grew. The *status* is right; only the evidence is short.
+    // Tracked separately — this assertion holds either way, so fixing it will not break the test.
+    const newFence = edited.blocks.find((block) => block.kind === 'code');
+    const newText = edited.text.slice(newFence?.start, newFence?.end);
+    expect(newText.startsWith(resolution?.currentText ?? '')).toBe(true);
+  });
+});
