@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!--
+    Marketplace icon (Plan 05 §4). Source of truth for media/icon.png, which is what the manifest
+    references; rasterize with the command in that section after any edit here.
+
+    Deliberately NOT themed. media/icon-{dark,light}.svg are the webview panel's tab icon and follow
+    the editor theme; this is a brand asset rendered on both dark and light Marketplace chrome, so it
+    carries its own background and fixed colours. Literal colours are correct here —
+    scripts/check-css-colors.mjs targets media/webview.css only.
+
+    Two shapes and two bars, nothing thinner than 7px at 128, because the size that matters is 16.
+  -->
+  <rect width="128" height="128" rx="28" fill="#1F2937"/>
+
+  <!-- Review comment: the document being commented on. -->
+  <path d="M26 24h56a12 12 0 0 1 12 12v34a12 12 0 0 1-12 12H52l-18 15V82h-8a12 12 0 0 1-12-12V36a12 12 0 0 1 12-12z"
+        fill="#F3F4F6"/>
+  <rect x="32" y="40" width="52" height="8" rx="4" fill="#1F2937"/>
+  <rect x="32" y="56" width="34" height="8" rx="4" fill="#1F2937"/>
+
+  <!-- The agent's reply, offset so the pair still reads as two things at 16px. -->
+  <path d="M82 60h22a10 10 0 0 1 10 10v22a10 10 0 0 1-10 10h-1v12l-14-12H82a10 10 0 0 1-10-10V70a10 10 0 0 1 10-10z"
+        fill="#F59E0B" stroke="#1F2937" stroke-width="7" stroke-linejoin="round"/>
+</svg>

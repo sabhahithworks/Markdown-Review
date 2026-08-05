@@ -1,0 +1,40 @@
+# What ships. Everything not listed here does, so additions to the repo default to being packaged.
+# vsce's own defaultIgnore is small and covers neither node_modules nor src — see
+# docs/plans/05-ship.md §13 E1 for what its absence actually does.
+.vscodeignore
+
+# Sources. The bundles in dist/ and media/ are self-contained.
+src/**
+media/src/**
+media/test/**
+scripts/**
+# The 128x128 source for media/icon.png. Only the raster is referenced by the manifest.
+media/icon.svg
+esbuild.mjs
+tsconfig*.json
+vitest.config.mts
+eslint.config.mjs
+
+# Dev-only trees. node_modules is the load-bearing line: vsce collects production dependencies
+# deliberately, for extensions that ship unbundled, and esbuild has already inlined all six.
+node_modules/**
+dist-test/**
+dev/**
+docs/**
+.vscode/**
+.vscode-test/**
+.github/**
+.reviews/**
+
+# Repo-internal documents, not listing copy.
+CLAUDE.md
+MARKDOWN_REVIEW_PRD.md
+
+# Build and VCS noise. Several of these are in vsce's defaultIgnore already; repeated so a reader
+# does not have to know vsce's internals to know what ships.
+**/*.ts
+**/*.map
+package-lock.json
+.gitignore
+*.vsix
+.DS_Store

@@ -3,8 +3,14 @@
   "displayName": "Markdown Review",
   "version": "0.1.0",
   "description": "Comment on markdown documents and hand your review to any AI agent.",
+  "publisher": "sabhahithworks",
+  "author": "Nagaraja Sabhahith",
   "license": "MIT",
-  "private": true,
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sabhahithworks/Markdown-Review"
+  },
   "categories": [
     "Other"
   ],
@@ -82,13 +88,16 @@
     }
   },
   "scripts": {
+    "vscode:prepublish": "npm run build",
+    "package": "npx --yes @vscode/vsce package",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "node esbuild.mjs --integration && node dist-test/run.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit && tsc -p tsconfig.webview-test.json --noEmit",
     "lint": "eslint .",
     "lint:css": "node scripts/check-css-colors.mjs && node scripts/check-theme-vars.mjs",
-    "build": "node esbuild.mjs && npm run lint:css",
+    "lint:bundles": "node scripts/check-bundles.mjs",
+    "build": "node esbuild.mjs && npm run lint:css && npm run lint:bundles",
     "watch": "node esbuild.mjs --watch",
     "check": "npm run typecheck && npm run lint && npm run test"
   },
