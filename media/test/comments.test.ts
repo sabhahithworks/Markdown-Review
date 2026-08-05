@@ -6,7 +6,28 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { relativeTime, stackTops } from '../src/comments.js';
+import { relativeTime, sectionNote, stackTops } from '../src/comments.js';
+
+/**
+ * The wording of the D17 note, pinned as a *requirement* rather than as copy (§10 D19).
+ *
+ * `scopeOf` returns `'section' | 'block'`, but that kind never crosses the message channel —
+ * `sectionChanged` is a bare `string[]`, kept narrow on purpose (§10 D3). So one string has to be
+ * true at both scopes, and the note shipped for a while claiming a heading-delimited section had
+ * moved when the diff had touched a single paragraph. Asserting the *absence* of a scope word
+ * catches that regression without freezing the phrasing.
+ */
+describe('sectionNote', () => {
+  it('names no scope it cannot know', () => {
+    const text = sectionNote().textContent ?? '';
+    expect(text).not.toMatch(/\bsections?\b/i);
+    expect(text).not.toMatch(/\bblocks?\b|\bparagraphs?\b/i);
+  });
+
+  it('still says what changed and when, which is the whole point of the note', () => {
+    expect(sectionNote().textContent).toMatch(/changed since you copied the prompt/);
+  });
+});
 
 describe('stackTops', () => {
   it('leaves cards that already clear each other where they are', () => {

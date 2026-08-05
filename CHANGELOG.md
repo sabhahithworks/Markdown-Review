@@ -92,7 +92,7 @@ way. `addressed` is inferred and never authoritative; nothing is deleted automat
 
   Rather than widen `addressed`, which would trade the one status you are asked to trust for a
   guess, an `open` comment whose *region* differs from the review baseline now carries a note —
-  "This section changed since you copied the prompt" — and a **Looks good**. The region is the
+  "The text around this changed since you copied the prompt" — and a **Looks good**. The region is the
   enclosing section for a heading anchor and the covered blocks otherwise. It is not a status, it is
   recomputed per render and never stored, so there is no sidecar change; it is suppressed with no
   baseline, for comments written after one was taken, and by `autoDetectResolution: false`.

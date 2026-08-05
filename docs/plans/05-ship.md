@@ -229,11 +229,21 @@ The one listing asset that cannot be written, only captured.
   absolute raw URL per §5.
 
 **Plan stills as the committed path and the GIF as the upgrade.** Screen recording on macOS is
-straightforward (<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>5</kbd>), but `.mov` → GIF needs a converter
-that may not be installed, and hunting one is not on the critical path for a 0.1.0. Three or four
-annotated screenshots — pane with a comment, the copied prompt, the addressed card with its
-before/after — satisfy the listing. A missing GIF must not block the release; a missing visual
-should.
+straightforward (<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>5</kbd>), and `ffmpeg` turns out to be
+installed, so the GIF path is open whenever someone drives a real pane. A missing GIF must not block
+the release; a missing visual should.
+
+**Done 2026-08-05, by a route this section did not anticipate.** The three stills in `docs/media/`
+were captured from **`dev/harness/`**, not from a real pane: serve the repo, open `/dev/harness/`,
+hide `#mr-harness`, pick a scenario, screenshot. That gets the real `media/webview.js` rendering
+markup from the real renderer — the UI is not a mockup — with the fixture's sample comments restaged
+in-page (author and two filler bodies rewritten; no file changed, so the harness stays a test tool).
+`pane-commenting.jpg`, `pane-addressed.jpg`, `pane-statuses.jpg`.
+
+**What this route cannot give you is VS Code chrome** — no tab bar, no activity bar, no editor
+alongside. The pane is the product, so the shots are honest, but a reader cannot see where it sits.
+If a real capture is ever made, replace these three; the README references them by name and nothing
+else has to change.
 
 ## 7. `.vscodeignore`
 
@@ -439,9 +449,11 @@ items appears below. Date this section when it passes.
       — **2026-08-05**. **No image URLs to check yet**: it ships with no images rather than with
       broken ones, so the absolute-URL rule is untested until the visual below lands. The settings
       table is checked against the live Settings UI in `05-acceptance-run.md` C4
-- [ ] A visual of the loop exists — stills at minimum, GIF preferred (§6)
-      — **manual, and the one listing asset still missing.** `ffmpeg` is present, so the GIF path is
-      open; the recording itself needs a human driving a real pane
+- [x] A visual of the loop exists — stills at minimum, GIF preferred (§6)
+      — **three stills, 2026-08-05**, in `docs/media/`, excluded from the package and referenced by
+      absolute raw URL. Captured from `dev/harness/` rather than a real pane, so they are the real
+      `media/webview.js` over the real renderer's markup with restaged sample content — **but no VS
+      Code chrome**. Good enough to ship; a real capture would be better, see §6
 - [x] LICENSE present with a settled copyright line; CHANGELOG promoted to `0.1.0` with a date
       (PRD §12 item 5)
       — **2026-08-05**. Copyright is `Sabhahith Works`; `[Unreleased]` emptied above a dated

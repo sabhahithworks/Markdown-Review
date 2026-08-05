@@ -483,7 +483,9 @@ selection — opened the popover only against text mid-viewport. A `popover: cla
 gesture now opens it against the bottom edge and asserts the action row is inside `innerHeight`,
 which is the assertion whose absence let this ship.
 
-**D19 — the D17 note says "section" for a scope that is a block.** *Recorded, not yet fixed.* `scopeOf` returns
+**D19 — the D17 note says "section" for a scope that is a block.** **Fixed 2026-08-05** — the note now
+reads *"The text around this changed since you copied the prompt"*, the second of the two options
+below. `scopeOf` returns
 `ScopeKind = 'section' | 'block'` (`src/detect/scope.ts:30`), and an anchor that is not a heading
 falls back to block scope — one paragraph, one list item, one fence. But `sectionChanged` travels to
 the webview as a bare `string[]` of ids (`src/panel/messages.ts:85`), so the kind never crosses the
@@ -510,6 +512,19 @@ nothing on the wire and loses the sharper word in the case where "section" is ex
 
 No status, no persistence and no sidecar field is involved, so nothing downstream depends on which
 way it goes.
+
+**Resolved: the wording, not the wire.** Widening the message would have bought the sharper noun in
+the section case at the cost of a field on a contract D3 exists to keep narrow, and the note's value
+is precision *about the region* — which the neutral phrasing does not lose. Overstating was the
+wrong direction to be imprecise in; understating is not, because "the text around this" is exactly
+what the detector actually compared.
+
+Also fixed the reason it slipped: the string had **no test**. `media/test/comments.test.ts` now
+asserts the *requirement* rather than the copy — the note must name no scope word (`section`,
+`block`, `paragraph`) while still saying what changed and when — so rewording stays free but
+re-introducing a scope claim fails. `sectionNote` is exported for that, the same reason `stackTops`
+is. PRD §8 and the `04-acceptance-run.md` expectations were updated to match; leaving them stale
+would have made the next manual run fail against a document that was itself wrong.
 
 **D21 — an anchor that states an absence can only be addressed by deleting it, so it orphans.**
 *Recorded, not yet fixed.* Found 2026-08-05 by the scripted B1 run, on comment 3: *"What is the

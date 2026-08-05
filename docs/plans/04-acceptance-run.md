@@ -199,7 +199,7 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
       `## Failure modes` was untouched while its body was rewritten. The note's wording is
       imprecise at block scope — §10 D19 — but fired correctly here, where the scope really is a
       section.
-      Comment 2 is still `open`, and carries the note "This section changed since you
+      Comment 2 is still `open`, and carries the note "The text around this changed since you
       copied the prompt" with a **Looks good** button in place of **Resolve**.
       > This is the headline assertion of the whole step. `addressed` means *the text you selected*
       > changed; the agent rewrote the section under the heading and left the heading alone, so the
@@ -236,7 +236,7 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
 > **Comment 2 will not flip to `addressed`, and that is correct.** It is anchored to a heading, and
 > `addressed` means the text you *selected* changed — rewriting the section below leaves the heading
 > untouched. Expect the weaker signal instead: the card keeps its `open` status and gains the note
-> "This section changed since you copied the prompt", with **Looks good**. That is D17, found by the
+> "The text around this changed since you copied the prompt", with **Looks good**. That is D17, found by the
 > first run of this very step; see Plan 04 §10.
 >
 > If a comment orphans instead, that is a different finding. Note **which** comment and **what the

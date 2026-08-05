@@ -375,7 +375,7 @@ Rules:
 - Never auto-close comments. `addressed` is a *suggestion* the user confirms; the card shows the
   before/after text and a "Looks good" button that moves it to `resolved`
 - **The section-change signal (D17).** An `open` comment whose *region* differs from `baselineText`,
-  while its own anchored text does not, carries a note — "This section changed since you copied the
+  while its own anchored text does not, carries a note — "The text around this changed since you copied the
   prompt" — and the same "Looks good". The region is the enclosing section when the anchor lies in a
   heading, and the block(s) it covers otherwise; one shared rule decides this and PRD §7's "On the
   section" phrasing, so the prompt and the detector cannot disagree about what a heading anchor

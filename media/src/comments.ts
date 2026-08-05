@@ -422,14 +422,21 @@ function buildDiff(comment: Comment): HTMLElement | undefined {
 /**
  * The D17 note. Phrased as an observation the user judges, not a claim about their comment.
  *
- * "This section changed" is a fact — the text differs from the snapshot taken when the prompt was
- * copied. "Your comment was addressed" would be a guess, and it is the guess the extension is
- * deliberately not making here: `addressed` keeps meaning that the anchored text itself changed.
+ * The note is a fact — the text differs from the snapshot taken when the prompt was copied. "Your
+ * comment was addressed" would be a guess, and it is the guess the extension is deliberately not
+ * making here: `addressed` keeps meaning that the anchored text itself changed.
+ *
+ * **The wording has to be true at both scopes (§10 D19).** `scopeOf` returns `'section' | 'block'`,
+ * but that kind never crosses the message channel — `sectionChanged` is a bare `string[]` of ids,
+ * kept narrow on purpose (§10 D3). So the earlier "This section changed" overstated the region
+ * every time the scope was a block: one paragraph, one list item, one fence. For a note whose whole
+ * value is being precise enough to judge, overstating is the wrong direction to be imprecise in.
+ * "The text around this" is accurate at either scope and costs nothing on the wire.
  */
-function sectionNote(): HTMLElement {
+export function sectionNote(): HTMLElement {
   const note = document.createElement('p');
   note.className = 'mr-card-note';
-  note.textContent = 'This section changed since you copied the prompt';
+  note.textContent = 'The text around this changed since you copied the prompt';
   return note;
 }
 

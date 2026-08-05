@@ -13,6 +13,8 @@ own product. This works on files you already have.
 
 ## The loop
 
+![Comments in the review pane, aligned to the passages they are anchored to](https://raw.githubusercontent.com/sabhahithworks/Markdown-Review/main/docs/media/pane-commenting.jpg)
+
 1. **Open the review pane.** *Markdown Review: Open Review Pane*, or the button in the editor title
    bar of any Markdown file.
 2. **Comment.** Select rendered text, click **Comment**, type, <kbd>Cmd</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd>.
@@ -35,6 +37,8 @@ own product. This works on files you already have.
 4. **Confirm.** As the agent edits, cards flip to **addressed** and show you the before and after.
    **Looks good** resolves one; **Reopen** puts it back.
 
+![An addressed comment showing the previous text struck through and the agent's replacement below it, with Looks good and Reopen actions](https://raw.githubusercontent.com/sabhahithworks/Markdown-Review/main/docs/media/pane-addressed.jpg)
+
 The agent is never asked to write structured data, follow a schema, or preserve annotations — only
 to edit prose. All the bookkeeping is this extension's job. That is the whole reason it works with
 any agent at all.
@@ -56,6 +60,11 @@ design takes seriously:
 If the whole document is replaced, every comment orphans, a banner appears, and you can diff the
 snapshot against what is there now. Turn inference off entirely with
 `markdownReview.autoDetectResolution` if you would rather resolve everything by hand.
+
+![The header bar showing counts for open, addressed, orphaned and resolved, above an orphaned comment awaiting triage](https://raw.githubusercontent.com/sabhahithworks/Markdown-Review/main/docs/media/pane-statuses.jpg)
+
+Every status is a filter chip in the header, so you can narrow the pane to just what still needs
+you.
 
 ## Settings
 
