@@ -14,23 +14,25 @@ step leaves the state the next one needs.
 
 Roughly 70 minutes of work, plus however long an agent takes to think in M3 and M9.
 
-**Where this stands (2026-08-05).** Ten of the twelve steps are done. `04-acceptance-run.md` Part A
+**Where this stands (2026-08-06).** Eleven of the twelve steps are done. `04-acceptance-run.md` Part A
 and Part B are green, `03-commenting.md` §8 is dated, and every box in `04-prompt-and-detection.md`
 §9 is ticked.
 
 | | |
 | --- | --- |
-| ✅ **Passed** | 1, 2, 3, 4, 6, 9, 10, 11 |
+| ✅ **Passed** | 1, 2, 3, 4, 6, 9, 10, 11, **12** |
 | ⏭️ **Skipped, not verified** | **5** (B3 — rewrite banner and diff; its **Dismiss** button has no coverage of any kind) |
-| ☐ **Not run** | **7** (B6, a confirmation of an already-covered item) · **8** (C1, the Extensions-list identity check) · **12** (C3 — **must** be re-run, its static half was voided by D24) |
+| ☐ **Not run** | **7** (B6, a confirmation of an already-covered item) · **8** (C1, the Extensions-list identity check) |
 
 **Two defects came out of this run**: **D24**, the blank restored pane, which is why the archive was
 repackaged; and **D23**, a latent delivery-gate bug found while chasing it. Both are fixed and in the
 current `.vsix`. **D22 is closed** — step 6 confirmed its fix on the first occasion the box was ever
 reached.
 
-Nothing outstanding blocks publishing except step 12, which is a genuine gate: it is the only check
-that lazy activation survived the D24 manifest change.
+**Step 12 passed on 2026-08-06** — lazy activation survived the D24 manifest change, on the
+repackaged archive, on a fresh profile. That was the last gate. What remains is step 8, a judgement
+about how the icon reads at 16 px, and step 5's skip: the rewrite banner's **Dismiss** button has no
+coverage of any kind, which is a known hole rather than a blocker.
 
 **When something fails**, do not fix it here. Write it into the owning phase doc's defect ledger
 first, in the same numbered form the neighbours use (`04-prompt-and-detection.md` §10 for D-numbers,
@@ -672,27 +674,53 @@ Four things are new since this box was last ticked and **have never been seen in
 
 # Sitting 4 — a fresh profile
 
-### Step 12 — C3: lazy activation
+### Step 12 — C3: lazy activation — ✅ PASSED 2026-08-06
 
 *Closes: `05-acceptance-run.md` C3.*
 
 ```sh
-code --profile mdcm-fresh
 code --profile mdcm-fresh --install-extension markdown-review-0.1.0.vsix
+code --profile mdcm-fresh --new-window <a folder containing Markdown>
 ```
 
-- [ ] **Reload the window between installing and looking.** Installing into an already-open profile
-      does not leave you with the cold start this box is about.
-- [ ] Open a folder containing Markdown, and **without running any command**, open *Developer: Show
-      Running Extensions*.
+- [x] **Reload the window between installing and looking.** Installing into an already-open profile
+      does not leave you with the cold start this box is about. Installing *before* the profile's
+      first window is stronger still, and is what the run above did.
+- [x] Open a folder containing Markdown, and **without running any command**, check what has
+      activated.
 
   > Expect Markdown Review to be **absent**. Then run *Markdown Review: Open Review Pane* and look
   > again — now present, with an activation reason naming the command.
 
-**Do not try to automate this by reading `exthost.log`.** An isolated `--extensions-dir` /
-`--user-data-dir` instance was tried on 2026-08-05: it installed and launched but wrote no
-extension-host log and did not answer `code --status`. Four attempts, no evidence. The profile route
-plus a human takes two minutes.
+**What the passing run showed**, on the 143,522-byte D24 archive, in a profile holding no extension
+but this one:
+
+| time | event |
+| --- | --- |
+| 13:11:56 | host starts, "Eager extensions activated" — `vscode.*` built-ins only. **Absent.** |
+| 13:12:18 | a Markdown file opens; `vscode.markdown-language-features` activates on `onLanguage:markdown`. **Still absent.** |
+| 13:12:35 | `sabhahithworks.markdown-review` activates — `activationEvent: 'onCommand:markdownReview.open'` |
+
+The 39 seconds before it woke covered the fresh profile's Welcome page, which is what makes the
+**walkthrough** risk answered rather than assumed. Its output channel then recorded a panel
+construction, the `canPost=false` viewState flip and `ready received` — D23's latch on packaged
+bytes — with no `[extension] deserializing a review panel` line, correct for a profile with no panel
+to restore.
+
+**`exthost.log` *can* answer this, and it is better evidence than the view** — it is the same
+activation data *Developer: Show Running Extensions* renders, with timestamps and reasons. Two
+things have to be right, and the 2026-08-05 attempt got both wrong:
+
+- **Use `--profile`, not `--extensions-dir` / `--user-data-dir`.** The isolated-directory instance
+  launched but wrote no extension-host log and did not answer `code --status`. Four attempts, no
+  evidence. That is what "do not automate this" used to record.
+- **Look under the *running* instance's session directory.** Every window shares one main process,
+  so a new-profile window appends a `window<N>/` to the existing
+  `~/Library/Application Support/Code/logs/<session>/`. The freshly-created session directory that
+  appears at launch time is empty and will mislead you. Identify the right window by what is
+  *missing* from its `exthost/` — a clean profile has no GitLens or Pylance MCP logs.
+
+A human still has to run the command at the end; nothing here removes that.
 
 **The static half's previous confirmation is void — D24 changed the manifest.** It was verified
 against bytes carrying **no** `activationEvents`, which is the defect. Re-check it on the rebuilt
