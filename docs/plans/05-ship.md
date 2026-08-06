@@ -48,7 +48,7 @@ ratings and URLs stranded on the old one. `displayName` can change whenever you 
 |---|---|---|
 | `publisher` | **Globally unique.** Letters, digits and hyphens, starting alphanumeric — vsce's `nameRegex` is `/^[a-z0-9][a-z0-9\-]*$/i`, so **no spaces**. Claimed once at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage) and never renamed | Extension id, listing URL, "More info" panel |
 | `name` | **Globally unique across the whole Marketplace** — §13 E9. This table originally said "unique only within the publisher", which is wrong and cost a rejected upload. Lowercase, no spaces | Extension id, listing URL, `code --install-extension <id>` |
-| `displayName` | Free text, under ~40 characters so it is not truncated in the Extensions view. Freely changeable | Marketplace title, Extensions view, search results |
+| `displayName` | **Globally unique across the whole Marketplace** — §13 E10. This table originally said "free text… freely changeable", which is wrong and cost a second rejected upload. Under ~40 characters so it is not truncated in the Extensions view. Changeable *to another free name* after publishing, unlike the two above | Marketplace title, Extensions view, search results |
 
 ### Name — decided, and already applied
 
@@ -668,3 +668,27 @@ answer: the gallery's text search (`filterType: 10`) matches display name and de
 collision sitting in front of it. `items?itemName=<publisher>.<name>` is no better — a name reserved
 by an unpublished or removed extension returns 404 exactly like a free one. The upload form is the
 only authority. Pick a distinctive name, expect a possible bounce, and keep a second choice ready.
+
+**E10 — `displayName` is globally unique too, and §2 says it is free text.** The rename in E9 was
+uploaded and rejected again, this time on the other identifier:
+
+> This extension display name is taken. Please try a different one.
+
+`rwoll.markdown-review-vscode` holds the display name "Markdown Review" exactly. §2's table called
+`displayName` *"free text… freely changeable"*, and E9's own write-up leaned on that to reassure —
+"`displayName` 'Markdown Review' is unaffected: display names carry no uniqueness constraint". Both
+wrong, and the second was written *after* the first correction, which is the part worth sitting with:
+the same class of assumption was re-made in the act of documenting it.
+
+**Changed to "Markdown Review Pane"**, matching the extension id. Chosen against a list of 41 taken
+display names in this space, gathered from the gallery's text search — which is exactly the tool that
+failed for `name` in E9, but is *fit* for this one, because text search matches display names. Same
+API, opposite verdict, depending on which field you ask about. That distinction is the whole lesson.
+
+The §2 four-constraint naming argument still stands and "Markdown Review Pane" satisfies it: it says
+what it does, carries both high-traffic terms, avoids the word *preview*, claims no trademark, and
+sits under the PRD §1 positioning sentence without redundancy. It is 20 characters, well inside the
+truncation limit.
+
+Unlike `publisher` and `name`, a display name **can** be changed after publishing — to another free
+one. It is the only one of the three identifiers with a second chance.

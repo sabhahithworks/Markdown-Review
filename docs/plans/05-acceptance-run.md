@@ -64,7 +64,7 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 ### C1 — install and identity — §12 items 3, 4
 
 - [x] **C1** — **re-run and passed 2026-08-06**, in a real Extensions list among competing entries.
-      Data half on the shipped bytes: `displayName` "Markdown Review", `publisher` `SabhahithWorks`,
+      Data half on the shipped bytes: `displayName` "Markdown Review Pane" (was "Markdown Review" until §13 E10), `publisher` `SabhahithWorks`,
       the one-line description, and a 128×128 RGBA `media/icon.png`.
       **Two findings, both recorded rather than waved through:**
       **(a) the light-chrome risk does not apply here** — the icon's alpha is only its rounded
@@ -80,7 +80,7 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 > Expect: the 128×128 icon renders in the list **at 16 px and still reads as two speech bubbles** —
 > this is the size the icon actually gets seen at, and the one a 128 px preview flatters. The title
-> is "Markdown Review" and the description is the manifest's one-liner.
+> is "Markdown Review Pane" (E10) and the description is the manifest's one-liner.
 >
 > Then switch to a light theme and look at the icon again. The Marketplace renders it on both dark
 > and light chrome, and an icon with no background of its own disappears on one of them (Plan 05 §4).

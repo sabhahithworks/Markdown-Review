@@ -571,7 +571,7 @@ Same window, normal VS Code, repo root. Nothing to reset.
 
   > Expect the 128×128 icon to render in the list **at 16 px and still read as two speech bubbles**.
   > That is the size the icon actually gets seen at, and the one a 128 px preview flatters. Title
-  > "Markdown Review", description the manifest's one-liner.
+  > "Markdown Review Pane" (§13 E10), description the manifest's one-liner.
   >
   > Then switch to a **light** theme and look again. The Marketplace renders it on both dark and
   > light chrome, and an icon with no background of its own disappears on one of them.
