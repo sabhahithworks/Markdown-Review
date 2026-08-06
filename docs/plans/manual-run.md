@@ -14,25 +14,28 @@ step leaves the state the next one needs.
 
 Roughly 70 minutes of work, plus however long an agent takes to think in M3 and M9.
 
-**Where this stands (2026-08-06).** Eleven of the twelve steps are done. `04-acceptance-run.md` Part A
+**Where this stands (2026-08-06).** Eleven of the twelve steps are done — everything except step 7, a confirmation of an already-covered item, and step 5, skipped. `04-acceptance-run.md` Part A
 and Part B are green, `03-commenting.md` §8 is dated, and every box in `04-prompt-and-detection.md`
 §9 is ticked.
 
 | | |
 | --- | --- |
-| ✅ **Passed** | 1, 2, 3, 4, 6, 9, 10, 11, **12** |
+| ✅ **Passed** | 1, 2, 3, 4, 6, **8**, 9, 10, 11, **12** |
 | ⏭️ **Skipped, not verified** | **5** (B3 — rewrite banner and diff; its **Dismiss** button has no coverage of any kind) |
-| ☐ **Not run** | **7** (B6, a confirmation of an already-covered item) · **8** (C1, the Extensions-list identity check) |
+| ☐ **Not run** | **7** (B6, a confirmation of an already-covered item) |
 
 **Two defects came out of this run**: **D24**, the blank restored pane, which is why the archive was
 repackaged; and **D23**, a latent delivery-gate bug found while chasing it. Both are fixed and in the
 current `.vsix`. **D22 is closed** — step 6 confirmed its fix on the first occasion the box was ever
 reached.
 
-**Step 12 passed on 2026-08-06** — lazy activation survived the D24 manifest change, on the
-repackaged archive, on a fresh profile. That was the last gate. What remains is step 8, a judgement
-about how the icon reads at 16 px, and step 5's skip: the rewrite banner's **Dismiss** button has no
-coverage of any kind, which is a known hole rather than a blocker.
+**Steps 12 and 8 both passed on 2026-08-06.** Step 12 was the last gate: lazy activation survived the
+D24 manifest change, on the packaged archive, on a fresh profile. Step 8 confirmed the Extensions-list
+identity, with two findings recorded at the step — the icon does not need its own background because
+it has one, and the publisher line belongs in the post-publish checks rather than here.
+
+**Nothing outstanding blocks publishing.** What is left is step 5's skip: the rewrite banner's
+**Dismiss** button has no coverage of any kind. A known hole, worth an issue, not a blocker.
 
 **When something fails**, do not fix it here. Write it into the owning phase doc's defect ledger
 first, in the same numbered form the neighbours use (`04-prompt-and-detection.md` §10 for D-numbers,
@@ -68,13 +71,13 @@ If `local-dev.markdown-review` is there, `code --uninstall-extension local-dev.m
 The packaged archive in the repo root is the one to test against:
 
 ```sh
-ls -la markdown-review-0.1.0.vsix     # 143,522 bytes, the D24 build (repackaged 2026-08-05)
+ls -la markdown-review-0.1.0.vsix     # 143,823 bytes, the release build (repackaged 2026-08-06)
 code --install-extension markdown-review-0.1.0.vsix --force
 ```
 
-**Check the byte count.** The archive was repackaged for D24 — anything older (142,889 bytes, the
-H35–H36 layout build; or the interim 143,243-byte D23 build) still has the blank-restored-pane bug,
-so sittings 2–4 against it would be testing the wrong bytes. The version is deliberately still
+**Check the byte count.** The archive was repackaged twice — for D24, and again on 2026-08-06 for the
+changelog promotion and the publisher capitals. Anything older (143,522 bytes, the D24 build;
+142,889, the H35–H36 layout build; or the interim 143,243-byte D23 build) is not what ships. The version is deliberately still
 `0.1.0`: nothing has been published, so there is no released build to distinguish this from. If the
 size is wrong, `npm run package` and re-install.
 
@@ -560,15 +563,15 @@ Same window, normal VS Code, repo root. Nothing to reset.
 
 ---
 
-### Step 8 — C1: install and identity
+### Step 8 — C1: install and identity — ✅ PASSED 2026-08-06
 
-*Closes: `05-acceptance-run.md` C1.*
+*Closes: `05-acceptance-run.md` C1, except the publisher line — see below.*
 
-- [ ] Open the Extensions view and find Markdown Review in the installed list.
+- [x] Open the Extensions view and find Markdown Review in the installed list.
 
   > Expect the 128×128 icon to render in the list **at 16 px and still read as two speech bubbles**.
   > That is the size the icon actually gets seen at, and the one a 128 px preview flatters. Title
-  > "Markdown Review", publisher line "Sabhahith Works", description the manifest's one-liner.
+  > "Markdown Review", description the manifest's one-liner.
   >
   > Then switch to a **light** theme and look again. The Marketplace renders it on both dark and
   > light chrome, and an icon with no background of its own disappears on one of them.
@@ -576,6 +579,25 @@ Same window, normal VS Code, repo root. Nothing to reset.
   > Nothing automated reaches any of this: the icon is a binary asset and its legibility is a
   > judgement. The icon is unchanged this phase, so this is a re-confirmation rather than a first
   > look.
+
+**The light-chrome risk does not apply to this icon**, and that part is mechanical rather than a
+judgement: `media/icon.png` carries an alpha channel, but the transparency is only its rounded
+corners — underneath is a solid dark navy square, so it renders identically on dark and light. Its
+corner pixels are alpha 0 and its centre is opaque `#f3f4f6`.
+
+**At 16 px the white bubble survives and the orange one does not.** The primary bubble keeps its
+tail and both text lines; the second flattens into a solid orange square, losing its own tail. So the
+list entry reads as *bubble plus orange accent*, not *two speech bubbles* as the expectation above
+words it. Accepted: the silhouette is distinctive and the navy/white/orange signature is
+identifiable at list size, which is as much as a 16 px icon usually manages. Confirmed in a real
+Extensions list, among competing entries.
+
+**The publisher line cannot be checked here, and this step had it in the wrong place.** The
+expectation used to read "publisher line 'Sabhahith Works'". That string is a property of the
+Marketplace **publisher account** — `package.json` carries only the id, and the `.vsix` manifest
+carries `Publisher="SabhahithWorks"` with no display name. A locally installed extension therefore
+shows the id verbatim, lowercase-looking and unspaced, which is correct and not a defect. Moved to
+the post-publish checks in Part C, where it can actually be observed.
 
 ---
 
