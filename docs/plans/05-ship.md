@@ -75,22 +75,31 @@ the title.
 
 | Thing | Value |
 |---|---|
-| Publisher **id** | `sabhahithworks` |
+| Publisher **id** | `SabhahithWorks` |
 | Publisher **display name** | `Sabhahith Works` |
 | `author` | `Nagaraja Sabhahith` |
-| Extension id | `sabhahithworks.markdown-review` |
+| Extension id | `SabhahithWorks.markdown-review` |
 | `repository` | `https://github.com/sabhahithworks/Markdown-Review` |
 | Raw asset base | `https://raw.githubusercontent.com/sabhahithworks/Markdown-Review/main/` |
 
 **The publisher id is not the publisher name, and conflating them is the most likely mistake in this
-phase.** "Sabhahith Works" cannot be an id — ids are lowercase, digits and hyphens only. `manage`
+phase.** "Sabhahith Works" cannot be an id — ids take letters, digits and hyphens, no spaces. `manage`
 takes the id and a separate display name; the display name is what appears on the listing, the id is
-what appears in the URL and in `code --install-extension`. `sabhahithworks` matches the GitHub org
+what appears in the URL and in `code --install-extension`. `SabhahithWorks` matches the GitHub org
 exactly, which is the whole reason to prefer it over `sabhahith-works`.
 
+**Claimed 2026-08-06 as `SabhahithWorks`**, display name "Sabhahith Works". Note the capitals: this
+section originally asserted ids are lowercase, which is wrong — vsce's `nameRegex` carries the `i`
+flag and the form accepts mixed case. Marketplace resolution is case-insensitive (both spellings of
+the publisher URL resolve, and the integration suite's lowercase `getExtension` still finds it), so
+the case is cosmetic — but the manifest was set to match the claim exactly rather than rely on that.
+
 Claim it **before** writing it into the manifest, even though publishing is deferred: the form
-rejects a taken id immediately, the id is permanent, and unclaimed ids are first-come. Then confirm
-`https://marketplace.visualstudio.com/items?itemName=sabhahithworks.markdown-review` returns 404.
+rejects a taken id immediately, the id is permanent, and unclaimed ids are first-come. **This
+ordering was not followed** — the id was in the manifest and in a built archive first, so a taken id
+would have meant a rebuild rather than a form retry. It was free; the risk was taken unknowingly.
+Then confirm
+`https://marketplace.visualstudio.com/items?itemName=SabhahithWorks.markdown-review` returns 404.
 
 **Done 2026-08-05:** remote added and `main` pushed; the repo is public, so §5's absolute image URLs
 will resolve as soon as there are any images to resolve.
@@ -114,7 +123,7 @@ Field by field against the current `package.json`:
 | Field | Now | After | Why |
 |---|---|---|---|
 | `private` | `true` | *removed* | An npm-publish guard that has no business on a package published through `vsce`. It does **not** block `vsce` (§2), so removing it is hygiene, not a fix |
-| `publisher` | absent | `"sabhahithworks"` | §2. Optional for `package`, required by `publish` |
+| `publisher` | absent | `"SabhahithWorks"` | §2. Optional for `package`, required by `publish` |
 | `author` | absent | `"Nagaraja Sabhahith"` | §2. Distinct from the `markdownReview.author` **setting**, which names comment authors — do not conflate them |
 | `repository` | absent | `{ "type": "git", "url": "https://github.com/sabhahithworks/Markdown-Review" }` | PRD §9. Without it `vsce` needs `--allow-missing-repository`, and the listing has no source link |
 | `icon` | absent | `"media/icon.png"` | §4 |
@@ -446,7 +455,7 @@ So the phase has delivered what it set out to: a verified package. It is not *fi
 the publisher id is still unclaimed and that gates everything downstream of it.
 
 - [x] `name` / `displayName` decided: `markdown-review` / "Markdown Review" (§2), already applied
-- [ ] Publisher id `sabhahithworks` claimed; `items?itemName=sabhahithworks.markdown-review` returns
+- [x] Publisher id `SabhahithWorks` claimed 2026-08-06; `items?itemName=SabhahithWorks.markdown-review` returns
       404 beforehand
       — **manual**, and the only irreversible step in the phase (PRD §12 item 2)
 - [x] `publisher`, `author`, `repository`, `icon` applied and `private: true` removed **in one
@@ -563,7 +572,7 @@ is the conflict, stated.
 
 **E4 — PRD §9's manifest is a template, and two of its placeholders hide a real distinction.**
 `"publisher": "<your-publisher-id>"` and `"url": "https://github.com/<you>/markdown-review"` are
-resolved in §2. The trap is that a publisher has *both* an id (`sabhahithworks`, lowercase, permanent,
+resolved in §2. The trap is that a publisher has *both* an id (`SabhahithWorks`, permanent,
 appears in the extension id and URL) and a display name (`Sabhahith Works`, free text, changeable,
 appears on the listing). PRD §9 only has a slot for the first, so the second is easy to never decide
 and end up with an id where a company name should be — common enough that vsce has a dedicated error

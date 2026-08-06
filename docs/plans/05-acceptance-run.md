@@ -65,7 +65,7 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 - [~] **C1** — passed 2026-08-05 on the 0.1.0 build; **re-run needed after Plan 06**, which changed
       the manifest. The data half is re-verified on the new shipped bytes: `displayName` "Markdown
-      Review", `publisher` `sabhahithworks`, the one-line description, and a 128×128 RGBA
+      Review", `publisher` `SabhahithWorks`, the one-line description, and a 128×128 RGBA
       `media/icon.png`. The icon is unchanged by Plan 06, so its legibility judgement carries over —
       but the list entry itself has not been looked at since. Open the Extensions view and check it.
 
@@ -222,9 +222,9 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 Not part of 0.1.0's definition of done. Recorded here so publish day is a checklist rather than a
 research session (Plan 05 §10).
 
-- [ ] Publisher `sabhahithworks` claimed at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage),
+- [ ] Publisher `SabhahithWorks` claimed at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage),
       display name "Sabhahith Works". Irreversible — see Plan 05 §2.
-- [ ] `items?itemName=sabhahithworks.markdown-review` returned 404 before publishing.
+- [ ] `items?itemName=SabhahithWorks.markdown-review` returned 404 before publishing.
 - [ ] Azure DevOps PAT scoped **Marketplace: Manage**, "all accessible organizations".
 - [~] Repo pushed and public, so the README's raw image URLs resolve off-GitHub. **Verified
       2026-08-06:** the repo is public and all three `docs/media/*.jpg` are on `origin/main`, which
@@ -240,8 +240,8 @@ research session (Plan 05 §10).
 ## Cleanup
 
 ```sh
-code --uninstall-extension sabhahithworks.markdown-review
-code --profile mdcm-fresh --uninstall-extension sabhahithworks.markdown-review   # C3's profile
+code --uninstall-extension SabhahithWorks.markdown-review
+code --profile mdcm-fresh --uninstall-extension SabhahithWorks.markdown-review   # C3's profile
 ```
 
 Then the review C2 created, in your real project. **Name the file — do not `rm -rf .reviews/`**: that

@@ -60,7 +60,7 @@ Then confirm exactly one Markdown Review is installed — two extensions contrib
 commands is a confusing hour, and a "working" result may be the *old* build answering:
 
 ```sh
-code --list-extensions | grep markdown-review     # expect only sabhahithworks.markdown-review
+code --list-extensions | grep markdown-review     # expect only SabhahithWorks.markdown-review
 ```
 
 If `local-dev.markdown-review` is there, `code --uninstall-extension local-dev.markdown-review`.
@@ -699,7 +699,7 @@ but this one:
 | --- | --- |
 | 13:11:56 | host starts, "Eager extensions activated" — `vscode.*` built-ins only. **Absent.** |
 | 13:12:18 | a Markdown file opens; `vscode.markdown-language-features` activates on `onLanguage:markdown`. **Still absent.** |
-| 13:12:35 | `sabhahithworks.markdown-review` activates — `activationEvent: 'onCommand:markdownReview.open'` |
+| 13:12:35 | `SabhahithWorks.markdown-review` activates — `activationEvent: 'onCommand:markdownReview.open'` |
 
 The 39 seconds before it woke covered the fresh profile's Welcome page, which is what makes the
 **walkthrough** risk answered rather than assumed. Its output channel then recorded a panel
@@ -754,9 +754,9 @@ a documented way to get pulled in early.
 Deliberately outside 0.1.0's definition of done. Every step here is yours; none of it can be done
 from this repo.
 
-- [ ] **13** — Confirm `https://marketplace.visualstudio.com/items?itemName=sabhahithworks.markdown-review`
+- [ ] **13** — Confirm `https://marketplace.visualstudio.com/items?itemName=SabhahithWorks.markdown-review`
       returns **404**. Do this *before* claiming anything.
-- [ ] **14** — Claim publisher `sabhahithworks` at
+- [ ] **14** — Claim publisher `SabhahithWorks` at
       [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage), display
       name "Sabhahith Works". **This is the one irreversible step in the entire plan.**
 - [ ] **15** — Create an Azure DevOps PAT scoped **Marketplace: Manage**, "all accessible
@@ -801,7 +801,7 @@ git status --short                                     # the agent's rewrite: re
 Profiles and installs:
 
 ```sh
-code --profile mdcm-fresh --uninstall-extension sabhahithworks.markdown-review
+code --profile mdcm-fresh --uninstall-extension SabhahithWorks.markdown-review
 ```
 
 Reinstall the local dev build if you want it back:
