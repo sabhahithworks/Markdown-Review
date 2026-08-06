@@ -63,7 +63,7 @@ Then confirm exactly one Markdown Review is installed — two extensions contrib
 commands is a confusing hour, and a "working" result may be the *old* build answering:
 
 ```sh
-code --list-extensions | grep markdown-review     # expect only SabhahithWorks.markdown-review
+code --list-extensions | grep markdown-review     # expect only SabhahithWorks.markdown-review-pane
 ```
 
 If `local-dev.markdown-review` is there, `code --uninstall-extension local-dev.markdown-review`.
@@ -71,8 +71,8 @@ If `local-dev.markdown-review` is there, `code --uninstall-extension local-dev.m
 The packaged archive in the repo root is the one to test against:
 
 ```sh
-ls -la markdown-review-0.1.0.vsix     # 143,823 bytes, the release build (repackaged 2026-08-06)
-code --install-extension markdown-review-0.1.0.vsix --force
+ls -la markdown-review-pane-0.1.0.vsix     # 143,823 bytes, the release build (repackaged 2026-08-06)
+code --install-extension markdown-review-pane-0.1.0.vsix --force
 ```
 
 **Check the byte count.** The archive was repackaged twice — for D24, and again on 2026-08-06 for the
@@ -84,10 +84,10 @@ size is wrong, `npm run package` and re-install.
 Size alone only proves the file changed. Confirm both fixes are actually in it:
 
 ```sh
-unzip -p markdown-review-0.1.0.vsix extension/package.json | node -e \
+unzip -p markdown-review-pane-0.1.0.vsix extension/package.json | node -e \
   "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).activationEvents))"
 # expect [ 'onWebviewPanel:markdownReview.panel' ] — D24
-unzip -p markdown-review-0.1.0.vsix extension/dist/extension.js | grep -c onVisibilityChange   # 1 — D23
+unzip -p markdown-review-pane-0.1.0.vsix extension/dist/extension.js | grep -c onVisibilityChange   # 1 — D23
 ```
 
 Then *Developer: Reload Window*.
@@ -701,7 +701,7 @@ Four things are new since this box was last ticked and **have never been seen in
 *Closes: `05-acceptance-run.md` C3.*
 
 ```sh
-code --profile mdcm-fresh --install-extension markdown-review-0.1.0.vsix
+code --profile mdcm-fresh --install-extension markdown-review-pane-0.1.0.vsix
 code --profile mdcm-fresh --new-window <a folder containing Markdown>
 ```
 
@@ -721,7 +721,14 @@ but this one:
 | --- | --- |
 | 13:11:56 | host starts, "Eager extensions activated" — `vscode.*` built-ins only. **Absent.** |
 | 13:12:18 | a Markdown file opens; `vscode.markdown-language-features` activates on `onLanguage:markdown`. **Still absent.** |
-| 13:12:35 | `SabhahithWorks.markdown-review` activates — `activationEvent: 'onCommand:markdownReview.open'` |
+| 13:12:35 | `sabhahithworks.markdown-review` activates — `activationEvent: 'onCommand:markdownReview.open'` |
+
+That id is quoted from the log verbatim and is deliberately **not** updated to the current
+`SabhahithWorks.markdown-review-pane`: the run happened before the publisher capitals and before
+`markdown-review` turned out to be taken (§13 E8). Rewriting a quoted log to match today's manifest
+would make the record say something it never said. The identity changed; the behaviour it proves did
+not, because activation keys off `contributes.commands` and `markdownReview.panel`, neither of which
+the rename touched.
 
 The 39 seconds before it woke covered the fresh profile's Welcome page, which is what makes the
 **walkthrough** risk answered rather than assumed. Its output channel then recorded a panel
@@ -749,7 +756,7 @@ against bytes carrying **no** `activationEvents`, which is the defect. Re-check 
 archive:
 
 ```sh
-unzip -p markdown-review-0.1.0.vsix extension/package.json | node -e \
+unzip -p markdown-review-pane-0.1.0.vsix extension/package.json | node -e \
   "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).activationEvents))"
 # expect [ 'onWebviewPanel:markdownReview.panel' ] — exactly one entry
 ```
@@ -776,7 +783,7 @@ a documented way to get pulled in early.
 Deliberately outside 0.1.0's definition of done. Every step here is yours; none of it can be done
 from this repo.
 
-- [ ] **13** — Confirm `https://marketplace.visualstudio.com/items?itemName=SabhahithWorks.markdown-review`
+- [ ] **13** — Confirm `https://marketplace.visualstudio.com/items?itemName=SabhahithWorks.markdown-review-pane`
       returns **404**. Do this *before* claiming anything.
 - [ ] **14** — Claim publisher `SabhahithWorks` at
       [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage), display
@@ -823,7 +830,7 @@ git status --short                                     # the agent's rewrite: re
 Profiles and installs:
 
 ```sh
-code --profile mdcm-fresh --uninstall-extension SabhahithWorks.markdown-review
+code --profile mdcm-fresh --uninstall-extension SabhahithWorks.markdown-review-pane
 ```
 
 Reinstall the local dev build if you want it back:

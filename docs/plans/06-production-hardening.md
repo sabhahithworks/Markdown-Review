@@ -9,7 +9,7 @@ Spec references: PRD §5 (confidence surfacing), §6 (webview UX/security), §11
 §12 (release checklist). Phase 4's ledger (`04-prompt-and-detection.md` §10) still owns D-numbers;
 findings here get H-numbers so the two ledgers never collide.
 
-> **Entry state.** Phases 1–5 built and packaged; `markdown-review-0.1.0.vsix` verified in stable
+> **Entry state.** Phases 1–5 built and packaged; `markdown-review-pane-0.1.0.vsix` verified in stable
 > VS Code (`05-acceptance-run.md` Part B). The audit that produced this phase read every module and
 > found the defects below — none previously recorded. D21 and D22 remain open in Plan 04's ledger
 > and are fixed by this phase (H0).
