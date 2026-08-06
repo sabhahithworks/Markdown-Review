@@ -28,7 +28,7 @@ import {
   AUTH_EXPECTED_PROMPT,
   AUTH_MARKDOWN,
 } from '../../fixtures/reviewLoop.js';
-import { exists, readText, workspaceUri, writeText } from './context.js';
+import { exists, readSettledText, readText, workspaceUri, writeText } from './context.js';
 import { afterEach, delay, describe, it, waitFor } from './harness.js';
 
 interface Seeded {
@@ -82,7 +82,9 @@ async function seedReview(name: string, status: CommentStatus = 'open'): Promise
   return {
     target,
     sidecar,
-    read: async () => JSON.parse(await readText(sidecar)) as ReviewFile,
+    // Polled inside `waitFor` while the store is writing, so it must tolerate the rename window
+    // (H37) — a throwing predicate aborts the wait instead of being retried.
+    read: async () => JSON.parse(await readSettledText(sidecar)) as ReviewFile,
   };
 }
 
@@ -244,13 +246,13 @@ describe('change detection (PRD §8)', () => {
   it('detects an unsaved editor edit, preferring the buffer over disk', async () => {
     const { target, read } = await seedReview('detect-buffer');
 
-    // Document first, pane second — the order a user actually works in, and the order that matters
-    // here: the pane opens `Beside`, so with no editor open it lands in the *same* column and
-    // showing the editor afterwards would hide it. A hidden webview is torn down (PRD §6 rules out
-    // `retainContextWhenHidden`), so it would never post `ready` and `refresh()` would no-op.
-    const document = await vscode.workspace.openTextDocument(target);
-    const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
+    // Pane first, editor beside it second. Both have to stay visible: a hidden webview is torn down
+    // (PRD §6 rules out `retainContextWhenHidden`), so it would never post `ready` and `refresh()`
+    // would no-op — and a hidden `TextEditor` cannot be `edit()`ed at all. The pane opens in the
+    // *active* column (H35), which with nothing open is column One, so the editor goes to Two.
     await vscode.commands.executeCommand('markdownReview.open', target);
+    const document = await vscode.workspace.openTextDocument(target);
+    const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.Two);
     const index = document.getText().indexOf(AUTH_ANCHORS.parallel);
     await editor.edit((builder) => {
       builder.replace(

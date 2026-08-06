@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+A full audit of the codebase before first publish, and the hardening it called for. Nothing here
+changes what the extension is for; it changes how much of it you can reach, how little it can lose,
+and how honestly it reports itself.
+
+### Added
+
+- **The pane is usable without a mouse, and audible to a screen reader.** Comment cards announce
+  their author and status, take Enter and Space, and mark the active one with `aria-current`.
+  Creating, deleting, resolving, reopening and filtering are spoken through a live region. Notices —
+  a rewritten document, a file that cannot be read — announce themselves and put focus on the way
+  out. Below 700 px, where the inline markers are the only way to open a card, those markers were
+  focusable buttons inside an `aria-hidden` container: reachable by Tab, invisible to assistive
+  tech. They now live outside it.
+- **"Position uncertain" says so.** PRD §5 requires a low-confidence relocation to be surfaced in
+  those words; it had only ever been a one-pixel dashed underline on a layer screen readers cannot
+  see. The card now carries the phrase.
+- **A first run shows you what to do.** With no comments yet, the header hides itself — so the pane
+  was a rendered document with no interface at all and nothing saying that selecting text does
+  anything. There is now a dismissable hint, a three-step walkthrough, and a
+  <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> binding. The ~330 px reserved for the comment
+  margin is no longer reserved on a document with no comments in it.
+- **High-contrast and reduced-motion support.** Windows forced-colors mode strips `background-color`
+  outright, which was the only thing distinguishing an anchor highlight from ordinary text;
+  highlights, cards and markers now carry real borders there. Every decorative transition is
+  dropped for `prefers-reduced-motion`.
+- **Renaming a reviewed file keeps its comments.** The review used to be recoverable only through
+  **Locate file…** on an already-open pane, so a rename with no pane open stranded it silently.
+- Deleting a single comment now takes a second click. It was the one destructive action with no
+  confirmation and no undo, while the bulk clears have had both all along.
+- **Clear all** is in the header, where **Clear addressed** already was. The status filter applies
+  to the orphan section, which ignored it entirely, and a filter that hides everything now says so
+  and offers a way back. The card editor has a visible Save and Cancel, and no longer saves on blur.
+
+### Fixed
+
+- **Reloading the window left the review pane permanently blank.** The tab came back, the contents
+  never did, and the only way out was to close the pane and open it again. The extension wakes up
+  when you run one of its commands — but restoring a pane after a reload isn't something you run, so
+  nothing woke it, and the pane it was supposed to refill sat there empty. It now also wakes for a
+  panel restore, and only for that. Opening a window that has no review pane in it still loads
+  nothing. The comments were never at risk; they were on disk the whole time.
+- **A hidden review pane could stay blank after being shown again.** Messages to the pane are held
+  back while it is hidden, and nothing reopened that gate except the pane reloading itself from
+  scratch. Found while chasing the reload bug above and fixed separately.
+- **A comment could be positioned hundreds of pixels from its own highlight.** Cards were rendered
+  in document order but *laid out* in the order they were created, and the stacking pass assumes
+  the two agree. Commenting on a late paragraph and then an early one pushed the early card below
+  the later one. Every harness scenario happened to declare its comments in document order, which
+  is exactly why this survived three phases.
+- **Re-linking a review could destroy it.** Two ways: merging into a file that already had a
+  comment with the same id wrote a sidecar the extension's own validator rejects — quarantined on
+  the next load — and the success check could report a write that had actually failed, after which
+  the source was emptied. Both are gone.
+- **A comment could be lost between typing it and saving it.** The sidecar watcher could fire
+  mid-write, read the pre-write bytes, and adopt them over the state about to be persisted. Writes
+  are now serialized and the watcher stands off while one is in flight. Two windows open on one
+  workspace also shared a temp filename during that write.
+- **A remote image in a reviewed file made a real network request.** PRD §6 specified `img-src …
+  https:` verbatim, and PRD §2/§13 promise no network calls, ever. A document containing
+  `![](https://…/pixel.png)` phoned home with your IP the moment the pane rendered — content you
+  are reviewing deciding to make a request. Remote images now render as their alt text with the URL
+  on hover, and the directive is gone. The PRD is amended rather than worked around.
+- **An answered comment no longer reads as a lost one.** A comment anchored to text that *states an
+  absence* — "the ordering has not been written down" — can only be addressed by deleting that
+  text, so answering it correctly made the comment orphan: the one status meaning "come and check
+  this by hand", spent on the outcome you wanted. The orphan row now carries the same weaker signal
+  the cards use.
+- Before/after text no longer ends mid-word. The verified span stopped short by however much the
+  text had grown, so an addressed card could read `…so they do no`, which looks like corruption
+  rather than a shortened quote.
+- On macOS and Windows, opening the same file under two spellings of its path produced two panes
+  and two stores writing one review file.
+- Opening the rewrite diff once made every later keystroke in that file re-render the whole
+  document, for the rest of the session. Scrolling a long document no longer forces a layout pass
+  per frame.
+- The rewrite banner has a **Dismiss**; it previously stayed until the next render. The
+  file-unreadable notice now clears the document it is talking about, instead of leaving stale
+  content underneath a message saying the file is gone.
+- Changing `markdownReview.storageLocation`, or adding a workspace folder, now takes effect. Both
+  used to leave already-open reviews writing to the previous location while new ones went to the
+  new one. `markdownReview.author` is read per-folder in a multi-root workspace, as the other two
+  settings already were.
+- Reviews no longer accumulate a file watcher each for the life of the window.
+
 ## [0.1.0] — 2026-08-05
 
 First release. Comment on any Markdown file in a review pane, copy a prompt, hand it to whichever AI

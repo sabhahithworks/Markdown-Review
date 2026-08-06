@@ -23,6 +23,7 @@ import {
   GLOBAL_STORAGE_DIR,
   exists,
   looseUri,
+  readSettledText,
   readText,
   stubContext,
   stubOutput,
@@ -378,7 +379,8 @@ async function storeOn(
 }
 
 async function readSidecar(sidecar: vscode.Uri): Promise<ReviewFile> {
-  return JSON.parse(await readText(sidecar)) as ReviewFile;
+  // `readSettledText`, because these run against a store that may be mid-rename (H37).
+  return JSON.parse(await readSettledText(sidecar)) as ReviewFile;
 }
 
 describe('baseline snapshots (PRD §7)', () => {

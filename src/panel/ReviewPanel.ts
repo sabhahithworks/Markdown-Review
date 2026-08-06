@@ -19,15 +19,19 @@ import { createChangeWatcher } from '../detect/changeWatcher.js';
 import { detectRewrite } from '../detect/rewrite.js';
 import type { TextRange } from '../detect/scope.js';
 import { scopeOf } from '../detect/scope.js';
+import type { Locator } from '../anchor/locate.js';
 import { renderPlainText } from '../render/plaintext.js';
 import type { ImageResolver } from '../render/renderer.js';
 import { renderMarkdown } from '../render/renderer.js';
 import { ReviewStore } from '../store/ReviewStore.js';
+import { registryKey } from '../store/registryKey.js';
+import { buildCsp } from './csp.js';
 import type { HostMessage } from './messages.js';
 import { REVIEW_VIEW_TYPE, isWebviewMessage, toReviewSummary } from './messages.js';
 import { anchorRejectionMessage } from './notices.js';
 import type { ReadResult } from './readTarget.js';
 import { readTarget } from './readTarget.js';
+import { ReadyLatch } from './readyLatch.js';
 
 const ALLOWED_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 
@@ -35,10 +39,13 @@ const ALLOWED_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
  * The name attached to new comments: the `markdownReview.author` setting, else the system username
  * (PRD §4). `os.userInfo()` throws when the uid has no passwd entry — some containers — so the
  * fallback keeps comment creation working rather than failing on a cosmetic field.
+ *
+ * Scoped to the target (H29) so a folder-level `.vscode/settings.json` author wins in a multi-root
+ * workspace, matching how the store reads its own settings.
  */
-function authorName(): string {
+function authorName(target: vscode.Uri): string {
   const configured = vscode.workspace
-    .getConfiguration('markdownReview')
+    .getConfiguration('markdownReview', target)
     .get<string>('author', '')
     .trim();
   if (configured.length > 0) return configured;
@@ -55,15 +62,30 @@ export class ReviewPanel {
 
   private readonly disposables: vscode.Disposable[] = [];
   private disposed = false;
-  /** The webview script has loaded and posted `ready`; before that, messages are dropped. */
-  private ready = false;
+  /**
+   * Gates every host→webview message: before the webview posts `ready`, and while it is hidden,
+   * delivery is impossible and `post()` drops rather than silently succeeding (H14, D23). The rule
+   * lives in `readyLatch.ts` so it can be unit-tested without a real window reload.
+   */
+  private readonly latch = new ReadyLatch();
   /** Guards against a slow read overwriting the result of a newer one. */
   private renderGeneration = 0;
+  /**
+   * The generation `this.doc` (or the reported read failure) belongs to. `postReviewState` posts
+   * only when it matches `renderGeneration` (H11) — a store change firing mid-refresh would
+   * otherwise post `located` offsets computed against the previous document.
+   */
+  private docGeneration = 0;
   /** Set by `renderAnyway`; in-memory only, so a reload re-arms the size guard. */
   private forceRender = false;
+  /** One locator per rendered document (H15): `createLocator` memoizes per instance. */
+  private locatorMemo: { doc: PlainTextDoc; locate: Locator } | undefined;
 
   /** Comments for this file. Shared with every other consumer of the same target (PRD §11). */
-  private readonly store: ReviewStore;
+  private store: ReviewStore;
+  /** Held separately from `disposables` so both can be replaced when the store is (H29). */
+  private storeSubscription: vscode.Disposable;
+  private storeHold: vscode.Disposable;
 
   /**
    * Anchor space for the content currently in the webview. Every anchor this panel creates or
@@ -80,16 +102,23 @@ export class ReviewPanel {
     target: vscode.Uri,
     output: vscode.OutputChannel,
   ): void {
-    const existing = ReviewPanel.panels.get(target.toString());
+    const existing = ReviewPanel.panels.get(registryKey(target.toString()));
     if (existing) {
-      existing.panel.reveal(vscode.ViewColumn.Beside);
+      // No column argument: reveal it where it already is. Moving a pane the user has arranged —
+      // dragged to another group, or left beside the source — would be the command undoing their
+      // layout every time they re-ran it.
+      existing.panel.reveal();
       return;
     }
 
+    // `Active`, not `Beside`: the pane is a reading surface, not a live preview to diff against the
+    // source. It needs the whole editor width — the prose column plus a 280 px comment margin does
+    // not fit in half a window, and splitting by default meant every open started cramped. Users who
+    // do want it side-by-side can drag the tab into a split, and `reveal()` above keeps it there.
     const panel = vscode.window.createWebviewPanel(
       REVIEW_VIEW_TYPE,
       path.basename(target.fsPath),
-      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
+      { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
       ReviewPanel.webviewOptions(context, target),
     );
 
@@ -103,16 +132,56 @@ export class ReviewPanel {
     target: vscode.Uri,
     output: vscode.OutputChannel,
   ): void {
-    const existing = ReviewPanel.panels.get(target.toString());
+    const existing = ReviewPanel.panels.get(registryKey(target.toString()));
     if (existing) {
-      // Two panels for one file would be two sources of truth. Keep the live one.
+      // Two panels for one file would be two sources of truth. Keep the live one, in its column.
       panel.dispose();
-      existing.panel.reveal(vscode.ViewColumn.Beside);
+      existing.panel.reveal();
       return;
     }
 
     panel.webview.options = ReviewPanel.webviewOptions(context, target);
     new ReviewPanel(context, panel, target, output);
+  }
+
+  /**
+   * Re-acquires every open panel's store after the registry was dropped (H29).
+   *
+   * `ReviewStore.resettle` flushes and disposes the live stores so the next `for()` re-resolves
+   * where the sidecar belongs. Any panel still holding one of those would be talking to a disposed
+   * object whose events never fire again, so each re-acquires and re-subscribes, then re-renders
+   * from whatever the new location holds.
+   */
+  static reattachStores(): void {
+    for (const panel of ReviewPanel.panels.values()) {
+      if (panel.disposed) continue;
+      panel.storeSubscription.dispose();
+      panel.storeHold.dispose();
+      panel.store = ReviewStore.for(panel.context, panel.target, panel.output);
+      panel.storeSubscription = panel.store.onDidChange(() => panel.postReviewState());
+      panel.storeHold = panel.store.acquire();
+      void panel.refresh();
+    }
+  }
+
+  /**
+   * Points an open pane at a file that has just been renamed (H30).
+   *
+   * The panel is keyed by target URI and its `localResourceRoots` are bound to the old directory,
+   * so this cannot be done in place — the same reason `relink` opens a fresh pane. The comments
+   * have already moved; this is only the window following them.
+   */
+  static retarget(
+    context: vscode.ExtensionContext,
+    from: vscode.Uri,
+    to: vscode.Uri,
+    output: vscode.OutputChannel,
+  ): void {
+    const existing = ReviewPanel.panels.get(registryKey(from.toString()));
+    if (!existing) return;
+
+    ReviewPanel.createOrShow(context, to, output);
+    existing.panel.dispose();
   }
 
   private static webviewOptions(
@@ -139,20 +208,47 @@ export class ReviewPanel {
     private readonly target: vscode.Uri,
     private readonly output: vscode.OutputChannel,
   ) {
-    ReviewPanel.panels.set(target.toString(), this);
+    ReviewPanel.panels.set(registryKey(target.toString()), this);
 
     this.store = ReviewStore.for(context, target, output);
     // Every state change round-trips through the store, including this panel's own edits, so there
     // is exactly one path from data to view.
-    this.store.onDidChange(() => this.postReviewState(), null, this.disposables);
+    this.storeSubscription = this.store.onDidChange(() => this.postReviewState());
+    this.storeHold = this.store.acquire();
+    this.disposables.push({
+      dispose: () => {
+        this.storeSubscription.dispose();
+        // Releases the store to the idle timer (H28); it stays alive for a while so reopening the
+        // pane does not re-read the sidecar.
+        this.storeHold.dispose();
+      },
+    });
 
     panel.iconPath = {
       light: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-light.svg'),
       dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-dark.svg'),
     };
+    this.trace('panel constructed, waiting for the webview handshake');
     panel.webview.html = this.getHtmlForWebview(panel.webview);
 
     panel.onDidDispose(() => this.dispose(), null, this.disposables);
+
+    // A window restore emits view-state churn without destroying the webview context, so a flip
+    // landing inside `refresh()`'s await can shut the gate just in time for the finished render to
+    // be dropped — and no second `ready` ever comes. Reopening on the way back to visible is what
+    // makes that recoverable (D23); see `readyLatch.ts` for why it is safe in both directions.
+    panel.onDidChangeViewState(
+      () => {
+        const refreshing = this.latch.onVisibilityChange(panel.visible);
+        this.trace(
+          `viewState visible=${String(panel.visible)} canPost=${String(this.latch.canPost)}` +
+            `${refreshing ? ' → refresh' : ''}`,
+        );
+        if (refreshing) void this.refresh();
+      },
+      null,
+      this.disposables,
+    );
 
     panel.webview.onDidReceiveMessage(
       (raw: unknown) => {
@@ -161,10 +257,11 @@ export class ReviewPanel {
         if (!isWebviewMessage(raw)) return;
         switch (raw.type) {
           case 'ready':
-            this.ready = true;
+            this.latch.onReady();
+            this.trace('ready received');
             // `targetPath` here is the absolute path the serializer needs to reopen the file — not
             // `ReviewFile.targetPath`, which is workspace-relative (PRD §4). Two different jobs.
-            this.post({ type: 'init', targetPath: this.target.fsPath, author: authorName() });
+            this.post({ type: 'init', targetPath: this.target.fsPath, author: authorName(this.target) });
             void this.refresh();
             break;
           case 'renderAnyway':
@@ -211,10 +308,25 @@ export class ReviewPanel {
           case 'clearAddressed':
             void vscode.commands.executeCommand('markdownReview.clearAddressed', this.target);
             break;
+          case 'clearAll':
+            // Same command the palette runs, so the modal confirm and the backup are not bypassed.
+            void vscode.commands.executeCommand('markdownReview.clearAll', this.target);
+            break;
         }
       },
       null,
       this.disposables,
+    );
+
+    // Settings that change what the pane shows have to take effect without a reopen (H29).
+    // `author` is read per comment and `storageLocation` is owned by the store; what is left here
+    // is the rendering half — `autoDetectResolution` gates the section-change signal, which is
+    // computed on every post.
+    this.disposables.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (!event.affectsConfiguration('markdownReview', this.target)) return;
+        void this.refresh();
+      }),
     );
 
     // PRD §8: editor edits and direct disk writes both have to land, and a save (which is both)
@@ -224,9 +336,9 @@ export class ReviewPanel {
         target,
         onChanged: () => void this.refresh(),
         // `refresh()`'s read fails and reports `targetUnreadable`, which is already the right state
-        // for a deleted target (PRD §11). The re-link action on that notice arrives in Phase 4b.
+        // for a deleted target (PRD §11); its notice carries the re-link action (`relink`, below).
+        // Re-creation rides the coalescer inside the watcher (H13).
         onDeleted: () => void this.refresh(),
-        onCreated: () => void this.refresh(),
       }),
     );
   }
@@ -238,15 +350,32 @@ export class ReviewPanel {
     // Flush, don't dispose: the store outlives this panel and may still be held by the command
     // layer or a panel in another column. `ReviewStore.disposeAll()` on deactivate owns teardown.
     void this.store.flush();
-    ReviewPanel.panels.delete(this.target.toString());
+    ReviewPanel.panels.delete(registryKey(this.target.toString()));
 
     for (const disposable of this.disposables.splice(0)) {
       disposable.dispose();
     }
   }
 
+  /**
+   * Diagnostics for the restore path (D23).
+   *
+   * The pane going blank after a reload produces no error anywhere: dropped messages are the gate
+   * working as designed, so the failure is silent by construction. These lines are what turn a
+   * second occurrence into evidence instead of another round of hypotheses. They are quiet in
+   * normal use — a handful per panel, none per keystroke.
+   */
+  private trace(message: string): void {
+    this.output.appendLine(`[panel] ${path.basename(this.target.fsPath)}: ${message}`);
+  }
+
   private post(message: HostMessage): void {
-    if (this.disposed || !this.ready) return;
+    if (this.disposed) return;
+    if (!this.latch.canPost) {
+      // The one line that would have identified D23 on the first run rather than the third.
+      this.trace(`dropped ${message.type} (gate shut, handshaked=${String(this.latch.hasHandshaked)})`);
+      return;
+    }
     void this.panel.webview.postMessage(message);
   }
 
@@ -254,7 +383,7 @@ export class ReviewPanel {
     if (this.disposed) return;
     // Nothing would be delivered yet; the `ready` handler runs a refresh of its own, so a change
     // arriving before the script loads is covered without queueing anything here.
-    if (!this.ready) return;
+    if (!this.latch.canPost) return;
 
     const generation = ++this.renderGeneration;
 
@@ -280,6 +409,7 @@ export class ReviewPanel {
     }
 
     this.doc = plain;
+    this.docGeneration = generation;
 
     const message: HostMessage = rendered.frontMatterHtml
       ? { type: 'setContent', html: rendered.html, frontMatterHtml: rendered.frontMatterHtml }
@@ -321,11 +451,22 @@ export class ReviewPanel {
    * as `createLocator`'s contract intends.
    */
   private postReviewState(): void {
+    // A refresh is mid-flight: `this.doc` describes the previous document, and posting offsets
+    // computed against it would flash highlights at stale positions (H11). The refresh posts the
+    // state itself once the new document is in place.
+    if (this.renderGeneration !== this.docGeneration) return;
+
     const review = this.store.getState();
     const located: Record<string, Located | null> = {};
 
     if (this.doc) {
-      const locate = createLocator(this.doc);
+      // Memoized per document (H15): `createLocator` carries a per-instance collapsed-code memo,
+      // and rebuilding it on every state change discards that on exactly the documents where it
+      // is expensive.
+      if (this.locatorMemo?.doc !== this.doc) {
+        this.locatorMemo = { doc: this.doc, locate: createLocator(this.doc) };
+      }
+      const locate = this.locatorMemo.locate;
       for (const comment of review.comments) located[comment.id] = locate(comment.anchor);
     } else {
       // Nothing rendered yet; the cards still render, without highlights.
@@ -341,7 +482,7 @@ export class ReviewPanel {
 
   /**
    * Open comments whose *region* changed since the prompt was copied, though their own anchored
-   * text did not (D17).
+   * text did not (D17) — and orphaned comments whose last known neighbourhood changed (D21/H0).
    *
    * `anchor.exact` is both the passage the user pointed at and the evidence for `addressed`, and
    * those only coincide when the fix lands inside the selection. They come apart for every comment
@@ -375,18 +516,26 @@ export class ReviewPanel {
 
     const ids: string[] = [];
     for (const comment of review.comments) {
-      // `addressed` and `orphaned` already carry stronger evidence, and `resolved` is terminal.
-      if (comment.status !== 'open') continue;
+      // `addressed` already carries stronger evidence, and `resolved` is terminal. `orphaned` is
+      // the D21 case (H0): an anchor that *stated an absence* can only be addressed by deleting
+      // it, so the answer the user wanted arrives as an orphan — the one status that reads as
+      // loss. The same weaker signal applies: not a status, just "the text around where this
+      // lived changed since you asked".
+      if (comment.status !== 'open' && comment.status !== 'orphaned') continue;
 
       const found = located[comment.id];
-      if (!found) continue;
+      // An orphan has no current position — that is what orphaned means — but its hint was
+      // refreshed on every pass until the text vanished, so it is the last known neighbourhood.
+      // Good enough for a question about a *region*; `scopeOf` clamps it into the document.
+      const probe =
+        found ?? { start: comment.anchor.hintOffset, end: comment.anchor.hintOffset + 1 };
 
       if (!Number.isNaN(baselineTime)) {
         const created = Date.parse(comment.createdAt);
         if (!Number.isNaN(created) && created > baselineTime) continue;
       }
 
-      const scope = scopeOf(doc, found);
+      const scope = scopeOf(doc, probe);
       if (scope && touches(ranges, scope)) ids.push(comment.id);
     }
     return ids;
@@ -421,6 +570,14 @@ export class ReviewPanel {
     hintLine: number,
     body: string,
   ): Promise<void> {
+    const text = body.trim();
+    if (text.length === 0) return; // the popover disables submit on empty; belt and braces
+
+    // Load first, anchor second (H12): `this.doc` can be replaced while this awaits, and an anchor
+    // computed before the await could carry hints belonging to a document no longer on screen.
+    await this.store.ensureLoaded();
+    if (this.disposed) return;
+
     const doc = this.doc;
     if (!doc) return;
 
@@ -431,16 +588,10 @@ export class ReviewPanel {
       return;
     }
 
-    const text = body.trim();
-    if (text.length === 0) return; // the popover disables submit on empty; belt and braces
-
-    await this.store.ensureLoaded();
-    if (this.disposed) return;
-
     const comment: Comment = {
       id: nanoid(8),
       body: text,
-      author: authorName(),
+      author: authorName(this.target),
       createdAt: new Date().toISOString(),
       status: 'open',
       anchor: result.anchor,
@@ -504,10 +655,14 @@ export class ReviewPanel {
   /**
    * Turns a failed read into the matching webview state.
    *
-   * PRD §11: keep the pane and the user's data, say what happened. The re-link action on the
-   * unreadable notice arrives in Phase 4b; the state itself has been correct since Phase 2.
+   * PRD §11: keep the pane and the user's data, say what happened. The unreadable notice carries
+   * the re-link action (handled by `relink`, above); the state itself has been correct since
+   * Phase 2.
    */
   private reportReadFailure(read: Extract<ReadResult, { ok: false }>): void {
+    // The failure state is as current as this generation gets; without this, a read failure would
+    // freeze `postReviewState` (H11's guard) until the next successful render.
+    this.docGeneration = this.renderGeneration;
     if (read.reason === 'too-large') {
       this.post({ type: 'tooLarge', sizeBytes: read.sizeBytes });
       return;
@@ -519,10 +674,11 @@ export class ReviewPanel {
   /**
    * Maps relative image sources into the webview's resource space.
    *
-   * Anything with a scheme (`https:`, `data:`, and Windows drive letters, which match the same
-   * pattern) is declined: CSP already permits `https:` and `data:` for images, and a drive letter
-   * is outside the target's tree by definition. Anything escaping the tree is declined too and
-   * renders broken rather than being granted access.
+   * Anything with a scheme (`data:`, and Windows drive letters, which match the same pattern) is
+   * declined: CSP permits `data:` for images, a drive letter is outside the target's tree by
+   * definition, and remote (`http`/`https`) sources are neutralized by the renderer itself before
+   * this resolver runs (H6 — no network calls, ever). Anything escaping the tree is declined too
+   * and renders broken rather than being granted access.
    *
    * Symlinks are not resolved. One inside the tree pointing outside would pass this check, but
    * `localResourceRoots` still gates the actual load, so the worst case is a broken image. Adding
@@ -589,12 +745,8 @@ export class ReviewPanel {
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview.js'),
     );
 
-    // PRD §6, verbatim. `style-src 'unsafe-inline'` is required by VS Code's own injected theme
-    // styles; everything else is locked to the nonce and the webview's resource origin.
-    const csp =
-      `default-src 'none'; img-src ${webview.cspSource} https: data:; ` +
-      `script-src 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline'; ` +
-      `font-src ${webview.cspSource};`;
+    // PRD §6 as corrected by H6 (no network origins); see `csp.ts` for the reasoning and the test.
+    const csp = buildCsp(webview.cspSource, nonce);
 
     // No <title>: the tab label comes from `panel.title`, so no filesystem-derived string is
     // interpolated into this shell and there is nothing here to escape.
@@ -617,12 +769,24 @@ export class ReviewPanel {
   <!-- Orphans live outside the gutter: they have no anchor to align to, so they cannot be
        positioned like a card, and PRD §6 asks for them in a section of their own. -->
   <section id="orphans" hidden aria-label="Comments that lost their anchor"></section>
+  <!-- First run shows a rendered document and no UI whatsoever: the header hides itself at zero
+       counts, and nothing says selecting text does anything (H20). Dismissable, and it never comes
+       back once the pane has a comment on it. -->
+  <div id="empty-state" hidden></div>
   <div id="front-matter-root"></div>
   <main id="content"></main>
   <!-- Highlights are absolutely-positioned rectangles over the content, never wrappers around it:
-       wrapping would split the text nodes anchor offsets are measured against. -->
+       wrapping would split the text nodes anchor offsets are measured against. Paint only, so it is
+       hidden from assistive tech — which is exactly why the markers below cannot live in here. -->
   <div id="highlight-overlay" aria-hidden="true"></div>
+  <!-- Narrow-pane markers: focusable buttons, and below 700 px the only way to open a card. They
+       were inside the overlay, i.e. focusable children of an aria-hidden container — a hard ARIA
+       violation that made every comment unreachable by screen reader on a narrow pane (H16). -->
+  <div id="marker-layer"></div>
   <aside id="gutter" aria-label="Comments"></aside>
+  <!-- Single polite announcer. Creating, deleting, resolving and filtering all changed the pane
+       silently before (H18); the orphan arm instruction had the only live region in the app. -->
+  <div id="announcer" class="mr-visually-hidden" role="status" aria-live="polite"></div>
   <script nonce="${nonce}" src="${scriptUri.toString()}"></script>
 </body>
 </html>`;

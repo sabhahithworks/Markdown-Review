@@ -74,10 +74,11 @@ only unchecked boxes in Plan 03 §8, and the ones with no automated coverage of 
 
 - [x] **A2 — window reload** (Plan 03 step 4). The `WebviewPanelSerializer` path, which has no
       automated coverage of any kind — `@vscode/test-electron` cannot reload its own window.
-      **Passed 2026-08-05** on an installed build, against `review-run.md` rather than
-      `kitchen-sink.md` — the serializer restores by path, so the document is immaterial. Steps 1–4
-      only; **step 5 is still outstanding**, and it is the one that actually exercises the
-      activation gap the note below describes.
+      **Steps 1–4 passed 2026-08-05** on an installed build, against `review-run.md` rather than
+      `kitchen-sink.md` — the serializer restores by path, so the document is immaterial.
+      **Step 5 passed 2026-08-05**, on the third attempt: it failed twice with a blank restored
+      pane, which is the activation gap the note below predicted, now fixed as **D24**. It is the
+      only box in the plan that ever caught it.
 
   1. Open `kitchen-sink.md` → *Markdown Review: Open Review Pane*. Leave two comments on different
      paragraphs if the sidecar is empty (commenting never edits the document, so this is safe).
@@ -92,27 +93,32 @@ only unchecked boxes in Plan 03 §8, and the ones with no automated coverage of 
       > scrollLine, filter }` through `vscode.setState` (`media/src/webview.ts:145`) and back via
       > `deserializeWebviewPanel` (`src/extension.ts:45`).
 
-      > **The failure mode to watch for is a pane that comes back blank, or a tab that closes
-      > itself.** Restoring a webview raises the `onWebviewPanel:markdownReview.panel` activation
-      > event, and unlike commands that one is **not** inferred from `contributes` — `package.json`
-      > declares no `activationEvents` at all today (deliberately, per CLAUDE.md's lazy-activation
-      > rule). If the extension is not activated at restore time the serializer was never registered,
-      > and VS Code discards the panel.
+      > **This is the box that caught D24, and the prediction written here was correct.** Restoring
+      > a webview raises the `onWebviewPanel:markdownReview.panel` activation event, and unlike
+      > commands that one is **not** inferred from `contributes`. The manifest declared no
+      > `activationEvents` at all, so the extension was never activated at restore time, the
+      > serializer was never registered, and the pane came back as a tab with nothing in it.
+      > `package.json` now declares exactly that one event — still lazy, since it fires only during
+      > an actual restore. If this box fails again, check the manifest still carries it before
+      > anything else.
       >
-      > If it does fail: adding `"activationEvents": ["onWebviewPanel:markdownReview.panel"]` is the
-      > fix and does **not** break lazy activation — it fires only when a panel is actually being
-      > restored, unlike `onStartupFinished`. Record it as a new D-number in Plan 04 §10 first.
-      >
-      > A blank pane with the tab still present is a different bug: the serializer ran, but `revive`
-      > failed. Check *View → Output → Markdown Review* and the extension host console.
+      > **A blank pane with the tab still present does not, on its own, mean `revive` failed.** That
+      > reading cost two runs. VS Code restores the tab from its own workspace state without asking
+      > the extension anything, so "tab present, pane empty" is also exactly what a never-activated
+      > extension looks like. Settle it with *Developer: Show Running Extensions* — **not** with the
+      > presence of a Markdown Review entry in the Output dropdown, which survives a reload whether
+      > or not the extension ran. The channel's *contents* are evidence; its existence is not.
+      > `deserializeWebviewPanel` now logs a line, so the channel can answer this directly.
 
   5. Repeat once with the pane as the **only** editor open (close `kitchen-sink.md`'s text editor
      first). That is the case where nothing else would have activated the extension.
 
-- [ ] **A3** — the other six steps pass (rejection wording, sidecar hand-edit, two windows, CSP
-      console, three themes, the < 700 px drag).
+- [x] **A3** — the other six steps pass (rejection wording, sidecar hand-edit, two windows, CSP
+      console, three themes, the < 700 px drag). **Passed 2026-08-05** in the dev host against
+      `kitchen-sink.md`, all six in one sitting, no defects found. That completes Part A.
 
-Tick and **date** Plan 03 §8, then continue.
+**Part A is complete — A1, A2 and A3 all green as of 2026-08-05.** Plan 03 §8 is ticked and dated.
+Continue to Part B.
 
 ---
 
@@ -178,13 +184,20 @@ of the machinery. Select the text exactly as written; the anchor is the selectio
 **Step 3 — hand it to a real agent.** Paste into whichever agent you like, `@`-mention the path from
 the toast, and let it edit. Do not tell it anything the prompt does not. Keep the pane visible.
 
-- [~] **B1b** — **partial, 2026-08-05.** Comment 1 flipped to `addressed` with a real before/after
+- [x] **B1b** — **re-run and passed 2026-08-05** on the D24 build, after the H0 and H8 fixes. The
+      original run is kept below because it is what produced D21. **Partial, first run
+      2026-08-05:** Comment 1 flipped to `addressed` with a real before/after
       — the plain inference path demonstrated for the first time, and the clipping was the known
       `fuzzy.verify` under-report (`Counters live in memory, so they do no` against a 46-character
       before), not a wrong sentence. Comment 3 **orphaned instead of flipping**, so the header read
       `1 open, 1 addressed, 1 orphaned` rather than `1 open, 2 addressed`. That is **§10 D21**, not
       a run failure: its anchor stated an absence, and answering the comment necessarily deleted it.
-      Re-run this box once D21 is fixed.
+      **Both are now fixed (Plan 06 H0 and H8): re-run this box.** Comment 3 will still orphan —
+      an anchor whose text is genuinely gone has no position, and inventing one would be worse —
+      but its orphan row now carries "The text around this changed since you copied the prompt — it
+      may have been addressed rather than lost", so the row reads as *verify this* rather than as
+      loss. The clipping is repaired at the span end, so a before/after should no longer end
+      mid-word.
       Within ~400 ms of the agent's write (the `onDidChangeTextDocument` debounce; a
       write from outside the editor comes via the `FileSystemWatcher` instead and can take a beat
       longer):
@@ -194,8 +207,10 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
         one thing to look at closely: §10 records a known `fuzzy.verify` under-report where the
         status is right but the "after" text is clipped short. Clipped is expected; *a different
         sentence entirely* is a new defect.
-- [x] **B1c** — **passed 2026-08-05**, by an agent that had read this expectation beforehand (see
-      the note under B1e). Comment 2 stayed `open`, carried the note, and offered **Looks good**;
+- [x] **B1c** — **re-run blind and passed 2026-08-05**, by an agent that had *not* read this file or
+      the expected outcome. That is what PRD §10 asks for and what the first pass lacked, so the
+      qualification below is discharged. **First run 2026-08-05**, by an agent that had read this
+      expectation beforehand (see the note under B1e). Comment 2 stayed `open`, carried the note, and offered **Looks good**;
       `## Failure modes` was untouched while its body was rewritten. The note's wording is
       imprecise at block scope — §10 D19 — but fired correctly here, where the scope really is a
       section.
@@ -246,7 +261,7 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
 
 ### B2 — orphan and the re-anchor gesture — §9 item 4
 
-- [ ] **B2a** — delete an anchored sentence from the document and save.
+- [x] **B2a** — **passed 2026-08-05.** Delete an anchored sentence from the document and save.
       > Expect: exactly that comment orphans. It leaves the gutter and appears in the **orphaned**
       > section above the content, quoting the text it *used* to be attached to. Nothing else moves.
 - [x] **B2b–B2d** — arm, select, commit, and Escape-to-disarm are **now machine-checked** by
@@ -261,6 +276,16 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
 
 ### B3 — full rewrite and the diff — §9 item 5 (confirmation)
 
+> **Skipped 2026-08-05, deliberately and without being run** — the tester's judgement was that the
+> behaviour is working. The boxes stay open, because a skipped box left blank is indistinguishable
+> from a failed one. §9 item 5 is ticked on automated coverage and does not depend on this, so
+> nothing downstream is blocked.
+>
+> **B3c is the part that has no coverage at all.** The **Dismiss** button did not exist before Plan
+> 06 H7, and nothing asserts it is present or that dismissal sticks. B3a's banner placement is
+> largely covered by the harness `rewrite` scenario, and B3b's both-sides-prose claim by
+> `detection.spec.ts`. If only one of these three is ever run, run B3c.
+
 - [ ] **B3a** — with at least two located comments, replace the entire contents of `review-run.md`
       with unrelated prose and save.
       > Expect: a banner, *at the top of the pane and on screen without scrolling*, reading "The
@@ -272,6 +297,9 @@ the toast, and let it edit. Do not tell it anything the prompt does not. Keep th
       > correction is that both sides are rendered plain text.
 - [ ] **B3c** — **Dismiss**, then edit the document again. The banner does not come back for a
       document that was already wrecked.
+      > The **Dismiss** button this step has always asked for did not exist until Plan 06 H7 — the
+      > banner had only **Review the diff** and cleared itself on the next render. If it is missing
+      > again, that is the fix regressing.
 
 Then `git checkout docs/fixtures/review-run.md` and re-open the pane before continuing.
 
@@ -281,34 +309,62 @@ The picker is `vscode.window.showOpenDialog` — a native OS dialog, which is pr
 process can answer it (§10 D9). Run this with B1's comments still in place, so there is something
 real to migrate.
 
-> **Still not exercised after the 2026-08-05 packaged-build run.** That run reached for **Re-anchor**
+> **Not exercised in either 2026-08-05 run.** The packaged-build attempt reached for **Re-anchor**
 > on an orphan card instead of **Locate file…** on the unreadable notice, and re-anchored a comment
 > by selecting text — the B2 gesture, not this one. The picker was never opened. See §10 D22: two
-> recovery actions are visible at once and the wrong one is the more discoverable, which is a finding
-> about the UI, not about the tester. **Read B4a–B4c carefully before the next attempt**: this box is
-> about the *file*, not the *comment*, and nothing in it involves selecting text.
+> recovery actions were visible at once and the wrong one was the more discoverable, which was a
+> finding about the UI, not about the tester.
+>
+> **That competition is now gone** (Plan 06 H7/H0): while the target is unreadable the pane clears
+> its content *and* empties the orphan section, so **Locate file…** is the only recovery action on
+> screen. B4a's expectation below is what the code now does rather than what it used to; if an
+> orphan card is visible under the notice, that is a regression in the fix, not a tester error.
 
 **Step 1 — break the link.**
 
-- [ ] **B4a** — with the pane open and showing its comments, rename `docs/fixtures/review-run.md` to
+> **Ticked on the mechanism, with a discrepancy recorded.** The 2026-08-05 run renamed
+> **`kitchen-sink.md`**, not `review-run.md`, and ran in the **dev host** with `docs/fixtures/` as
+> the workspace root. So the notice, the picker and the re-link are genuinely verified — the first
+> time any of them has been — but three things this box specifies were not: the comments migrated
+> were not the ones B1 created, the toast count was against different data, and the sidecar written
+> was `docs/fixtures/.reviews/renamed.md.json` rather than the **flattened**
+> `.reviews/docs__fixtures__renamed.md.json`, which is part of what B4 exists to exercise.
+>
+> The rename also deleted the `kitchen-sink.md` fixture and its tracked sidecar; both were restored
+> from git and `npm run check` is green again. A clean re-run against `review-run.md` at the repo
+> root would close the flattened-path half. **Do not re-run it on `kitchen-sink.md`** — unit tests
+> and `dev/harness/fixture.js` assert its exact bytes.
+
+- [x] **B4a** — **passed 2026-08-05, the first time this box was ever exercised.** With the pane
+      open and showing its comments, rename `docs/fixtures/review-run.md` to
       `renamed.md` in the explorer (<kbd>F2</kbd>).
       > Expect, within a second: the pane replaces its content with a notice headed **"This file
       > could not be read"**, body "It may have been moved, renamed or deleted. The pane is still
-      > open, and nothing has been lost. (…)", and a **Locate file…** button.
+      > open, and nothing has been lost. (…)", and a **Locate file…** button — which takes focus,
+      > so <kbd>Enter</kbd> alone activates it.
+      >
+      > The document really is gone from the pane: no rendered prose underneath, no gutter cards,
+      > and **no orphan section** (Plan 06 H7). **Locate file…** is the only action offered.
       >
       > Also check: the pane **did not close**, and `.reviews/…review-run.md.json` is still on disk
       > with all its comments. Losing either is a PRD §11 violation — the comments outlive the file.
+      >
+      > **Note:** renaming inside VS Code now also migrates the review automatically (Plan 06 H30),
+      > so the pane may re-open on `renamed.md` by itself. To exercise the manual path this box is
+      > about, rename the file **outside** VS Code (in a terminal or Finder) so no rename event
+      > fires.
 
 **Step 2 — re-link.**
 
-- [ ] **B4b** — click **Locate file…**.
+- [x] **B4b** — **passed 2026-08-05.** Click **Locate file…**. `showOpenDialog` has now been opened
+      by a human — the thing no test process can answer (§10 D9).
       > Expect a native file dialog titled **"Re-link review-run.md"**, whose confirm button reads
       > **"Re-link review"** and whose filter offers Markdown only (`md`, `markdown`, `mdown`,
       > `mkd`, `mdx`). Multi-select is off.
       >
       > Press <kbd>Esc</kbd> first: nothing at all should happen — no error, no state change. Then
       > reopen it.
-- [ ] **B4c** — pick `renamed.md`.
+- [x] **B4c** — **passed 2026-08-05.** Pick `renamed.md`.
       > Expect: a toast `Re-linked 3 comments to renamed.md.` (or however many survive B1), and a
       > **new pane** on `renamed.md` with every comment present, located, and in the status it had.
       > The old pane closes itself — re-linking cannot happen in place, because panel and store are

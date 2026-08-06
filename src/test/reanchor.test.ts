@@ -388,7 +388,10 @@ describe('reanchor — code blocks on an unedited document', () => {
     // through the match instead of emitting it as a clean leading/trailing run. The unpadded window
     // usually wins, so the reported span stops `n` characters early and the before/after on the card
     // is clipped by the amount the text grew. The *status* is right; only the evidence is short.
-    // Tracked separately — this assertion holds either way, so fixing it will not break the test.
+    //
+    // Plan 06 H8 repaired the visible half of this: the span end is snapped forward to the next
+    // word boundary, so a card can no longer read `…so they do no`. The span is still a prefix
+    // rather than the whole block — that is this assertion, and it was written to hold either way.
     const newFence = edited.blocks.find((block) => block.kind === 'code');
     const newText = edited.text.slice(newFence?.start, newFence?.end);
     expect(newText.startsWith(resolution?.currentText ?? '')).toBe(true);

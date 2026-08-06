@@ -20,6 +20,8 @@ export interface HeaderOptions {
   root: HTMLElement;
   onCopyPrompt(): void;
   onClearAddressed(): void;
+  /** PRD §6's second destructive command, which had no in-pane surface at all (H27). */
+  onClearAll(): void;
   onFilterChange(statuses: CommentStatus[]): void;
 }
 
@@ -73,6 +75,25 @@ export function chipLabel(status: CommentStatus, count: number): string {
   return `${String(count)} ${status}`;
 }
 
+/**
+ * How many comments the current filter is hiding, and the sentence saying so (H23).
+ *
+ * Filtering everything off produced a completely blank pane with no explanation and no way back
+ * that a user would think to look for — the chips are still there, but "I hid them" is not the
+ * first hypothesis when a pane goes empty.
+ */
+export function hiddenNotice(
+  counts: Record<CommentStatus, number>,
+  filter: readonly CommentStatus[],
+): string | undefined {
+  const hidden = FILTERABLE.filter((status) => !filter.includes(status)).reduce(
+    (total, status) => total + counts[status],
+    0,
+  );
+  if (hidden === 0) return undefined;
+  return hidden === 1 ? '1 comment hidden by filter' : `${String(hidden)} comments hidden by filter`;
+}
+
 export function initHeader(options: HeaderOptions): HeaderView {
   let filter: CommentStatus[] = [...FILTERABLE];
   let counts = countByStatus([]);
@@ -110,7 +131,27 @@ export function initHeader(options: HeaderOptions): HeaderView {
   clear.textContent = 'Clear addressed';
   clear.addEventListener('click', options.onClearAddressed);
 
-  actions.append(copy, clear);
+  // Both clears are modal-confirmed and backed up host-side, so surfacing this one costs nothing
+  // in safety and closes the gap where PRD §6's other command existed only in the palette (H27).
+  const clearAll = document.createElement('button');
+  clearAll.type = 'button';
+  clearAll.className = 'mr-button-secondary';
+  clearAll.textContent = 'Clear all';
+  clearAll.addEventListener('click', options.onClearAll);
+
+  // The reset for a filter that has hidden everything (H23). Sits with the chips it undoes.
+  const hidden = document.createElement('button');
+  hidden.type = 'button';
+  hidden.className = 'mr-header-hidden';
+  hidden.hidden = true;
+  hidden.addEventListener('click', () => {
+    filter = [...FILTERABLE];
+    paint();
+    options.onFilterChange(filter);
+  });
+  countsRow.append(hidden);
+
+  actions.append(copy, clear, clearAll);
   options.root.replaceChildren(countsRow, actions);
 
   function paint(): void {
@@ -133,6 +174,14 @@ export function initHeader(options: HeaderOptions): HeaderView {
     copy.disabled = primary.disabled;
 
     clear.hidden = counts.addressed === 0;
+    clearAll.hidden = Object.values(counts).every((count) => count === 0);
+
+    const notice = hiddenNotice(counts, filter);
+    hidden.hidden = notice === undefined;
+    if (notice !== undefined) {
+      hidden.textContent = notice;
+      hidden.setAttribute('aria-label', `${notice}. Show all comments.`);
+    }
 
     // The whole bar is dead weight on a document nobody has commented on yet.
     options.root.hidden = Object.values(counts).every((count) => count === 0);

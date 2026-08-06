@@ -77,6 +77,30 @@ export async function readText(uri: vscode.Uri): Promise<string> {
   return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
 }
 
+/**
+ * `readText`, but tolerant of a file being replaced underneath the read (H37).
+ *
+ * `ReviewStore` writes the sidecar as write-temp-then-`rename(overwrite)`, and VS Code's disk
+ * provider implements that overwrite as delete-then-move — so there is a window, a few milliseconds
+ * wide, where the sidecar does not exist. A `waitFor` polling the sidecar can land in it, and
+ * because a throwing predicate aborts `waitFor` rather than being retried, the whole test fails with
+ * `EntryNotFound` on a store that is working perfectly. Only ever retry a *missing* file: a parse
+ * error or a permissions error is a real result and must still surface.
+ */
+export async function readSettledText(uri: vscode.Uri): Promise<string> {
+  try {
+    return await readText(uri);
+  } catch (error) {
+    // The API-facing `code` is `FileNotFound` while `name` carries the provider's `EntryNotFound`.
+    // Match either, so this does not quietly stop retrying if that mapping ever changes.
+    const failure = error as vscode.FileSystemError;
+    const missing = failure.code === 'FileNotFound' || failure.name?.startsWith('EntryNotFound');
+    if (!missing) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return await readText(uri);
+  }
+}
+
 export async function writeText(uri: vscode.Uri, text: string): Promise<void> {
   await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(text));
 }

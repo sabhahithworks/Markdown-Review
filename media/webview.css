@@ -13,10 +13,18 @@
  */
 
 :root {
-  --mr-measure: 72ch;
+  /*
+   * The reading measure. 72ch was chosen for a pane that opened `Beside` and so never had much
+   * width to give away; the pane now opens in the active column, where 72ch left a wide window
+   * two-thirds empty. 90ch is still inside the range prose stays readable at, and it is a *cap* —
+   * a pane narrower than this simply fills.
+   */
+  --mr-measure: 90ch;
   --mr-gap: 16px;
   --mr-radius: 4px;
   --mr-code-pad: 12px;
+  /* The page's own side padding. Named because the centring `max-width` below has to add it back. */
+  --mr-page-pad: clamp(16px, 3vw, 32px);
 }
 
 body {
@@ -26,8 +34,20 @@ body {
   line-height: 1.6;
   color: var(--vscode-editor-foreground);
   background-color: var(--vscode-editor-background);
-  margin: 0;
-  padding: 24px 32px 64px;
+  /*
+   * Centred, capped, and sized to the measure — a page, not a viewport-filling document. Left flush
+   * to the left edge, a wide window pushed the prose and its comment margin to opposite sides with a
+   * few hundred pixels of nothing between them, and the eye has to cross that gap on every card.
+   *
+   * `box-sizing` because this cap includes the side padding, and `margin: 0 auto` rather than a
+   * transform so `#gutter`'s absolute positioning still resolves against the padding box.
+   */
+  box-sizing: border-box;
+  max-width: calc(var(--mr-measure) + var(--mr-page-pad) * 2);
+  margin: 0 auto;
+  /* Side padding scales down with the pane: 32 px each side is comfortable on a wide window and a
+   * tenth of the usable width on a narrow one. */
+  padding: 24px var(--mr-page-pad) 64px;
 }
 
 #content {
@@ -130,6 +150,13 @@ hr {
 img {
   max-width: 100%;
   height: auto;
+}
+
+/* H6: remote image sources are neutralized at render time — no network calls, ever. The alt text
+   stands in, styled as a reference rather than a broken image; the URL is in the title attribute. */
+img.mr-remote-image {
+  font-style: italic;
+  opacity: 0.8;
 }
 
 /* ---------- Links ---------- */
@@ -361,9 +388,19 @@ li:has(> input[type='checkbox']) {
  * hardcoded tint would otherwise do.
  * ========================================================================== */
 
+/*
+ * The margin column is fluid, not a fixed 280 px. Between the narrow breakpoint (700 px, where the
+ * gutter is dropped entirely for inline markers) and a wide window, a flat 280 px + 48 px of gaps
+ * took ~47% of a 700 px pane and left the prose in a ribbon. `clamp` gives the gutter a share of
+ * the width instead: 200 px at the breakpoint, its old 280 px again by ~1270 px.
+ *
+ * `vw` is the webview viewport, which *is* the pane, so this tracks the pane being resized or
+ * dragged into a split with no JS involved — `comments.ts` never reads these values, it only
+ * measures the boxes that come out of them.
+ */
 :root {
-  --mr-gutter-width: 280px;
-  --mr-gutter-gap: 24px;
+  --mr-gutter-width: clamp(200px, 22vw, 300px);
+  --mr-gutter-gap: clamp(12px, 1.8vw, 24px);
 }
 
 /* The positioning context for the highlight overlay and the card gutter. */
@@ -371,9 +408,20 @@ body {
   position: relative;
 }
 
-/* Room for the margin column. `.mr-narrow` reclaims it below. */
-body:not(.mr-narrow) {
+/*
+ * Room for the margin column. `.mr-narrow` reclaims it below.
+ *
+ * Only once there is something to put there (H20): reserving ~330 px unconditionally left every
+ * uncommented document — which is every document on first open — rendering into two-thirds of the
+ * pane with a permanently blank margin.
+ */
+body:not(.mr-narrow):not(.mr-no-cards) {
   padding-right: calc(var(--mr-gutter-width) + var(--mr-gutter-gap) * 2);
+  /* The page grew a margin column, so the cap it is centred within has to grow by the same amount —
+   * otherwise the gutter is centred and the prose is not. */
+  max-width: calc(
+    var(--mr-measure) + var(--mr-page-pad) + var(--mr-gutter-width) + var(--mr-gutter-gap) * 2
+  );
 }
 
 /* ---------- Anchor highlights ---------- */
@@ -478,6 +526,38 @@ body:not(.mr-narrow) {
   font-size: 0.8em;
 }
 
+/* PRD §5's required wording, on the card rather than only as a dashed underline (H17). */
+.mr-badge-uncertain {
+  border: 1px dashed var(--vscode-editorWarning-foreground);
+}
+
+/*
+ * The armed half of the two-step delete (H22). Reads as consequence, not as decoration.
+ *
+ * Reuses variables the stylesheet already carries rather than introducing error-specific ones:
+ * `check-theme-vars.mjs` is two-way, so every new variable must also be transcribed into all three
+ * harness presets, and this needs no colour the diff does not already use.
+ */
+.mr-card-action-danger {
+  background-color: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-charts-red);
+  font-weight: 600;
+}
+
+/* The card editor's controls, mirroring the popover's (H24). */
+.mr-editor-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.mr-editor-hint {
+  flex: 1;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.8em;
+}
+
 .mr-card-actions {
   display: flex;
   gap: 4px;
@@ -523,10 +603,15 @@ body:not(.mr-narrow) {
   outline: 1px solid var(--vscode-focusBorder);
 }
 
-/* Terminal state, collapsed out of the way at the bottom of the column (PRD §6). */
+/*
+ * Terminal state, collapsed out of the way below the conversation (PRD §6).
+ *
+ * `top` is set by the layout pass, immediately under the last placed card (H27). It used to be
+ * `bottom: 0` inside a full-height gutter, which on a long document put it thousands of pixels
+ * below the last comment — the only card cluster with no spatial relationship to anything.
+ */
 .mr-resolved-group {
   position: absolute;
-  bottom: 0;
   width: 100%;
 }
 
@@ -645,12 +730,30 @@ body:not(.mr-narrow) {
   width: auto;
 }
 
+/*
+ * The marker layer sits over the content like the overlay, but is *not* `aria-hidden` — the markers
+ * are the only way to open a card below 700 px, and inside the overlay they were focusable children
+ * of an aria-hidden container (H16). Click-through everywhere except on a marker itself.
+ */
+#marker-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
 .mr-marker {
   position: absolute;
-  padding: 0 2px;
+  padding: 0 3px;
   border: none;
   background: none;
-  font-size: 0.8em;
+  /* A themable glyph, not the 💬 emoji: an emoji renders in the OS font, ignores the theme, and
+     disappears under forced-colors (H19). */
+  color: var(--vscode-textLink-foreground);
+  font-size: 0.9em;
   line-height: 1;
   pointer-events: auto;
   cursor: pointer;
@@ -829,8 +932,136 @@ body:not(.mr-narrow) {
   margin-top: 6px;
 }
 
+/* The D21 signal (H0) — same border-rule construction as .mr-card-note, deliberately not the
+   red/green of the addressed diff: an observation, not a claim. */
+.mr-orphan-note {
+  margin: 6px 0 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--vscode-panel-border);
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
 /* The floating button commits immediately while armed, so it reads differently too. */
 .mr-selection-button-arming {
   background-color: var(--vscode-button-secondaryBackground);
   color: var(--vscode-button-secondaryForeground);
+}
+
+/* ==========================================================================
+ * Accessibility and first-run affordances (Phase 6; PRD §5, §6)
+ * ========================================================================== */
+
+/*
+ * The live region (H18). Off-screen rather than `display: none` or `hidden`, both of which remove
+ * it from the accessibility tree and so silence the announcements it exists to make.
+ */
+.mr-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The first-run hint (H20). Above the document, in the reading column, gone once dismissed. */
+#empty-state {
+  margin: 0 0 1.5em;
+  padding: 12px 14px;
+  border: 1px dashed var(--vscode-panel-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-editorWidget-background);
+}
+
+.mr-empty-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.mr-empty-body {
+  margin: 0 0 8px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+/* Why a selection produced no Comment button (H21). Transient and non-interactive. */
+.mr-selection-hint {
+  position: fixed;
+  z-index: 10;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-editorWidget-background);
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  pointer-events: none;
+}
+
+/* "n comments hidden by filter" — the way back from a filter that hid everything (H23). */
+.mr-header-hidden {
+  padding: 0 6px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  font-family: inherit;
+  font-size: 0.85em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.mr-header-hidden:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+/*
+ * Forced colours (Windows high contrast) strip `background-color` entirely, which is the *only*
+ * thing distinguishing a highlight from ordinary text — so every anchor became invisible, and the
+ * uncertain state indistinguishable from the confident one (Plan 03 §9's open finding, H19).
+ * Borders and outlines survive; `Highlight`/`HighlightText` are the system-mandated keywords, and
+ * are exempt from the hardcoded-colour rule for exactly this reason.
+ */
+@media (forced-colors: active) {
+  .mr-highlight {
+    border: 1px solid Highlight;
+  }
+
+  .mr-highlight.mr-highlight-active {
+    border-width: 2px;
+  }
+
+  .mr-highlight-uncertain {
+    border: 1px dashed Highlight;
+  }
+
+  .mr-card {
+    border: 1px solid CanvasText;
+  }
+
+  .mr-card-orphaned {
+    border-style: dashed;
+  }
+
+  .mr-card:hover,
+  .mr-card:focus-visible,
+  .mr-card.mr-card-active {
+    outline: 2px solid Highlight;
+  }
+
+  .mr-marker {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* Every transition in this stylesheet is decorative, so all of them go (H19). */
+@media (prefers-reduced-motion: reduce) {
+  .mr-card,
+  .mr-highlight {
+    transition: none;
+  }
 }

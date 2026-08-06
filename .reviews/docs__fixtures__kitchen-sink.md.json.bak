@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "targetPath": "docs/fixtures/kitchen-sink.md",
+  "comments": [
+    {
+      "id": "1ja65L81",
+      "body": "my test",
+      "author": "sabhahith",
+      "createdAt": "2026-08-05T13:18:12.677Z",
+      "status": "open",
+      "anchor": {
+        "exact": "ure exercises every construct the renderer and the anchoring core have to survive. It is shared deliberately: Phase 1 asserts against it in unit tests, and Phase 2 uses the same document for the manual CSP, theming",
+        "prefix": "Kitchen Sink\nThis fixt",
+        "suffix": " and data-line verification pass",
+        "hintLine": 8,
+        "hintOffset": 22
+      }
+    },
+    {
+      "id": "tOmh1FrK",
+      "body": "check",
+      "author": "sabhahith",
+      "createdAt": "2026-08-05T13:18:24.451Z",
+      "status": "open",
+      "anchor": {
+        "exact": "Deployment prerequisites A configured issuer key set Network egress to the token endpoint Port 443 only Runtime requirements Node 20 or newer A writable cache directory",
+        "prefix": "s own visual line.\nNested lists\n",
+        "suffix": "\nTask list\nRotate the signing ke",
+        "hintLine": 28,
+        "hintOffset": 917
+      }
+    }
+  ]
+}

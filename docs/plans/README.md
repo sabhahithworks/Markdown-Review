@@ -15,6 +15,7 @@ reported, not silently resolved.
 | 3 | [03-commenting.md](03-commenting.md) | Selection→comment UI, sidecar persistence, reload survival | Phase 2 |
 | 4 | [04-prompt-and-detection.md](04-prompt-and-detection.md) | Prompt generation, change watching, re-anchoring, status UI | Phase 3 |
 | 5 | [05-ship.md](05-ship.md) | Packaging, docs, Marketplace release | Phase 4 |
+| 6 | [06-production-hardening.md](06-production-hardening.md) | Audit-driven hardening: correctness, a11y/UX wave, robustness; ends at publish day | Phase 5 |
 
 **Entry check for every phase:** run the previous phase's acceptance checklist (last section of each
 plan) before writing any code. If it doesn't pass, stop and fix that first — do not layer new work
@@ -40,6 +41,11 @@ real theme palettes, cross-window sync, modal confirms, and above all a *real* a
 document). The Phase 4 run subsumes the Phase 3 one, which is still that phase's entry gate.
 [05-acceptance-run.md](05-acceptance-run.md) adds the one thing none of them touch: the installed
 `.vsix` in stable VS Code, rather than the working tree in a dev host.
+
+[manual-run.md](manual-run.md) is those three flattened into one linear runsheet — every open box
+that is left, in the order to do it, grouped by which VS Code each needs. It is the **running order,
+not the record**: outcomes are still ticked into the phase docs above, and where the two disagree
+the phase doc wins, because it carries the reasoning.
 
 ## Contract ownership — the no-duplication rule
 

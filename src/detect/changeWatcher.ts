@@ -27,13 +27,11 @@ export interface ChangeWatcherOptions {
   onChanged: () => void;
   /** Not debounced — the pane should say the file is gone at once, not 400 ms later. */
   onDeleted?: () => void;
-  /** Not debounced. A delete-then-write (git checkout, some agents' save strategy) lands here. */
-  onCreated?: () => void;
   debounceMs?: number;
 }
 
 export function createChangeWatcher(options: ChangeWatcherOptions): vscode.Disposable {
-  const { target, onChanged, onDeleted, onCreated } = options;
+  const { target, onChanged, onDeleted } = options;
   const key = target.toString();
 
   const coalescer = createCoalescer(options.debounceMs ?? CHANGE_DEBOUNCE_MS, onChanged);
@@ -62,9 +60,11 @@ export function createChangeWatcher(options: ChangeWatcherOptions): vscode.Dispo
   disposables.push(watcher.onDidChange(() => coalescer.schedule()));
 
   disposables.push(
+    // The file came back with content we have not seen; re-read on the usual schedule. Only the
+    // coalescer (H13): a second, immediate callback here made delete-then-write — git checkout,
+    // some agents' save strategy — cost an un-debounced full refresh *plus* the coalesced one,
+    // defeating the debounce on exactly the path agents use.
     watcher.onDidCreate(() => {
-      onCreated?.();
-      // The file came back with content we have not seen; re-read on the usual schedule.
       coalescer.schedule();
     }),
   );

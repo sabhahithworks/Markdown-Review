@@ -126,6 +126,7 @@ export type WebviewMessage =
   /** Header actions. The palette commands are the same code paths. */
   | { type: 'copyPrompt' }
   | { type: 'clearAddressed' }
+  | { type: 'clearAll' }
   /** The rewrite banner's action: open baseline ↔ current as a diff (PRD §11). */
   | { type: 'showRewriteDiff' }
   /** "Locate file…" on the unreadable notice: point this review at a file that still exists. */
@@ -161,6 +162,7 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
     case 'relinkTarget':
     case 'copyPrompt':
     case 'clearAddressed':
+    case 'clearAll':
       return true;
     case 'openExternal':
       return typeof value['url'] === 'string';

@@ -63,8 +63,11 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C1 — install and identity — §12 items 3, 4
 
-- [x] **C1** — **passed 2026-08-05.** With the `.vsix` installed, open the Extensions view and find
-      **Markdown Review**.
+- [~] **C1** — passed 2026-08-05 on the 0.1.0 build; **re-run needed after Plan 06**, which changed
+      the manifest. The data half is re-verified on the new shipped bytes: `displayName` "Markdown
+      Review", `publisher` `sabhahithworks`, the one-line description, and a 128×128 RGBA
+      `media/icon.png`. The icon is unchanged by Plan 06, so its legibility judgement carries over —
+      but the list entry itself has not been looked at since. Open the Extensions view and check it.
 
 > Expect: the 128×128 icon renders in the list **at 16 px and still reads as two speech bubbles** —
 > this is the size the icon actually gets seen at, and the one a 128 px preview flatters. The title
@@ -78,7 +81,12 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C2 — the full loop, on a real document — §12 item 13, PRD §12 item 7
 
-- [x] **C2** — **passed 2026-08-05**, against `docs/fixtures/review-run.md` with the **repo root** as
+- [x] **C2** — **re-run and passed 2026-08-05** on the D24 build, against a real non-fixture
+      document of the tester's own. That discharges the re-run this box was carrying, and covers the
+      one gap the earlier pass had: the document was a fixture, not a file from a real project.
+      **Earlier pass, previous build:** this is the box
+      that exercises the code Plan 06 changed most. Previously passed against
+      `docs/fixtures/review-run.md` with the **repo root** as
       the workspace, so `.reviews/docs__fixtures__review-run.md.json` exercised the flattened name by
       hand. A separate non-fixture document was not used; the path shape PRD §12 cares about was.
       Open a Markdown file you are willing to have rewritten, and run the whole loop: *Open Review Pane* → comment on two or three passages →
@@ -99,9 +107,19 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C3 — lazy activation on a fresh profile — §12 item 14, PRD §9
 
-- [x] **C3** — **passed 2026-08-05.** Markdown Review was **absent** from *Show Running Extensions*
-      on a fresh profile with a Markdown folder open and no command run, and appeared only after
-      *Open Review Pane*. `code --profile mdcm-fresh`, install the `.vsix` into it, open a folder
+- [x] **C3** — **re-run and passed 2026-08-06** on the D24 archive, in a `mdcm-fresh` profile
+      holding no other extension. Absent at "Eager extensions activated"; still absent after a
+      Markdown file opened and pulled in `vscode.markdown-language-features` on `onLanguage:markdown`;
+      activated 39 s later with `activationEvent: 'onCommand:markdownReview.open'`. Those 39 seconds
+      covered the fresh profile's Welcome page, which answers the walkthrough risk below rather than
+      assuming it. The static half re-verified on the shipped bytes: exactly one `activationEvents`
+      entry and that one, `main` present, four commands, `engines.vscode` `^1.90.0`.
+      **Earlier pass, previous build:** the static half was voided by D24 — it had been taken
+      against bytes carrying no `activationEvents` at all — and a walkthrough contribution was new
+      in Plan 06, walkthroughs being a documented way to get pulled in early. The behavioural half
+      had held: absent from *Show Running Extensions* on a fresh profile with a Markdown folder open
+      and no command run, appearing only after *Open Review Pane*. To repeat it:
+      `code --profile mdcm-fresh --install-extension`, then `--new-window` on a folder
       containing Markdown, and **without running any command** open
       *Developer: Show Running Extensions*.
       >
@@ -109,27 +127,45 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
       > profile does not leave you with the cold start this box is about.
       >
       > Do the static half first — it fails faster. Unzip the `.vsix` and check
-      > `extension/package.json` has **no `activationEvents`**, a `main`, four `contributes.commands`
-      > and `engines.vscode` ≥ 1.74. Confirmed on the shipped bytes 2026-08-05. That establishes the
-      > precondition; only the Running Extensions view establishes the behaviour.
+      > `extension/package.json` has **exactly one `activationEvents` entry,
+      > `onWebviewPanel:markdownReview.panel`** (D24 — anything else, or none at all, is a
+      > regression), a `main`, four `contributes.commands` and `engines.vscode` ≥ 1.74. That
+      > establishes the precondition; only the Running Extensions view establishes the behaviour.
       >
-      > **Do not try to automate this by reading `exthost.log`.** An isolated `--extensions-dir` /
-      > `--user-data-dir` instance was tried on 2026-08-05: it installed and launched but wrote no
-      > extension-host log and did not answer `code --status`. Four attempts, no evidence. The
-      > profile route plus a human takes two minutes.
+      > **`exthost.log` answers this, and answers it better than the view** — it is the same
+      > activation data *Show Running Extensions* renders, plus timestamps and reasons, which is how
+      > the 2026-08-06 run could say the extension was still asleep *after* a Markdown file had
+      > already woken the built-in language features. Two things must be right; the 2026-08-05
+      > attempt got both wrong and concluded it was unautomatable:
+      >
+      > - Use **`--profile`**, not `--extensions-dir` / `--user-data-dir`. The isolated-directory
+      >   instance launched but wrote no extension-host log and did not answer `code --status`. Four
+      >   attempts, no evidence.
+      > - Read the **running** instance's session directory. All windows share one main process, so a
+      >   new-profile window appends a `window<N>/` to the existing
+      >   `~/Library/Application Support/Code/logs/<session>/`. A fresh session directory does appear
+      >   at launch and it is empty — that is the trap. Identify the right window by what its
+      >   `exthost/` lacks: a clean profile has no GitLens or Pylance MCP logs.
+      >
+      > A human still runs the command at the end. Nothing here removes that.
 
 > Expect: Markdown Review is **not** in the list. Then run *Markdown Review: Open Review Pane* and
 > look again — now it is, with an activation reason naming the command.
 >
-> The manifest has no `activationEvents` and no `onStartupFinished`; VS Code infers activation from
-> `contributes.commands`. This is the only check that the inference actually held in a packaged
-> build, and a fresh profile is what makes it meaningful — an existing profile may have the
-> extension already activated by a restored webview from a previous session.
+> The manifest declares exactly one `activationEvents` entry and no `onStartupFinished`; VS Code
+> infers the rest from `contributes.commands`, and that one event fires only during an actual panel
+> restore. This is the only check that the inference actually held in a packaged build, and a fresh
+> profile is what makes it meaningful — an existing profile may have the extension already activated
+> by a restored webview from a previous session.
 
 ### C4 — the listing, as VS Code renders it — §12 items 5, 7, 15
 
-- [x] **C4** — **passed 2026-08-05.** In the Extensions view, click Markdown Review to open its detail pane, and read all
-      three tabs.
+- [x] **C4** — **re-run and passed 2026-08-05** on the D24 build, all three tabs including the
+      walkthrough's three steps. The re-run this box was carrying is discharged. **Earlier pass:**
+      the settings comparison is re-done and found a
+      drift (see below); the Changelog tab has a new `[Unreleased]` section above `0.1.0`, and
+      Feature Contributions has gained a keybinding and a walkthrough. Click Markdown Review to open
+      its detail pane and read all three tabs.
 
 > Expect, on **Details**: the first line is the PRD §1 positioning sentence — *any* markdown file,
 > *any* agent. Every image loads; a broken image here is a relative URL that will break identically
@@ -142,14 +178,33 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 > On **Feature Contributions**: four commands, and three settings whose descriptions match Plan 05
 > §5's README table word for word. Open Settings and search `markdownReview` to compare — the README
 > table and the Settings UI drifting apart is a documentation bug that only this comparison catches.
+> It caught one on the 2026-08-05 re-run: `markdownReview.author` read "Name attached to your
+> comments." in the README against "…Defaults to your system username." in the manifest. §5 says the
+> table carries the manifest description *verbatim*, so the README was the side corrected.
+>
+> **Two sections are new since the first pass** (Plan 06): a **Keybinding** row for
+> <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> bound to *Open Review Pane* when the editor
+> language is Markdown, and a **Walkthrough** — "Review markdown with any AI agent", three steps.
+> The walkthrough also appears in the *Get Started* section of the Welcome page; open it once and
+> confirm all three steps render their markdown body, since those three files ship in the `.vsix`
+> and a wrong path here shows as an empty step rather than an error.
 >
 > This tab set is the closest local proxy for the Marketplace listing that exists, which is why it is
 > worth doing carefully before publishing rather than after.
 
 ### C5 — themes on the installed bytes — §12 item 15
 
-- [x] **C5** — **passed 2026-08-05.** With the pane open and at least one comment, one `addressed` card and one resolved
-      card on screen, switch between Dark+, Light+ and a High Contrast theme.
+- [x] **C5** — **re-run and passed 2026-08-05** on the D24 build, with the four things Plan 06 added
+      seen in a real theme for the first time. **Windows forced-colors remains unverified** — it
+      cannot be reached on this platform, and is deliberately not claimed by this tick. **Earlier
+      pass:** the precondition is re-verified — the packaged
+      `media/webview.css` is byte-identical to the repo's, so nothing was stripped — and the three
+      harness presets pass on the new stylesheet. But Plan 06 added a forced-colors block, a
+      `position uncertain` badge, an armed-delete state and an empty-state panel, none of which
+      existed when this box was last ticked. With the pane open and at least one comment, one
+      `addressed` card and one resolved card on screen, switch between Dark+, Light+ and a High
+      Contrast theme. **On Windows, also try forced-colors** — that is the one Plan 06 could not
+      verify anywhere.
 
 > Expect: cards, popover, highlight, status badges and the header bar all stay legible; nothing
 > disappears into its background.
@@ -171,10 +226,14 @@ research session (Plan 05 §10).
       display name "Sabhahith Works". Irreversible — see Plan 05 §2.
 - [ ] `items?itemName=sabhahithworks.markdown-review` returned 404 before publishing.
 - [ ] Azure DevOps PAT scoped **Marketplace: Manage**, "all accessible organizations".
-- [ ] Repo pushed and public, so the README's raw image URLs resolve off-GitHub.
+- [~] Repo pushed and public, so the README's raw image URLs resolve off-GitHub. **Verified
+      2026-08-06:** the repo is public and all three `docs/media/*.jpg` are on `origin/main`, which
+      is the branch the README's raw URLs name — so the images resolve today. What is *not* done is
+      the merge: `main` is still behind `phase-6-production-hardening`. Tagging `v0.1.0` before that
+      lands would tag a commit the shipped bytes did not come from.
 - [ ] Published; the listing renders as C4 predicted.
 - [ ] Clean machine or profile: install from the Marketplace and run the loop once.
-- [ ] `v0.1.0` tagged; issues opened for D19 and E7.
+- [ ] `v0.1.0` tagged; issues opened for D22 and E7.
 
 ---
 

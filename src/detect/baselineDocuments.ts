@@ -16,6 +16,10 @@ import * as vscode from 'vscode';
 import { readTarget } from '../panel/readTarget.js';
 import { renderPlainText } from '../render/plaintext.js';
 import { ReviewStore } from '../store/ReviewStore.js';
+import { CHANGE_DEBOUNCE_MS } from './changeWatcher.js';
+
+/** The extensions the open command accepts; the provider must not deref anything broader (H10). */
+const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
 
 export const BASELINE_SCHEME = 'markdown-review';
 
@@ -73,6 +77,14 @@ export function registerBaselineProvider(
       }
 
       const { side, target } = parsed;
+      // The scheme is an open door to any absolute path a URI can carry (H10). The open command
+      // only ever accepts markdown files, so the provider holds the same line — this is what keeps
+      // `markdown-review:/current/<anything>` from becoming a generic file reader that also mints
+      // a store and a watcher for the path.
+      if (!MARKDOWN_EXTENSIONS.has(path.extname(target.fsPath).toLowerCase())) {
+        output.appendLine(`[baseline] refusing non-markdown target: ${target.fsPath}`);
+        return 'Only markdown files have review baselines.\n';
+      }
       served.add(target.fsPath);
 
       if (side === 'baseline') {
@@ -83,7 +95,9 @@ export function registerBaselineProvider(
         );
       }
 
-      const read = await readTarget(target, { force: true });
+      // No `force` (H10): the 2 MB guard holds here too — a too-large file renders the size notice
+      // below rather than pulling an arbitrarily large string into memory.
+      const read = await readTarget(target);
       if (!read.ok) {
         // Returned as content rather than thrown: the diff editor renders this, where throwing
         // produces an opaque error toast and an empty pane.
@@ -101,14 +115,36 @@ export function registerBaselineProvider(
 
   // Keep the `current` side live while a diff is open; the baseline side only ever changes through
   // `snapshotBaseline`, which means copying a prompt, which is not something to watch for.
+  //
+  // Debounced on the same clock as change detection (H10): undebounced, one keystroke = one
+  // invalidation = one full read + `renderPlainText` — for as long as the target stays in
+  // `served`.
+  const pending = new Set<string>();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const watching = vscode.workspace.onDidChangeTextDocument((event) => {
     if (!served.has(event.document.uri.fsPath)) return;
-    emitter.fire(baselineUri(event.document.uri, 'current'));
+    pending.add(event.document.uri.fsPath);
+    timer ??= setTimeout(() => {
+      timer = undefined;
+      for (const fsPath of pending) emitter.fire(baselineUri(vscode.Uri.file(fsPath), 'current'));
+      pending.clear();
+    }, CHANGE_DEBOUNCE_MS);
+  });
+
+  // Closing the diff closes its `markdown-review:` documents; dropping the target then is what
+  // keeps `served` from growing for the rest of the session and re-rendering on every later
+  // keystroke (H10). Re-opening the diff re-adds it on the next provide.
+  const closing = vscode.workspace.onDidCloseTextDocument((document) => {
+    if (document.uri.scheme !== BASELINE_SCHEME) return;
+    const parsed = parseBaselineUri(document.uri);
+    if (parsed?.side === 'current') served.delete(parsed.target.fsPath);
   });
 
   return {
     dispose(): void {
+      if (timer !== undefined) clearTimeout(timer);
       watching.dispose();
+      closing.dispose();
       registration.dispose();
       emitter.dispose();
     },

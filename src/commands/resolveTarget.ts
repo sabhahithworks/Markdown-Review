@@ -26,16 +26,35 @@ export type TargetResult =
  * Normalizes a command argument into a real `Uri`.
  *
  * `instanceof` covers the menu invocations, which are in-process. A URI handed over by another
- * extension can fail `instanceof` while still being one, so a URI-shaped object is re-parsed into a
+ * extension can fail `instanceof` while still being one, so a URI-shaped object is rebuilt into a
  * genuine `Uri` — downstream needs the real class for `joinPath` and `asWebviewUri`.
+ *
+ * Rebuilt from its own fields rather than from `String(arg)` (H32). A plain object stringifies to
+ * `"[object Object]"`, which `Uri.parse(…, true)` throws on — so the cross-extension case this
+ * branch exists for could never once have succeeded. Only a `Uri` whose prototype survived would
+ * have worked, and that is the `instanceof` case above.
  */
 export function toUri(arg: unknown): vscode.Uri | undefined {
   if (arg instanceof vscode.Uri) return arg;
   if (typeof arg !== 'object' || arg === null) return undefined;
-  if (!('scheme' in arg) || !('fsPath' in arg)) return undefined;
+
+  const candidate = arg as { scheme?: unknown; fsPath?: unknown; path?: unknown };
+  if (typeof candidate.scheme !== 'string') return undefined;
+
+  // `fsPath` is the platform path; `path` is the URI path. Either identifies the file, and a
+  // genuine URI-shaped object carries both.
+  const location =
+    typeof candidate.fsPath === 'string'
+      ? candidate.fsPath
+      : typeof candidate.path === 'string'
+        ? candidate.path
+        : undefined;
+  if (location === undefined || location.length === 0) return undefined;
 
   try {
-    return vscode.Uri.parse(String(arg), true);
+    return candidate.scheme === 'file'
+      ? vscode.Uri.file(location)
+      : vscode.Uri.from({ scheme: candidate.scheme, path: location });
   } catch {
     return undefined;
   }

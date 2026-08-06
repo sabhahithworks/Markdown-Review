@@ -123,8 +123,12 @@ module, two bundles.
 ## 8. Acceptance checklist
 
 Each item records *how* it is verified. The interactive remainder is scripted in
-[03-acceptance-run.md](03-acceptance-run.md) — run that before starting Phase 4 and date this
-section when it passes.
+[03-acceptance-run.md](03-acceptance-run.md).
+
+**Passed in full 2026-08-05.** All eight interactive steps are done: steps 1 and 4 via the gesture
+harness and the reload runs, and steps 2, 3, 5, 6, 7, 8 by hand in one sitting (manual-run step 2,
+`04-acceptance-run.md` A3). Step 4's pane-as-only-editor repeat took three attempts and produced
+D24 — see the reload item below.
 
 - [x] Full create flow works: select → button → popover → card appears, span highlighted
       — `dev/harness/` **Run gestures**: a real `Range` over rendered text, through the real
@@ -142,8 +146,11 @@ section when it passes.
       reload. Verified 2026-08-05 on an installed build against `docs/fixtures/review-run.md` (the
       serializer restores by path, so the fixture does not matter): the pane came back on the same
       tab with its three comments, its scroll position and the filter chip still switched off, so
-      `PanelState` round-tripped through `vscode.setState`. The pane-as-only-editor repeat is
-      outstanding — see [04-acceptance-run.md](04-acceptance-run.md) A2 step 5
+      `PanelState` round-tripped through `vscode.setState`. **The pane-as-only-editor repeat passed
+      2026-08-05** ([04-acceptance-run.md](04-acceptance-run.md) A2 step 5) after failing twice: with
+      no text editor open nothing else activated the extension, so the serializer was never
+      registered and the pane came back as an empty tab. Fixed as D24 — the manifest now declares
+      `onWebviewPanel:markdownReview.panel`. That case is the whole reason the repeat exists
 - [x] Corrupt the sidecar by hand → warning shown, `.bak` created, panel functions with empty state
       — `store.spec.ts`, both the unparseable and the future-version case, asserting the backup is
       byte-identical. The notification *text* is not observable from inside the host

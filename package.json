@@ -26,6 +26,19 @@
     "node": ">=20"
   },
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "onWebviewPanel:markdownReview.panel"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Reviews are stored next to the file on disk, so the target must be a real file."
+    },
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Comments are read from and written to .reviews/ in the workspace. Rendering is read-only and sandboxed, with no network access."
+    }
+  },
   "contributes": {
     "commands": [
       {
@@ -44,6 +57,47 @@
       {
         "command": "markdownReview.clearAll",
         "title": "Markdown Review: Clear All Comments"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "markdownReview.open",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "editorLangId == markdown"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "markdownReview.gettingStarted",
+        "title": "Review markdown with any AI agent",
+        "description": "Comment on a markdown file, hand the comments to any agent, and watch the extension work out which ones were addressed.",
+        "steps": [
+          {
+            "id": "open",
+            "title": "Open the review pane",
+            "description": "Open any Markdown file, then run **Markdown Review: Open Review Pane** — or press the comment icon in the editor title bar.\n[Open Review Pane](command:markdownReview.open)",
+            "media": {
+              "markdown": "media/walkthrough/open.md"
+            }
+          },
+          {
+            "id": "comment",
+            "title": "Select text and comment",
+            "description": "Select any passage in the pane and a **Comment** button appears. Your comments are stored in `.reviews/` next to the file, as readable JSON.",
+            "media": {
+              "markdown": "media/walkthrough/comment.md"
+            }
+          },
+          {
+            "id": "prompt",
+            "title": "Hand the review to an agent",
+            "description": "Press **Copy review prompt**, paste it into any agent, and @-mention the file. The agent edits ordinary prose — the pane works out which comments were addressed.\n[Copy Review Prompt](command:markdownReview.copyPrompt)",
+            "media": {
+              "markdown": "media/walkthrough/prompt.md"
+            }
+          }
+        ]
       }
     ],
     "menus": {

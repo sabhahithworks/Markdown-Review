@@ -123,14 +123,32 @@ describe('R3 — image rewriting', () => {
     expect(html).toContain('src="../../escape.png"');
   });
 
-  it('still consults the resolver for absolute and data URIs, and honours a null', () => {
-    // The renderer does not classify schemes — that is the host resolver's job, where `vscode` is
-    // legal. Here we only prove a `null` verdict is respected verbatim.
-    const html = renderWith(
-      '![a](https://example.com/x.png)\n\n![b](data:image/gif;base64,R0lGOD)',
-      () => null,
-    );
-    expect(html).toContain('src="https://example.com/x.png"');
+  it('neutralizes remote sources without consulting the resolver (H6)', () => {
+    // PRD §2/§13: no network calls, ever. A remote image URL in reviewed content must not become
+    // an outbound request — the element keeps its alt (anchor space is untouched), the URL moves
+    // to `title`, and the class lets the stylesheet render it as a reference.
+    const seen: string[] = [];
+    const html = renderWith('![a](https://example.com/x.png)', (src) => {
+      seen.push(src);
+      return null;
+    });
+    expect(seen).toEqual([]);
+    expect(html).not.toContain('src="https://example.com/x.png"');
+    expect(html).toContain('src=""');
+    expect(html).toContain('title="https://example.com/x.png"');
+    expect(html).toContain('class="mr-remote-image"');
+    expect(html).toContain('alt="a"');
+  });
+
+  it('neutralizes http and protocol-relative sources too (H6)', () => {
+    expect(renderWith('![a](http://example.com/x.png)', () => null)).toContain('src=""');
+    expect(renderWith('![a](//example.com/x.png)', () => null)).toContain('src=""');
+  });
+
+  it('still consults the resolver for data URIs, and honours a null', () => {
+    // The renderer classifies only remote schemes (H6); everything else stays the host resolver's
+    // job, where `vscode` is legal. Here we only prove a `null` verdict is respected verbatim.
+    const html = renderWith('![b](data:image/gif;base64,R0lGOD)', () => null);
     expect(html).toContain('src="data:image/gif;base64,R0lGOD"');
   });
 

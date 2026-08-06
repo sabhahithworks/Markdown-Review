@@ -11,6 +11,7 @@
  */
 
 import * as path from 'node:path';
+import { nanoid } from 'nanoid';
 import * as vscode from 'vscode';
 import type { ReanchorOptions } from '../anchor/reanchor.js';
 import { reanchor } from '../anchor/reanchor.js';
@@ -21,6 +22,7 @@ import {
   parseReviewFile,
   serializeReviewFile,
 } from './reviewFile.js';
+import { registryKey } from './registryKey.js';
 import {
   REVIEWS_DIR,
   backupFileName,
@@ -31,6 +33,17 @@ import {
 
 /** Rapid add/edit bursts coalesce into one write. */
 const WRITE_DEBOUNCE_MS = 250;
+
+/**
+ * How long a store with no panel holding it stays alive before it is flushed and disposed (H28).
+ *
+ * Stores deliberately outlive their panels — closing and reopening a pane should not re-read the
+ * sidecar, and the command layer reaches for a store with no panel open at all. But nothing ever
+ * released one, so a session that touched N markdown files held N `FileSystemWatcher`s and N
+ * `ReviewFile`s (each with up to 256 KB of `baselineText`) until the window closed. A grace period
+ * keeps the reopen cheap without making the leak permanent.
+ */
+const IDLE_DISPOSE_MS = 5 * 60_000;
 
 /** Shown once per machine, not once per file — the point is made the first time (PRD §11). */
 const LOOSE_FILE_WARNING_KEY = 'markdownReview.looseFileWarningShown';
@@ -57,6 +70,21 @@ export class ReviewStore {
   private disposed = false;
 
   /**
+   * Serializes writes and remembers the last outcome (H3, H4). Two write-then-rename sequences
+   * interleaving (a `flush()` racing the debounce-fired write) could rename a half-written temp
+   * over a whole one; chaining them makes that impossible. The chain's settled value is "did the
+   * most recent write land", which is what `flush()` reports.
+   */
+  private writeQueue: Promise<boolean> = Promise.resolve(true);
+
+  /** Non-zero while a write-then-rename is on the wire; `rereadExternal` must not run then (H4). */
+  private writesPending = 0;
+
+  /** Open panels holding this store, and the pending idle-disposal timer when that reaches zero. */
+  private holders = 0;
+  private idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
    * The exact bytes of our most recent write. The sidecar watcher compares against this to tell an
    * external hand-edit from the echo of our own `writeFile`.
    */
@@ -81,7 +109,7 @@ export class ReviewStore {
     target: vscode.Uri,
     output: vscode.OutputChannel,
   ): ReviewStore {
-    const key = target.toString();
+    const key = registryKey(target.toString());
     const existing = ReviewStore.stores.get(key);
     if (existing) return existing;
 
@@ -119,16 +147,32 @@ export class ReviewStore {
     const destination = ReviewStore.for(context, to, output);
     await destination.ensureLoaded();
 
+    // An incoming id colliding with one the destination already holds would produce a sidecar
+    // `isReviewFile` itself rejects — duplicate ids quarantine the whole file on the next load
+    // (H2). The comment is the same remark; only its identity is re-minted.
+    const taken = new Set(destination.getState().comments.map((comment) => comment.id));
+    const incoming = previous.comments.map((comment) => {
+      if (!taken.has(comment.id)) {
+        taken.add(comment.id);
+        return comment;
+      }
+      let id = nanoid(8);
+      while (taken.has(id)) id = nanoid(8);
+      taken.add(id);
+      return { ...comment, id };
+    });
+
     destination.commit({
       ...destination.getState(),
-      comments: [...destination.getState().comments, ...previous.comments],
+      comments: [...destination.getState().comments, ...incoming],
       ...(previous.baselineText === undefined ? {} : { baselineText: previous.baselineText }),
       ...(previous.baselineAt === undefined ? {} : { baselineAt: previous.baselineAt }),
     });
-    await destination.flush();
 
-    if (destination.lastWritten === undefined) {
-      // The new sidecar never reached disk; leave the old one exactly as it was.
+    // Gate on *this* write landing, not on `lastWritten` — which a successful write earlier in the
+    // session leaves populated, turning a failed flush into a false success that then empties the
+    // source (H3).
+    if (!(await destination.flush())) {
       output.appendLine(`[store] relink aborted: could not write ${destination.sidecar.fsPath}`);
       return { ok: false, reason: 'write-failed' };
     }
@@ -144,6 +188,52 @@ export class ReviewStore {
     const stores = [...ReviewStore.stores.values()];
     ReviewStore.stores.clear();
     await Promise.all(stores.map((store) => store.dispose()));
+  }
+
+  /**
+   * Flushes and drops every live store so the next `for()` re-resolves where its sidecar lives
+   * (H29).
+   *
+   * `resolveSidecar` runs once, at construction, from `storageLocation` and the workspace folder
+   * list. Changing either mid-session used to leave existing stores writing to the old location
+   * while newly-opened files went to the new one — a split brain with no message. Comments are
+   * flushed to the *old* sidecar first, so nothing in flight is lost; the new location picks up
+   * from disk on the next read.
+   */
+  static async resettle(reason: string, output: vscode.OutputChannel): Promise<void> {
+    if (ReviewStore.stores.size === 0) return;
+    output.appendLine(`[store] re-resolving sidecar locations after ${reason}`);
+    await ReviewStore.disposeAll();
+  }
+
+  /**
+   * Registers a long-lived holder (a panel), and returns the release (H28).
+   *
+   * Callers that only need a store for the duration of one command do not take a hold: they are
+   * covered by the idle timer, which starts only once a store has been held and released.
+   */
+  acquire(): vscode.Disposable {
+    this.holders += 1;
+    if (this.idleTimer !== undefined) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = undefined;
+    }
+
+    let released = false;
+    return {
+      dispose: (): void => {
+        if (released) return;
+        released = true;
+        this.holders -= 1;
+        if (this.holders > 0 || this.disposed) return;
+        this.idleTimer = setTimeout(() => {
+          this.idleTimer = undefined;
+          if (this.holders > 0 || this.disposed) return;
+          ReviewStore.stores.delete(registryKey(this.target.toString()));
+          void this.dispose();
+        }, IDLE_DISPOSE_MS);
+      },
+    };
   }
 
   getState(): ReviewFile {
@@ -364,17 +454,29 @@ export class ReviewStore {
     }, WRITE_DEBOUNCE_MS);
   }
 
-  /** Writes any pending change now. Called on panel dispose and extension deactivate. */
-  async flush(): Promise<void> {
-    if (this.debounce === undefined) return;
-    clearTimeout(this.debounce);
-    this.debounce = undefined;
-    await this.write();
+  /**
+   * Writes any pending change now. Called on panel dispose and extension deactivate.
+   *
+   * Returns whether the state is safely on disk: the result of the write this call triggered, or —
+   * with nothing pending — the outcome of the most recent one. `relink` is the caller that must not
+   * treat this as advisory (H3).
+   */
+  async flush(): Promise<boolean> {
+    if (this.debounce !== undefined) {
+      clearTimeout(this.debounce);
+      this.debounce = undefined;
+      return this.write();
+    }
+    return this.writeQueue;
   }
 
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.idleTimer !== undefined) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = undefined;
+    }
     await this.flush();
     for (const disposable of this.disposables.splice(0)) disposable.dispose();
     this.emitter.dispose();
@@ -459,11 +561,23 @@ export class ReviewStore {
     }
   }
 
-  private async write(): Promise<void> {
+  /** Queues a write of the current state; resolves to whether it landed (H3, H4). */
+  private write(): Promise<boolean> {
+    const queued = this.writeQueue.then(() => this.performWrite());
+    this.writeQueue = queued;
+    return queued;
+  }
+
+  private async performWrite(): Promise<boolean> {
+    // Serialized at write time, not queue time: if state changed while an earlier write was on the
+    // wire, this write picks up the newest state rather than persisting a stale snapshot.
     const text = serializeReviewFile(this.state);
     const bytes = new TextEncoder().encode(text);
-    const temporary = this.sidecar.with({ path: `${this.sidecar.path}.tmp` });
+    // Unique per process (H5): two windows on one workspace must not race a shared temp name into
+    // each other's rename.
+    const temporary = this.sidecar.with({ path: `${this.sidecar.path}.${String(process.pid)}.tmp` });
 
+    this.writesPending += 1;
     try {
       await vscode.workspace.fs.createDirectory(this.sidecar.with({ path: path.posix.dirname(this.sidecar.path) }));
       // Write-then-rename: a crash mid-write leaves the previous sidecar intact rather than a
@@ -471,11 +585,15 @@ export class ReviewStore {
       await vscode.workspace.fs.writeFile(temporary, bytes);
       await vscode.workspace.fs.rename(temporary, this.sidecar, { overwrite: true });
       this.lastWritten = text;
+      return true;
     } catch (error) {
       this.output.appendLine(`[store] could not write ${this.sidecar.fsPath}: ${String(error)}`);
       void vscode.window.showWarningMessage(
         `Markdown Review could not save comments for ${this.state.targetPath}. They are still here in this window, but will be lost if it closes.`,
       );
+      return false;
+    } finally {
+      this.writesPending -= 1;
     }
   }
 
@@ -499,8 +617,11 @@ export class ReviewStore {
 
   private async rereadExternal(): Promise<void> {
     if (this.disposed) return;
-    // A write of ours is still pending; the file on disk is about to be overwritten anyway.
-    if (this.debounce !== undefined) return;
+    // A write of ours is still pending — either sitting in the debounce or already on the wire
+    // (H4). Reading now would see pre-write bytes, fail the `lastWritten` echo check, and adopt
+    // them over the state we are about to persist. The file on disk is about to be overwritten
+    // anyway; a genuinely external edit racing our write is last-writer-wins either way.
+    if (this.debounce !== undefined || this.writesPending > 0) return;
 
     let raw: string;
     try {

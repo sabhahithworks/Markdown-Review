@@ -17,7 +17,7 @@
  */
 
 import DiffMatchPatch from 'diff-match-patch';
-import { clamp, safeSlice, snapEnd, snapStart } from './text.js';
+import { clamp, safeSlice, snapEnd, snapStart, snapToWordEnd } from './text.js';
 
 /** diff-match-patch's bitap pattern limit. Exactly 32 is accepted; 33 throws. */
 export const MATCH_MAX_BITS = 32;
@@ -251,7 +251,15 @@ function verify(
   const end = windowEnd - trailing;
   if (end <= start) return null;
 
-  return { start, end, score: dmp.diff_levenshtein(trimmed) / exact.length };
+  // The window ends at `candidate + exact.length + pad`, so when the anchored text *grew* the
+  // span stops short by the growth — mid-word, which the addressed card then displays as
+  // corrupted text (H8, §10 D18/D21). The score is computed from the alignment above and is
+  // deliberately untouched; only where the span ends is repaired, bounded to one word.
+  return {
+    start,
+    end: snapToWordEnd(text, end, MATCH_MAX_BITS),
+    score: dmp.diff_levenshtein(trimmed) / exact.length,
+  };
 }
 
 /** Lower score wins; ties break to the candidate nearer `loc`, then to the earlier offset. */
