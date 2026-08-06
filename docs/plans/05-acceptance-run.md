@@ -63,16 +63,24 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ### C1 — install and identity — §12 items 3, 4
 
-- [~] **C1** — passed 2026-08-05 on the 0.1.0 build; **re-run needed after Plan 06**, which changed
-      the manifest. The data half is re-verified on the new shipped bytes: `displayName` "Markdown
-      Review", `publisher` `SabhahithWorks`, the one-line description, and a 128×128 RGBA
-      `media/icon.png`. The icon is unchanged by Plan 06, so its legibility judgement carries over —
-      but the list entry itself has not been looked at since. Open the Extensions view and check it.
+- [x] **C1** — **re-run and passed 2026-08-06**, in a real Extensions list among competing entries.
+      Data half on the shipped bytes: `displayName` "Markdown Review", `publisher` `SabhahithWorks`,
+      the one-line description, and a 128×128 RGBA `media/icon.png`.
+      **Two findings, both recorded rather than waved through:**
+      **(a) the light-chrome risk does not apply here** — the icon's alpha is only its rounded
+      corners, over a solid dark navy square, so it renders identically on dark and light. That is
+      mechanical, not a judgement: corner pixels are alpha 0, the centre is opaque `#f3f4f6`.
+      **(b) At 16 px it reads as one bubble plus an orange accent, not two bubbles.** The white
+      bubble keeps its tail and both text lines; the orange one flattens to a solid square and loses
+      its tail. Accepted — the silhouette is distinctive and the navy/white/orange signature is
+      identifiable at list size — but the expectation below overstates what survives.
+      **The publisher line moved out of this box** to the publish-day checks: "Sabhahith Works" is a
+      property of the Marketplace publisher account, and a locally installed extension can only ever
+      show the id.
 
 > Expect: the 128×128 icon renders in the list **at 16 px and still reads as two speech bubbles** —
 > this is the size the icon actually gets seen at, and the one a 128 px preview flatters. The title
-> is "Markdown Review", the publisher line reads "Sabhahith Works", and the description is the
-> manifest's one-liner.
+> is "Markdown Review" and the description is the manifest's one-liner.
 >
 > Then switch to a light theme and look at the icon again. The Marketplace renders it on both dark
 > and light chrome, and an icon with no background of its own disappears on one of them (Plan 05 §4).
@@ -222,18 +230,27 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 Not part of 0.1.0's definition of done. Recorded here so publish day is a checklist rather than a
 research session (Plan 05 §10).
 
-- [ ] Publisher `SabhahithWorks` claimed at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage),
-      display name "Sabhahith Works". Irreversible — see Plan 05 §2.
-- [ ] `items?itemName=SabhahithWorks.markdown-review` returned 404 before publishing.
-- [ ] Azure DevOps PAT scoped **Marketplace: Manage**, "all accessible organizations".
-- [~] Repo pushed and public, so the README's raw image URLs resolve off-GitHub. **Verified
-      2026-08-06:** the repo is public and all three `docs/media/*.jpg` are on `origin/main`, which
-      is the branch the README's raw URLs name — so the images resolve today. What is *not* done is
-      the merge: `main` is still behind `phase-6-production-hardening`. Tagging `v0.1.0` before that
-      lands would tag a commit the shipped bytes did not come from.
+- [x] Publisher claimed 2026-08-06 at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage)
+      as **`SabhahithWorks`** — note the capitals, which Plan 05 §2 wrongly said were impossible —
+      display name "Sabhahith Works". Irreversible. The manifest was matched to the claim exactly and
+      the archive rebuilt, though resolution proved case-insensitive either way.
+- [x] `items?itemName=SabhahithWorks.markdown-review` returned 404 before publishing (checked
+      2026-08-06, alongside the publisher URL, which 404'd until the claim went through).
+- [~] Azure DevOps PAT scoped **Marketplace: Manage**, "all accessible organizations". **Not needed
+      for the first release** — the web UI upload at `manage` authenticates with the Microsoft
+      account directly. Required only for `vsce publish` from a terminal, so this box belongs to
+      0.1.1 rather than 0.1.0.
+- [x] Repo pushed and public, so the README's raw image URLs resolve off-GitHub. **Verified
+      2026-08-06:** public, all three `docs/media/*.jpg` on `origin/main` — the branch the raw URLs
+      name — and Phase 6 plus the release prep are merged, so `main` carries the source the shipped
+      bytes came from and `v0.1.0` can be tagged against it.
 - [ ] Published; the listing renders as C4 predicted.
+- [ ] **The publisher line reads "Sabhahith Works", not the id.** Moved here from C1: the display
+      name lives on the Marketplace publisher account, so a locally installed `.vsix` can only show
+      `SabhahithWorks` and C1 could never have checked this.
 - [ ] Clean machine or profile: install from the Marketplace and run the loop once.
-- [ ] `v0.1.0` tagged; issues opened for D22 and E7.
+- [ ] `v0.1.0` tagged; issues opened for D22, E7, and B3c — the rewrite banner's **Dismiss** button,
+      which step 5's skip leaves with no coverage of any kind.
 
 ---
 
