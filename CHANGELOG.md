@@ -7,9 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-A full audit of the codebase before first publish, and the hardening it called for. Nothing here
-changes what the extension is for; it changes how much of it you can reach, how little it can lose,
-and how honestly it reports itself.
+## [0.1.0] — 2026-08-06
+
+First release.
+
+Markdown Review renders any Markdown file in a pane where you select passages and leave comments, the
+way you would in Google Docs. When you are done, it writes a prompt you paste into whatever AI agent
+you already use. The agent edits ordinary prose — it is never asked to follow a schema, write
+structured data, or know this extension exists — and the pane works out for itself which of your
+comments were addressed, showing you the before and after so you can accept or reopen each one.
+
+Comments live in readable JSON in `.reviews/` beside the file, so they survive edits, rename, and a
+window reload, and they can be committed and shared. Nothing is deleted automatically. There is no
+telemetry and no network access of any kind.
+
+Below is the full history of how it was built, including the defects found and fixed along the way.
+
+It closes with a full audit of the codebase and the hardening that called for — which changes not
+what the extension is for, but how much of it you can reach, how little it can lose, and how honestly
+it reports itself.
 
 ### Added
 
