@@ -23,7 +23,7 @@ const COMMANDS = [
 
 function extension(): vscode.Extension<unknown> {
   // Phase 5 declared the publisher, so the id is stable now.
-  const found = vscode.extensions.getExtension('SabhahithWorks.markdown-review');
+  const found = vscode.extensions.getExtension('SabhahithWorks.markdown-review-pane');
   assert.ok(found, 'the extension under development was not loaded by the test host');
   return found;
 }

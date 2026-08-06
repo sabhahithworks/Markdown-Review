@@ -18,7 +18,7 @@ npm run check                      # typecheck + lint + unit tests
 npm run test:integration           # host-side assertions in a real VS Code
 npm run build                      # both bundles + the CSS guards + check-bundles.mjs
 npx --yes @vscode/vsce ls          # expect the ten files in Plan 05 §7 — empty output is a FAILURE
-npx --yes @vscode/vsce package     # → markdown-review-0.1.0.vsix; record the size in §12
+npx --yes @vscode/vsce package     # → markdown-review-pane-0.1.0.vsix; record the size in §12
 ```
 
 **Uninstall the local build first.** `~/.mdcm-local-build/reinstall.sh` installs
@@ -28,7 +28,7 @@ answering.
 
 ```sh
 code --uninstall-extension local-dev.markdown-review
-code --install-extension markdown-review-0.1.0.vsix --force
+code --install-extension markdown-review-pane-0.1.0.vsix --force
 ```
 
 Then *Developer: Reload Window*, and confirm in the Extensions view that exactly one **Markdown
@@ -234,7 +234,7 @@ research session (Plan 05 §10).
       as **`SabhahithWorks`** — note the capitals, which Plan 05 §2 wrongly said were impossible —
       display name "Sabhahith Works". Irreversible. The manifest was matched to the claim exactly and
       the archive rebuilt, though resolution proved case-insensitive either way.
-- [x] `items?itemName=SabhahithWorks.markdown-review` returned 404 before publishing (checked
+- [x] `items?itemName=SabhahithWorks.markdown-review-pane` returned 404 before publishing (checked
       2026-08-06, alongside the publisher URL, which 404'd until the claim went through).
 - [~] Azure DevOps PAT scoped **Marketplace: Manage**, "all accessible organizations". **Not needed
       for the first release** — the web UI upload at `manage` authenticates with the Microsoft
@@ -257,8 +257,8 @@ research session (Plan 05 §10).
 ## Cleanup
 
 ```sh
-code --uninstall-extension SabhahithWorks.markdown-review
-code --profile mdcm-fresh --uninstall-extension SabhahithWorks.markdown-review   # C3's profile
+code --uninstall-extension SabhahithWorks.markdown-review-pane
+code --profile mdcm-fresh --uninstall-extension SabhahithWorks.markdown-review-pane   # C3's profile
 ```
 
 Then the review C2 created, in your real project. **Name the file — do not `rm -rf .reviews/`**: that

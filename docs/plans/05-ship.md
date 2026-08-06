@@ -47,12 +47,18 @@ ratings and URLs stranded on the old one. `displayName` can change whenever you 
 | Field | Rules | Where it appears |
 |---|---|---|
 | `publisher` | **Globally unique.** Letters, digits and hyphens, starting alphanumeric — vsce's `nameRegex` is `/^[a-z0-9][a-z0-9\-]*$/i`, so **no spaces**. Claimed once at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage) and never renamed | Extension id, listing URL, "More info" panel |
-| `name` | Unique **only within the publisher**, so `markdown-review` being taken elsewhere does not block us. Lowercase, no spaces | Extension id, listing URL, `code --install-extension <id>` |
+| `name` | **Globally unique across the whole Marketplace** — §13 E9. This table originally said "unique only within the publisher", which is wrong and cost a rejected upload. Lowercase, no spaces | Extension id, listing URL, `code --install-extension <id>` |
 | `displayName` | Free text, under ~40 characters so it is not truncated in the Extensions view. Freely changeable | Marketplace title, Extensions view, search results |
 
 ### Name — decided, and already applied
 
-**`markdown-review` / "Markdown Review".** `displayName` carries the discovery weight — Marketplace
+**`markdown-review-pane` / "Markdown Review".** The `name` half was `markdown-review` until
+2026-08-06, when the Marketplace rejected it as already taken (§13 E9) — `-pane` was appended after
+the reasoning below had already been done, and none of that reasoning is disturbed by it: it is all
+about `displayName`, which did not change. The four constraints are a display-name test, not a
+`name` test, and the only constraint on `name` turns out to be one this section got wrong.
+
+`displayName` carries the discovery weight — Marketplace
 search ranks over display name, description and `keywords` — so it has to contain the words someone
 would actually type, here *markdown* plus *review* or *comment*. Four constraints, in order:
 
@@ -78,7 +84,7 @@ the title.
 | Publisher **id** | `SabhahithWorks` |
 | Publisher **display name** | `Sabhahith Works` |
 | `author` | `Nagaraja Sabhahith` |
-| Extension id | `SabhahithWorks.markdown-review` |
+| Extension id | `SabhahithWorks.markdown-review-pane` |
 | `repository` | `https://github.com/sabhahithworks/Markdown-Review` |
 | Raw asset base | `https://raw.githubusercontent.com/sabhahithworks/Markdown-Review/main/` |
 
@@ -99,7 +105,7 @@ rejects a taken id immediately, the id is permanent, and unclaimed ids are first
 ordering was not followed** — the id was in the manifest and in a built archive first, so a taken id
 would have meant a rebuild rather than a form retry. It was free; the risk was taken unknowingly.
 Then confirm
-`https://marketplace.visualstudio.com/items?itemName=SabhahithWorks.markdown-review` returns 404.
+`https://marketplace.visualstudio.com/items?itemName=SabhahithWorks.markdown-review-pane` returns 404.
 
 **Done 2026-08-05:** remote added and `main` pushed; the repo is public, so §5's absolute image URLs
 will resolve as soon as there are any images to resolve.
@@ -403,8 +409,8 @@ npm run check                      # typecheck + lint + unit tests
 npm run test:integration           # host-side assertions in a real VS Code
 npm run build                      # both bundles + the CSS guards + check-bundles.mjs
 npx --yes @vscode/vsce ls          # read the list against §7 — empty output is a FAILURE, not "nothing to report"
-npx --yes @vscode/vsce package     # → markdown-review-0.1.0.vsix, record the size
-code --install-extension markdown-review-0.1.0.vsix --force
+npx --yes @vscode/vsce package     # → markdown-review-pane-0.1.0.vsix, record the size
+code --install-extension markdown-review-pane-0.1.0.vsix --force
 ```
 
 Then `05-acceptance-run.md`, against those bytes and not the dev host.
@@ -455,7 +461,7 @@ So the phase has delivered what it set out to: a verified package. It is not *fi
 the publisher id is still unclaimed and that gates everything downstream of it.
 
 - [x] `name` / `displayName` decided: `markdown-review` / "Markdown Review" (§2), already applied
-- [x] Publisher id `SabhahithWorks` claimed 2026-08-06; `items?itemName=SabhahithWorks.markdown-review` returns
+- [x] Publisher id `SabhahithWorks` claimed 2026-08-06; `items?itemName=SabhahithWorks.markdown-review-pane` returns
       404 beforehand
       — **manual**, and the only irreversible step in the phase (PRD §12 item 2)
 - [x] `publisher`, `author`, `repository`, `icon` applied and `private: true` removed **in one
@@ -634,3 +640,31 @@ behaviour. The §12 box stays unticked with this note rather than blank, and rat
 strength of the substitute. If a Windows machine becomes available before publish, run
 `05-acceptance-run.md` Part B on it; if it does not, this is a known and stated risk of 0.1.0, and
 the first Windows bug report is expected to be about a path.
+
+**E9 — extension `name` is globally unique, not per-publisher, and §2 says the opposite.** §2's table
+states `name` is *"unique **only within the publisher**, so `markdown-review` being taken elsewhere
+does not block us."* That is wrong, and it was load-bearing: it is the sentence that made
+`markdown-review` look safe to bake into the manifest, the built archive, the integration suite and
+every acceptance record. The Marketplace rejected the upload on 2026-08-06 —
+
+> The extension 'markdown-review' already exists in the Marketplace. Please use a different 'name' in
+> the package.json file
+
+— because `JinqiShen.markdown-review` was published on 2026-03-13 under the display name "Markdown
+Reader with Copilot". **Renamed to `markdown-review-pane`**, extension id
+`SabhahithWorks.markdown-review-pane`. `displayName` "Markdown Review" is unaffected: display names
+carry no uniqueness constraint, and §2 is right that they carry the search weight.
+
+Cost: nothing, because it was caught before the first publish. After one, the same fix would have
+stranded the listing, its installs and its URL. This is the second identifier this phase assumed and
+had corrected by the Marketplace — see §2 on the publisher capitals — and the pattern is worth
+naming: **the manifest's public identifiers cannot be verified from inside this repo.** Both were
+asserted in a planning document, propagated into built artifacts, and only tested against the
+authority at upload time.
+
+**Do not try to pre-check a name from here.** It was attempted and produced a confidently wrong
+answer: the gallery's text search (`filterType: 10`) matches display name and description, not the
+`name` field, so a query for "markdown-review" returned twenty extensions and missed the exact
+collision sitting in front of it. `items?itemName=<publisher>.<name>` is no better — a name reserved
+by an unpublished or removed extension returns 404 exactly like a free one. The upload form is the
+only authority. Pick a distinctive name, expect a possible bounce, and keep a second choice ready.
