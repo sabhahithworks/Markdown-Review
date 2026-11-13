@@ -46,6 +46,20 @@ describe('buildPrompt — the PRD §7 golden example', () => {
     expect(count).toBe(3);
   });
 
+  it('order lists ids in prompt order', () => {
+    const doc = docOf(AUTH_MARKDOWN);
+    const review = makeReviewFile(
+      [
+        makeComment(anchorOn(doc, AUTH_ANCHORS.heading), { id: 'h' }),
+        makeComment(anchorOn(doc, AUTH_ANCHORS.parallel), { id: 'p' }),
+        makeComment(anchorOn(doc, AUTH_ANCHORS.retries), { id: 'r' }),
+      ],
+      { targetPath: AUTH_TARGET_PATH },
+    );
+
+    expect(buildPrompt(review, doc).order).toEqual(['r', 'p', 'h']);
+  });
+
   it('numbers in document order however the comments were added', () => {
     const doc = docOf(AUTH_MARKDOWN);
     // Reverse of document order, which is what adding comments bottom-up produces.
@@ -98,7 +112,7 @@ describe('buildPrompt — which comments are included', () => {
       makeComment(anchorOn(doc, AUTH_ANCHORS.retries), { status: 'resolved' }),
     ]);
 
-    expect(buildPrompt(review, doc)).toEqual({ prompt: '', count: 0 });
+    expect(buildPrompt(review, doc)).toEqual({ prompt: '', count: 0, order: [] });
   });
 
   it('quotes anchor.exact and sorts last when a comment is open but unlocatable', () => {

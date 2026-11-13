@@ -56,6 +56,13 @@ describe('parseReviewFile — happy path', () => {
     expect(parseReviewFile(serializeReviewFile(withResolution)).ok).toBe(true);
   });
 
+  it('accepts a sidecar with promptOrder', () => {
+    const withOrder = review({ promptOrder: ['b', 'a'] });
+    const result = parseReviewFile(serializeReviewFile(withOrder));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.review.promptOrder).toEqual(['b', 'a']);
+  });
+
   it('accepts an empty comment list', () => {
     expect(parseReviewFile(serializeReviewFile(emptyReviewFile('a.md'))).ok).toBe(true);
   });
@@ -109,6 +116,15 @@ describe('parseReviewFile — rejection reasons', () => {
     const result = parseReviewFile(raw);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('invalid-shape');
+  });
+
+  it('rejects a malformed promptOrder', () => {
+    for (const promptOrder of [[1], 'a']) {
+      const raw = JSON.stringify({ version: 1, targetPath: 'a.md', comments: [], promptOrder });
+      const result = parseReviewFile(raw);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe('invalid-shape');
+    }
   });
 
   it('rejects duplicate comment ids', () => {

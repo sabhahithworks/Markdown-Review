@@ -24,6 +24,8 @@ export interface PromptResult {
   /** Empty when `count` is 0 — the command layer says "no open comments" rather than copying this. */
   prompt: string;
   count: number;
+  /** Comment ids in prompt order; number = index + 1. Empty when `count` is 0. */
+  order: string[];
 }
 
 export interface BuildPromptOptions {
@@ -49,7 +51,7 @@ export function buildPrompt(
   // text that is no longer in the document, sending it hunting for something that cannot be found;
   // `resolved` is terminal (PRD §4).
   const open = review.comments.filter((comment) => comment.status === 'open');
-  if (open.length === 0) return { prompt: '', count: 0 };
+  if (open.length === 0) return { prompt: '', count: 0, order: [] };
 
   const locate = options.locate ?? createLocator(doc);
   const entries: Entry[] = open.map((comment) => ({ comment, found: locate(comment.anchor) }));
@@ -68,7 +70,11 @@ export function buildPrompt(
 
   // Every part already ends in a newline, so joining with one more produces the blank separator
   // lines PRD §7 shows — and leaves exactly one trailing newline at the end.
-  return { prompt: [header, ...items].join('\n'), count: entries.length };
+  return {
+    prompt: [header, ...items].join('\n'),
+    count: entries.length,
+    order: entries.map((entry) => entry.comment.id),
+  };
 }
 
 /**

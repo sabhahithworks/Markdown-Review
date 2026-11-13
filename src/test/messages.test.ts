@@ -5,7 +5,8 @@
 
 import { describe, expect, it } from 'vitest';
 import type { PanelState, WebviewMessage } from '../panel/messages.js';
-import { isPanelState, isWebviewMessage } from '../panel/messages.js';
+import { isPanelState, isWebviewMessage, toReviewSummary } from '../panel/messages.js';
+import { emptyReviewFile } from '../store/reviewFile.js';
 
 describe('isWebviewMessage', () => {
   const valid: WebviewMessage[] = [
@@ -114,6 +115,25 @@ describe('isWebviewMessage', () => {
   it('ignores extra properties rather than rejecting them', () => {
     // Forward compatibility: a newer webview bundle may send fields this host does not know about.
     expect(isWebviewMessage({ type: 'ready', future: 'field' })).toBe(true);
+  });
+});
+
+describe('toReviewSummary', () => {
+  it('summary carries promptOrder and omits baselineText', () => {
+    const review = {
+      ...emptyReviewFile('a.md'),
+      baselineText: 'secret',
+      promptOrder: ['x', 'y'],
+    };
+    const summary = toReviewSummary(review);
+    expect(summary).toEqual({
+      version: 1,
+      targetPath: 'a.md',
+      comments: [],
+      baselineAt: undefined,
+      promptOrder: ['x', 'y'],
+    });
+    expect('baselineText' in summary).toBe(false);
   });
 });
 

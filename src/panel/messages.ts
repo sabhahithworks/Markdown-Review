@@ -43,6 +43,7 @@ export function toReviewSummary(review: ReviewFile): ReviewSummary {
     targetPath: review.targetPath,
     comments: review.comments,
     baselineAt: review.baselineAt,
+    ...(review.promptOrder ? { promptOrder: [...review.promptOrder] } : {}),
   };
 }
 

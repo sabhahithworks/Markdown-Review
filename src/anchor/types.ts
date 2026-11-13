@@ -22,6 +22,8 @@ export interface ReviewFile {
   baselineText?: string;
   /** ISO timestamp */
   baselineAt?: string;
+  /** Ids of the comments in the last copied prompt, in prompt order; a comment's number is its index + 1. */
+  promptOrder?: string[];
 }
 
 export interface Comment {
