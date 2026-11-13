@@ -599,7 +599,7 @@ coverage-hash: 9a4a97af
 | V1 | app | N3 | counts helper, indicator text | done | tag | countByStatus moved to src/anchor/counts.ts; statusBar/badge text+tooltip in notices.ts; 541 tests pass |
 | V2 | app | V1 | index, status bar, badges | done | tag | ReviewIndex (scan+watcher+onDidChangeAny), status bar item, Explorer badge; 541 + 65 integration pass |
 | V3 | app | V2 | activation event | done | tag | activationEvents adds workspaceContains:.reviews/*.json; laws/CLAUDE/PRD amended; 541 + 65 integration pass |
-| CV1 | app | V3 | changed blocks host-side | todo | | |
+| CV1 | app | V3 | changed blocks host-side | done | tag | Tests 25 passed (25); Tests 549 passed (549) |
 | CV2 | app | CV1 | change marks (overlay bars) | todo | | |
 | CV3 | app | CV2 | header "Show changes" control | todo | | |
 | CV4 | app | CV3 | harness checks | todo | | |

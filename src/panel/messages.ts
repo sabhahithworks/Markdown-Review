@@ -9,14 +9,22 @@
  * `PanelState`. They add cases; they do not restructure.
  */
 
-import type { CommentStatus, Located, ReviewFile } from '../anchor/types.js';
+import type { ChangeState, CommentStatus, Located, ReviewFile } from '../anchor/types.js';
 
 /**
  * Re-exported so `media/src` imports only from this module (plans README: webview code never
  * reaches into `src/` except for the message contract). `anchor/types.ts` is types and constants
  * with no node, vscode or DOM dependency, so it bundles into the webview for free.
  */
-export type { Anchor, Comment, CommentStatus, Located, ReviewFile } from '../anchor/types.js';
+export type {
+  Anchor,
+  ChangeSpan,
+  ChangeState,
+  Comment,
+  CommentStatus,
+  Located,
+  ReviewFile,
+} from '../anchor/types.js';
 export { MAX_ANCHOR_LENGTH, MIN_ANCHOR_LENGTH, UNCERTAIN_BELOW } from '../anchor/types.js';
 /** PRD §7's quote truncation. Re-exported because addressed cards quote text webview-side too. */
 export { MAX_QUOTE_LENGTH, truncateQuote } from '../anchor/text.js';
@@ -79,12 +87,17 @@ export type HostMessage =
    * the agent rewrote, say. It is a weaker claim than `addressed` on purpose and is never a status:
    * nothing is inferred, nothing is persisted, and the user confirms with "Looks good". Sent as a
    * sparse array because the common case is empty and this message goes out on every state change.
+   *
+   * `changes` is the change view (D28): which whole blocks differ from the baseline, or why that
+   * cannot be said. Only block-aligned spans cross — the baseline text never does — and it is not
+   * gated on `autoDetectResolution` (D29), because it is a plain diff rather than an inference.
    */
   | {
       type: 'reviewState';
       review: ReviewSummary;
       located: Record<string, Located | null>;
       sectionChanged: string[];
+      changes: ChangeState;
     }
   /**
    * A single re-anchor pass lost every comment that was previously located, and a baseline exists

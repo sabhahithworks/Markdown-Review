@@ -107,6 +107,32 @@ export interface Located {
   confidence: number;
 }
 
+/**
+ * A run of whole blocks, in anchor space, that differs from the review baseline (D28).
+ *
+ * Always block-aligned — `start` is a block's `start`, `end` a block's `end` — and adjacent changed
+ * blocks arrive merged into one span, joiners included. Computed host-side from `doc.blocks`, so the
+ * webview only intersects these with `data-ap-start`/`data-ap-end` and never derives a boundary.
+ */
+export interface ChangeSpan {
+  start: number;
+  /** exclusive */
+  end: number;
+}
+
+/**
+ * What the change view can say about the document since the prompt was copied (D28).
+ *
+ * `no-baseline` and `too-large` are "no answer", not "no changes": only `unchanged` is a claim that
+ * nothing moved. `changed` carries the spans to mark, which may be empty when every block that
+ * changed has since been removed.
+ */
+export type ChangeState =
+  | { state: 'no-baseline' }
+  | { state: 'unchanged' }
+  | { state: 'changed'; blocks: ChangeSpan[] }
+  | { state: 'too-large' };
+
 export interface ReanchorResult {
   reviewFile: ReviewFile;
   /**

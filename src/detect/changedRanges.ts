@@ -17,6 +17,7 @@
  */
 
 import DiffMatchPatch from 'diff-match-patch';
+import type { ChangeState, PlainTextDoc } from '../anchor/types.js';
 import type { TextRange } from './scope.js';
 
 /**
@@ -99,6 +100,80 @@ export function touches(ranges: readonly TextRange[] | null, scope: TextRange): 
       ? range.start >= scope.start - 1 && range.start <= scope.end + 1
       : range.start < scope.end && range.end > scope.start,
   );
+}
+
+/**
+ * The whole blocks of `doc` that a changed range touches, with adjacent marked blocks merged into
+ * one span (D28). Spans come from `doc.blocks` and nothing else (L-block-offsets-single-source), so
+ * the webview can intersect them with `data-ap-start`/`data-ap-end` without an opinion of its own.
+ *
+ * "Touches" is {@link touches}, unchanged: a zero-width deletion reaches one joiner either side, so a
+ * deleted paragraph marks both of its surviving neighbours. Over-marking is the safe direction here
+ * for the same reason it is in D17.
+ *
+ * One sweep over ranges ascending by start, with a block cursor that only moves forward: blocks that
+ * end before `range.start - 1` can be touched by neither this range nor any later one. Each range
+ * then visits only the blocks it reaches plus at most one either side, so the cost is linear in
+ * blocks + ranges + marks (L-reanchor-perf).
+ */
+export function changedBlockRanges(doc: PlainTextDoc, ranges: readonly TextRange[]): TextRange[] {
+  const { blocks } = doc;
+  if (ranges.length === 0 || blocks.length === 0) return [];
+
+  // `changedRanges` already returns them ascending; the copy keeps this correct for any caller.
+  const sorted = [...ranges].sort((a, b) => a.start - b.start);
+  const marked = new Uint8Array(blocks.length);
+  let cursor = 0;
+
+  for (const range of sorted) {
+    for (let block = blocks[cursor]; block && block.end < range.start - 1; block = blocks[cursor]) {
+      cursor++;
+    }
+
+    // The furthest a block may start and still be reached: one joiner past a zero-width mark,
+    // strictly before the end of an insertion.
+    const reach = range.start === range.end ? range.start + 1 : range.end - 1;
+    for (let i = cursor; i < blocks.length; i++) {
+      const block = blocks[i];
+      if (!block || block.start > reach) break;
+      if (!marked[i] && touches([range], block)) marked[i] = 1;
+    }
+  }
+
+  const spans: TextRange[] = [];
+  blocks.forEach((block, i) => {
+    if (!marked[i]) return;
+    const last = spans[spans.length - 1];
+    // Adjacent in block order, not in offsets: the joiner between them belongs to the merged span.
+    if (last && i > 0 && marked[i - 1]) last.end = block.end;
+    else spans.push({ start: block.start, end: block.end });
+  });
+  return spans;
+}
+
+/**
+ * The change view's answer for one post (D28): a pure decision over the baseline, the current
+ * document and the diff `changedRanges` produced for them.
+ *
+ * Only `unchanged` reassures. A `null` diff that survives the earlier checks — `changedRanges`
+ * refusing to answer for a reason this function did not foresee — is reported as `too-large`, the
+ * "no answer" state, never as "no changes".
+ *
+ * An empty baseline counts as no baseline, as it does for `sectionChanged`: `changedRanges` cannot
+ * diff against one, so the alternative would be a misleading `too-large`.
+ */
+export function changeStateOf(
+  baseline: string | undefined,
+  doc: PlainTextDoc,
+  ranges: readonly TextRange[] | null,
+): ChangeState {
+  if (!baseline) return { state: 'no-baseline' };
+  if (baseline === doc.text) return { state: 'unchanged' };
+  if (baseline.length > MAX_DIFF_CHARS || doc.text.length > MAX_DIFF_CHARS) {
+    return { state: 'too-large' };
+  }
+  if (!ranges) return { state: 'too-large' };
+  return { state: 'changed', blocks: changedBlockRanges(doc, ranges) };
 }
 
 /** Coalesces overlapping and abutting ranges. Input is already ascending by construction. */
