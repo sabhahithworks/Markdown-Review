@@ -48,20 +48,23 @@ describe('activation', () => {
     assert.equal(extension().isActive, false, 'the extension activated without being asked');
   });
 
-  it('declares exactly the one activation event a panel restore needs', () => {
+  it('declares exactly the panel-restore and reviews-exist activation events', () => {
     // D24. This used to assert `activationEvents` was absent entirely, which is what left a
     // reloaded review pane blank: inference from `contributes.commands` covers the entry points the
     // user initiates, and a panel restore is initiated by VS Code. The serializer is registered at
     // runtime, so only this declaration tells VS Code to wake us for one.
     //
+    // product-improvements D3 adds `workspaceContains:.reviews/*.json`, so a workspace that already
+    // holds reviews builds its status bar item and Explorer badges without a pane open.
+    //
     // Asserted as an exact list rather than a `.includes`, because the constraint is two-sided:
-    // the event must be there, and nothing broader — `onStartupFinished` or `onLanguage:markdown`
+    // the events must be there, and nothing broader — `onStartupFinished` or `onLanguage:markdown`
     // would load the extension for every window or every Markdown file and pass a looser check.
     const events: unknown = extension().packageJSON.activationEvents;
     assert.deepEqual(
       events,
-      ['onWebviewPanel:markdownReview.panel'],
-      'activationEvents must be exactly the panel-restore event (D24)',
+      ['onWebviewPanel:markdownReview.panel', 'workspaceContains:.reviews/*.json'],
+      'activationEvents must be exactly the panel-restore and reviews-exist events (D24, D3)',
     );
 
     // The dormancy assertion above already proves it stays lazy *with* this event declared: both

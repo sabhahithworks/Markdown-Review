@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `On: "the token" (under "## Refresh", line 42)`. Quotes that appear once are unchanged.
 - Each card from the last copied prompt shows its item number, for example `#3`, so a reply that
   mentions item 3 maps to a card.
+- A status bar item shows the active Markdown file's review counts, for example
+  `3 open · 2 to confirm`, and opens the review pane when clicked. Reviewed files get an Explorer
+  badge with the number of comments needing action. Both show as soon as a workspace that holds
+  reviews is opened, with no pane open.
 
 ### Changed
 

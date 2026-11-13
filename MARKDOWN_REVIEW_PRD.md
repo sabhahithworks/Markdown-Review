@@ -452,9 +452,18 @@ Rules:
 }
 ```
 
-Note: modern VS Code infers activation from `contributes.commands`, so an explicit
-`activationEvents` array is unnecessary. Do **not** use `onStartupFinished` — activation must be
-lazy.
+Note: modern VS Code infers activation from `contributes.commands`, which covers every entry point
+the user initiates. Activation must stay lazy, so the manifest declares exactly these two explicit
+`activationEvents`, and no others:
+
+- `onWebviewPanel:markdownReview.panel`, so a review pane restored after a window reload wakes the
+  extension (Plan 04 §10 D24).
+- `workspaceContains:.reviews/*.json`, so a workspace that already holds reviews shows its status
+  bar item and Explorer badges without a pane open (product-improvements D3). Every other
+  workspace stays unwoken.
+
+Do **not** use `onStartupFinished` or a language event such as `onLanguage:markdown`: both would
+wake the extension for every window or every Markdown file.
 
 ---
 

@@ -4,14 +4,20 @@
  * Activation is lazy: inferred from `contributes.commands` (PRD §9), so nothing runs until the user
  * asks for it. There is no `onStartupFinished`.
  *
- * The manifest declares exactly one `activationEvents` entry —
- * `onWebviewPanel:markdownReview.panel` (D24). Inference covers commands, and a command is the only
- * entry point the *user* initiates; restoring a webview panel after a window reload is the one that
- * VS Code initiates. The serializer below is registered at runtime, so without that declaration
- * nothing in the manifest tells VS Code to wake us for a restore, and a reloaded pane comes back
- * with its tab and no contents. The event fires only when a panel of that view type is actually
- * being restored — which means the user already had one open — so a fresh window still loads
- * nothing.
+ * The manifest declares exactly two `activationEvents` entries.
+ *
+ * - `onWebviewPanel:markdownReview.panel` (D24). Inference covers commands, and a command is the
+ *   only entry point the *user* initiates; restoring a webview panel after a window reload is the
+ *   one that VS Code initiates. The serializer below is registered at runtime, so without that
+ *   declaration nothing in the manifest tells VS Code to wake us for a restore, and a reloaded pane
+ *   comes back with its tab and no contents. It fires only when a panel of that view type is
+ *   actually being restored, which means the user already had one open.
+ * - `workspaceContains:.reviews/*.json` (product-improvements D3). The status bar item and the
+ *   Explorer badges have to show in a workspace that already holds reviews before any pane is
+ *   opened, so the review index must be built at window load there. It fires only where a sidecar
+ *   exists.
+ *
+ * A fresh window in a workspace with no reviews still loads nothing.
  */
 
 import * as path from 'node:path';
