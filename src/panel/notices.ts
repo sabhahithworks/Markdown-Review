@@ -11,7 +11,7 @@
  * constants `createAnchor` actually enforces.
  */
 
-import type { CreateResult } from '../anchor/types.js';
+import type { CommentStatus, CreateResult } from '../anchor/types.js';
 import { MAX_ANCHOR_LENGTH, MIN_ANCHOR_LENGTH } from '../anchor/types.js';
 
 type Rejection = Extract<CreateResult, { ok: false }>['reason'];
@@ -71,4 +71,38 @@ export function nothingToClearMessage(what: 'addressed' | 'any', targetPath: str
   return what === 'addressed'
     ? `No addressed comments on ${targetPath}.`
     : `No comments on ${targetPath}.`;
+}
+
+/** Largest badge count shown as a number; anything above reads `9+`. */
+export const BADGE_CAP = 9;
+
+type StatusCounts = Record<CommentStatus, number>;
+
+function needingAction(c: StatusCounts): number {
+  return c.open + c.addressed + c.orphaned;
+}
+
+/** Status bar label: the non-zero counts after the comment icon, or `null` when nothing needs action. */
+export function statusBarText(c: StatusCounts): string | null {
+  if (needingAction(c) === 0) return null;
+  const parts: string[] = [];
+  if (c.open > 0) parts.push(`${String(c.open)} open`);
+  if (c.addressed > 0) parts.push(`${String(c.addressed)} to confirm`);
+  if (c.orphaned > 0) parts.push(`${String(c.orphaned)} needs re-link`);
+  return `$(comment) ${parts.join(' · ')}`;
+}
+
+export function statusBarTooltip(c: StatusCounts): string {
+  return `${badgeTooltip(c)}\nOpen the review to check for changes.`;
+}
+
+/** Badge value for the number of comments needing action; `undefined` at zero. */
+export function badgeText(c: StatusCounts): string | undefined {
+  const n = needingAction(c);
+  if (n === 0) return undefined;
+  return n > BADGE_CAP ? `${String(BADGE_CAP)}+` : String(n);
+}
+
+export function badgeTooltip(c: StatusCounts): string {
+  return `${String(c.open)} open · ${String(c.addressed)} to confirm · ${String(c.orphaned)} needs re-link`;
 }

@@ -20,6 +20,7 @@ export type { Anchor, Comment, CommentStatus, Located, ReviewFile } from '../anc
 export { MAX_ANCHOR_LENGTH, MIN_ANCHOR_LENGTH, UNCERTAIN_BELOW } from '../anchor/types.js';
 /** PRD §7's quote truncation. Re-exported because addressed cards quote text webview-side too. */
 export { MAX_QUOTE_LENGTH, truncateQuote } from '../anchor/text.js';
+export { countByStatus } from '../anchor/counts.js';
 
 /**
  * A `ReviewFile` without the diff baseline.

@@ -17,6 +17,10 @@ import {
   noOpenCommentsMessage,
   nothingToClearMessage,
   promptCopiedMessage,
+  badgeText,
+  badgeTooltip,
+  statusBarText,
+  statusBarTooltip,
 } from '../panel/notices.js';
 
 describe('anchorRejectionMessage', () => {
@@ -99,5 +103,44 @@ describe('destructive-command wording', () => {
   it('distinguishes "no addressed comments" from "no comments"', () => {
     expect(nothingToClearMessage('addressed', 'a.md')).toBe('No addressed comments on a.md.');
     expect(nothingToClearMessage('any', 'a.md')).toBe('No comments on a.md.');
+  });
+});
+
+describe('indicator wording', () => {
+  const counts = (open: number, addressed: number, orphaned: number) => ({
+    open,
+    addressed,
+    orphaned,
+    resolved: 0,
+  });
+
+  it('statusBarText reads "$(comment) 3 open · 2 to confirm · 1 needs re-link"', () => {
+    expect(statusBarText(counts(3, 2, 1))).toBe('$(comment) 3 open · 2 to confirm · 1 needs re-link');
+  });
+
+  it('statusBarText is null at zero', () => {
+    expect(statusBarText(counts(0, 0, 0))).toBeNull();
+    expect(badgeText(counts(0, 0, 0))).toBeUndefined();
+  });
+
+  it('orphan-only shows needs re-link', () => {
+    expect(statusBarText(counts(0, 0, 1))).toBe('$(comment) 1 needs re-link');
+    expect(badgeText(counts(0, 0, 1))).toBe('1');
+  });
+
+  it('caps at 9+', () => {
+    expect(badgeText(counts(7, 3, 0))).toBe('9+');
+    expect(badgeText(counts(9, 0, 0))).toBe('9');
+  });
+
+  it('badge counts everything needing action', () => {
+    expect(badgeText(counts(0, 2, 0))).toBe('2');
+    expect(badgeTooltip(counts(0, 2, 0))).toBe('0 open · 2 to confirm · 0 needs re-link');
+  });
+
+  it('status bar tooltip ends with the re-check line', () => {
+    expect(statusBarTooltip(counts(1, 0, 0))).toBe(
+      '1 open · 0 to confirm · 0 needs re-link\nOpen the review to check for changes.',
+    );
   });
 });

@@ -11,7 +11,10 @@
  * bar would be worthless, but none of these three needs layout to be checked.
  */
 
-import type { Comment, CommentStatus, ReviewSummary } from '../../src/panel/messages.js';
+import type { CommentStatus, ReviewSummary } from '../../src/panel/messages.js';
+import { countByStatus } from '../../src/panel/messages.js';
+
+export { countByStatus };
 
 /** Display order. `resolved` sits last: it is terminal and least interesting. */
 export const FILTERABLE: readonly CommentStatus[] = ['open', 'addressed', 'orphaned', 'resolved'];
@@ -29,17 +32,6 @@ export interface HeaderView {
   setState(review: ReviewSummary): void;
   /** Applies a filter restored from `setState`, without echoing it back to the host. */
   setFilter(statuses: readonly CommentStatus[]): void;
-}
-
-export function countByStatus(comments: readonly Comment[]): Record<CommentStatus, number> {
-  const counts: Record<CommentStatus, number> = {
-    open: 0,
-    addressed: 0,
-    orphaned: 0,
-    resolved: 0,
-  };
-  for (const comment of comments) counts[comment.status] += 1;
-  return counts;
 }
 
 /**
