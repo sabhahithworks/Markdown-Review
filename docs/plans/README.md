@@ -16,6 +16,7 @@ reported, not silently resolved.
 | 4 | [04-prompt-and-detection.md](04-prompt-and-detection.md) | Prompt generation, change watching, re-anchoring, status UI | Phase 3 |
 | 5 | [05-ship.md](05-ship.md) | Packaging, docs, Marketplace release | Phase 4 |
 | 6 | [06-production-hardening.md](06-production-hardening.md) | Audit-driven hardening: correctness, a11y/UX wave, robustness; ends at publish day | Phase 5 |
+| 7 | [product-improvements-2026-11-13.md](product-improvements-2026-11-13.md) | Release polish: quote context, card numbers, indicators, change view, release | Phase 6 |
 
 **Entry check for every phase:** run the previous phase's acceptance checklist (last section of each
 plan) before writing any code. If it doesn't pass, stop and fix that first — do not layer new work

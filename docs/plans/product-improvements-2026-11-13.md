@@ -591,7 +591,7 @@ coverage-hash: 9a4a97af
 
 | phase | lane | depends on | scope | state | commits | note |
 |---|---|---|---|---|---|---|
-| 0 | docs | - | branch, plan copy, laws | todo | | |
+| 0 | docs | - | branch, plan copy, laws | done | tag | branch created; plan copied; laws committed |
 | Q1 | app | 0 | prompt quote context | todo | | |
 | N1 | app | Q1 | promptOrder model | todo | | |
 | N2 | app | N1 | save order on copy | todo | | |
