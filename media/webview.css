@@ -869,6 +869,14 @@ body:not(.mr-narrow):not(.mr-no-cards) {
   overflow-wrap: anywhere;
 }
 
+/* ---------- Prompt number ---------- */
+
+.mr-card-number {
+  margin-right: 6px;
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Orphan triage ---------- */
 
 /*

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The review prompt now says where a quoted passage is when it appears more than once, for example
   `On: "the token" (under "## Refresh", line 42)`. Quotes that appear once are unchanged.
+- Each card from the last copied prompt shows its item number, for example `#3`, so a reply that
+  mentions item 3 maps to a card.
 
 ### Changed
 

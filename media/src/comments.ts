@@ -98,6 +98,7 @@ export function initComments(options: CommentsOptions): CommentsView {
    * reaches `filter`, and the header still counts these as `open`, because they are.
    */
   let sectionChanged = new Set<string>();
+  let promptNumbers = new Map<string, number>();
   /** Statuses currently shown. Everything, until the header says otherwise. */
   let filter: CommentStatus[] = [...FILTERABLE];
   /** Card element per comment id, for the positioning pass. */
@@ -147,6 +148,7 @@ export function initComments(options: CommentsOptions): CommentsView {
     sectionChanged = new Set(nextSectionChanged);
     // The gutter takes only what it can place. `orphans.ts` takes the rest.
     comments = review.comments.filter((comment) => !belongsInOrphans(comment, next));
+    promptNumbers = new Map((review.promptOrder ?? []).map((id, index) => [id, index + 1]));
     render();
   }
 
@@ -170,9 +172,11 @@ export function initComments(options: CommentsOptions): CommentsView {
 
     for (const comment of ordered) {
       const position = located[comment.id];
+      const promptNumber = promptNumbers.get(comment.id);
       const card = buildCard(comment, options, () => toggleExpanded(comment.id), {
         sectionChanged: sectionChanged.has(comment.id),
         uncertain: position !== null && position !== undefined && position.confidence < UNCERTAIN_BELOW,
+        ...(promptNumber !== undefined ? { promptNumber } : {}),
       });
       card.addEventListener('mouseenter', () => {
         setActive(comment.id);
@@ -433,6 +437,8 @@ interface CardSignals {
    * so the phrase the spec names appeared nowhere in the product.
    */
   uncertain: boolean;
+  /** One-based position in the last copied prompt, when the comment was part of it. */
+  promptNumber?: number;
 }
 
 /** What a card announces itself as. `open` is the unmarked case and says nothing extra. */
@@ -468,6 +474,9 @@ function buildCard(
   const labelParts = [`Comment by ${comment.author}`, statusLabel(comment.status)];
   if (signals.uncertain) labelParts.push('position uncertain');
   if (signals.sectionChanged) labelParts.push('surrounding text changed');
+  if (signals.promptNumber !== undefined) {
+    labelParts.push(`item ${String(signals.promptNumber)} in the last copied prompt`);
+  }
   card.setAttribute('aria-label', labelParts.join(', '));
 
   const header = document.createElement('header');
@@ -482,6 +491,12 @@ function buildCard(
   time.dateTime = comment.createdAt;
   time.textContent = relativeTime(comment.createdAt);
 
+  if (signals.promptNumber !== undefined) {
+    const number = document.createElement('span');
+    number.className = 'mr-card-number';
+    number.textContent = `#${String(signals.promptNumber)}`;
+    header.append(number);
+  }
   header.append(author, time);
 
   if (comment.status === 'addressed') header.append(badge('addressed'));

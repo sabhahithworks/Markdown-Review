@@ -180,6 +180,64 @@ describe('position uncertain (H17, PRD §5)', () => {
   });
 });
 
+describe('prompt number on cards', () => {
+  const withOrder = (comments: Comment[], promptOrder?: string[]): ReviewSummary => ({
+    ...review(comments),
+    ...(promptOrder ? { promptOrder } : {}),
+  });
+
+  it('shows #2 for the second prompt item', () => {
+    const { view, gutter } = harness();
+    view.setState(
+      withOrder([comment({ id: 'c1' }), comment({ id: 'c2' })], ['c1', 'c2']),
+      { c1: AT.certain!, c2: AT.certain! },
+      [],
+    );
+    const card = gutter.querySelector('[data-comment-id="c2"]') as HTMLElement;
+    expect(card.querySelector('.mr-card-number')?.textContent).toBe('#2');
+    expect(card.querySelector('.mr-card-header')?.firstElementChild?.className).toBe('mr-card-number');
+  });
+
+  it('shows no number for a comment added after copy', () => {
+    const { view, gutter } = harness();
+    view.setState(
+      withOrder([comment({ id: 'c1' }), comment({ id: 'c2' })], ['c1']),
+      { c1: AT.certain!, c2: AT.certain! },
+      [],
+    );
+    const card = gutter.querySelector('[data-comment-id="c2"]') as HTMLElement;
+    expect(card.querySelector('.mr-card-number')).toBeNull();
+  });
+
+  it('no promptOrder shows no number', () => {
+    const { view, gutter } = harness();
+    view.setState(review([comment()]), { c1: AT.certain! }, []);
+    expect(gutter.querySelector('.mr-card-number')).toBeNull();
+    view.setState(withOrder([comment()], []), { c1: AT.certain! }, []);
+    expect(gutter.querySelector('.mr-card-number')).toBeNull();
+  });
+
+  it('numbers an addressed card and ignores ids that are gone', () => {
+    const { view, gutter } = harness();
+    view.setState(
+      withOrder([comment({ id: 'c1', status: 'addressed' })], ['gone', 'x', 'c1']),
+      { c1: AT.certain! },
+      [],
+    );
+    const card = gutter.querySelector('.mr-card') as HTMLElement;
+    expect(card.querySelector('.mr-card-number')?.textContent).toBe('#3');
+    expect(card.getAttribute('aria-label')).toContain('item 3 in the last copied prompt');
+  });
+
+  it('sets the number as text', () => {
+    const { view, gutter } = harness();
+    view.setState(withOrder([comment()], ['c1']), { c1: AT.certain! }, []);
+    const number = gutter.querySelector('.mr-card-number') as HTMLElement;
+    expect(number.innerHTML).toBe('#1');
+    expect(number.children).toHaveLength(0);
+  });
+});
+
 describe('delete confirmation (H22)', () => {
   it('does not delete on the first click', () => {
     const { view, gutter, calls } = harness();

@@ -595,7 +595,7 @@ coverage-hash: 9a4a97af
 | Q1 | app | 0 | prompt quote context | done | tag | repeated quotes get (under heading, line N); 526 tests pass |
 | N1 | app | Q1 | promptOrder model | done | tag | ReviewFile.promptOrder + guard, summary carries it, buildPrompt returns order; 530 tests pass |
 | N2 | app | N1 | save order on copy | done | tag | snapshotBaseline records promptOrder, always notifies, clears baseline over limit; relink maps order; 530 + 54 integration pass |
-| N3 | app | N2 | card numbers | todo | | |
+| N3 | app | N2 | card numbers | done | tag | cards show #N from promptOrder (any status), aria-label item N; 535 tests pass |
 | V1 | app | N3 | counts helper, indicator text | todo | | |
 | V2 | app | V1 | index, status bar, badges | todo | | |
 | V3 | app | V2 | activation event | todo | | |
