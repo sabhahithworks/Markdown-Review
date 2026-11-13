@@ -22,14 +22,22 @@ import { resolveTarget } from './commands/resolveTarget.js';
 import { registerBaselineProvider } from './detect/baselineDocuments.js';
 import { ReviewPanel } from './panel/ReviewPanel.js';
 import { REVIEW_VIEW_TYPE, isPanelState } from './panel/messages.js';
+import { registerIndicators } from './status/indicators.js';
+import { ReviewIndex } from './status/reviewIndex.js';
 import { ReviewStore } from './store/ReviewStore.js';
 
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('Markdown Review');
+  const index = new ReviewIndex(output);
+  index.scan().catch((error: unknown) => {
+    output.appendLine(`[index] scan failed: ${error instanceof Error ? error.message : String(error)}`);
+  });
 
   context.subscriptions.push(
     output,
+    index,
+    registerIndicators(index),
 
     // Serves the read-only `markdown-review:` documents behind the rewrite banner's diff. Registered
     // at activation rather than on demand: after a window reload VS Code re-requests content for a

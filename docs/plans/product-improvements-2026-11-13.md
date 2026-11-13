@@ -597,7 +597,7 @@ coverage-hash: 9a4a97af
 | N2 | app | N1 | save order on copy | done | tag | snapshotBaseline records promptOrder, always notifies, clears baseline over limit; relink maps order; 530 + 54 integration pass |
 | N3 | app | N2 | card numbers | done | tag | cards show #N from promptOrder (any status), aria-label item N; 535 tests pass |
 | V1 | app | N3 | counts helper, indicator text | done | tag | countByStatus moved to src/anchor/counts.ts; statusBar/badge text+tooltip in notices.ts; 541 tests pass |
-| V2 | app | V1 | index, status bar, badges | todo | | |
+| V2 | app | V1 | index, status bar, badges | done | tag | ReviewIndex (scan+watcher+onDidChangeAny), status bar item, Explorer badge; 541 + 65 integration pass |
 | V3 | app | V2 | activation event | todo | | |
 | CV1 | app | V3 | changed blocks host-side | todo | | |
 | CV2 | app | CV1 | change marks (overlay bars) | todo | | |

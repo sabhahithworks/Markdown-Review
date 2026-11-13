@@ -63,6 +63,11 @@ export class ReviewStore {
   private readonly emitter = new vscode.EventEmitter<ReviewFile>();
   readonly onDidChange: vscode.Event<ReviewFile> = this.emitter.event;
 
+  private static readonly anyEmitter = new vscode.EventEmitter<{ target: vscode.Uri; review: ReviewFile }>();
+  /** Fires for every store's change, with the target the store belongs to. */
+  static readonly onDidChangeAny: vscode.Event<{ target: vscode.Uri; review: ReviewFile }> =
+    ReviewStore.anyEmitter.event;
+
   private readonly disposables: vscode.Disposable[] = [];
   private state: ReviewFile;
   private loaded: Promise<void> | undefined;
@@ -445,6 +450,12 @@ export class ReviewStore {
     if (hit) this.commit({ ...this.state, comments });
   }
 
+  /** Notifies this store's subscribers and the static `onDidChangeAny` listeners. */
+  private emit(review: ReviewFile): void {
+    this.emitter.fire(review);
+    ReviewStore.anyEmitter.fire({ target: this.target, review });
+  }
+
   /**
    * Applies new state, notifies subscribers immediately, and schedules the disk write.
    *
@@ -455,7 +466,7 @@ export class ReviewStore {
   private commit(next: ReviewFile, options: { persist?: boolean; notify?: boolean } = {}): void {
     const { persist = true, notify = true } = options;
     this.state = next;
-    if (notify) this.emitter.fire(next);
+    if (notify) this.emit(next);
     if (persist) this.scheduleWrite();
   }
 
@@ -510,7 +521,7 @@ export class ReviewStore {
     const result = parseReviewFile(raw);
     if (result.ok) {
       this.state = result.review;
-      this.emitter.fire(this.state);
+      this.emit(this.state);
     } else {
       await this.quarantine(raw, result.reason, result.detail);
     }
@@ -536,7 +547,7 @@ export class ReviewStore {
     }
 
     this.state = emptyReviewFile(this.state.targetPath);
-    this.emitter.fire(this.state);
+    this.emit(this.state);
 
     const explanation =
       reason === 'unsupported-version'
@@ -655,7 +666,7 @@ export class ReviewStore {
 
     this.state = result.review;
     this.lastWritten = raw;
-    this.emitter.fire(this.state);
+    this.emit(this.state);
   }
 
   private async warnLooseFile(): Promise<void> {
