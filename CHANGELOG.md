@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The review prompt now says where a quoted passage is when it appears more than once, for example
+  `On: "the token" (under "## Refresh", line 42)`. Quotes that appear once are unchanged.
+
 ## [0.1.0] — 2026-08-06
 
 First release.

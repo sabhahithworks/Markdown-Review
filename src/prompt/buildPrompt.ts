@@ -16,8 +16,9 @@ import type { Locator } from '../anchor/locate.js';
 import { createLocator } from '../anchor/locate.js';
 import { truncateQuote } from '../anchor/text.js';
 import type { Comment, Located, PlainTextDoc, ReviewFile } from '../anchor/types.js';
-import { scopeOf } from '../detect/scope.js';
-import { collapse } from '../render/plaintext.js';
+import type { Scope } from '../detect/scope.js';
+import { enclosingHeading, scopeOf } from '../detect/scope.js';
+import { blockAt, collapse, offsetToSourceLine } from '../render/plaintext.js';
 
 export interface PromptResult {
   /** Empty when `count` is 0 — the command layer says "no open comments" rather than copying this. */
@@ -128,9 +129,86 @@ function describeAnchor(entry: Entry, doc: PlainTextDoc): string {
     // The `#` markers are markdown syntax, so they are absent from anchor space and have to be
     // rebuilt. A heading missing its level would be a `walkSpans` bug, and the count of hashes is
     // cosmetic next to getting the "On the section" phrasing right — so fall back rather than skip.
-    return `On the section "${'#'.repeat(scope.headingLevel ?? 1)} ${title}"`;
+    return `On the section "${'#'.repeat(scope.headingLevel ?? 1)} ${title}"${locationHint(entry, doc, scope)}`;
   }
-  return `On: "${title}"`;
+  return `On: "${title}"${locationHint(entry, doc, scope)}`;
+}
+
+/** True when `needle` occurs at least twice in `haystack`, exact and case-sensitive. */
+function occursTwice(haystack: string, needle: string): boolean {
+  if (needle.length === 0) return false;
+  const first = haystack.indexOf(needle);
+  if (first === -1) return false;
+  return haystack.indexOf(needle, first + 1) !== -1;
+}
+
+/**
+ * The ` (under "<heading>", line N)` suffix, or `''` when the quote is unambiguous (D1).
+ *
+ * Added only when the quote would match more than one place for an agent grepping the file, so a
+ * unique quote keeps its bare form. An unlocatable comment has no known position and gets none.
+ */
+function locationHint(entry: Entry, doc: PlainTextDoc, scope: Scope | null): string {
+  const found = entry.found;
+  if (!found) return '';
+
+  const sectionHeading = scope?.kind === 'section' ? scope.heading : undefined;
+
+  let ambiguous: boolean;
+  let anchorOffset: number;
+  let parent: ReturnType<typeof enclosingHeading>;
+  let occurrence = '';
+
+  if (sectionHeading) {
+    const own = collapse(doc.text.slice(sectionHeading.start, sectionHeading.end));
+    ambiguous = doc.blocks.some(
+      (block) =>
+        block.kind === 'heading' &&
+        block.start !== sectionHeading.start &&
+        collapse(doc.text.slice(block.start, block.end)) === own,
+    );
+    anchorOffset = sectionHeading.start;
+    parent = enclosingHeading(doc, sectionHeading.start, scope?.headingLevel);
+  } else {
+    const raw = doc.text.slice(found.start, found.end);
+    const collapsed = collapse(raw);
+    const title = truncateQuote(collapsed);
+    ambiguous = occursTwice(doc.text, raw);
+    if (!ambiguous && title !== collapsed) {
+      const headLength = title.indexOf(' … ');
+      if (headLength > 0) ambiguous = occursTwice(doc.text, raw.slice(0, headLength));
+    }
+    anchorOffset = found.start;
+    parent = enclosingHeading(doc, found.start);
+
+    const block = blockAt(doc, found.start);
+    if (block && raw.length > 0) {
+      const blockText = doc.text.slice(block.start, block.end);
+      const relative = found.start - block.start;
+      let total = 0;
+      let before = 0;
+      for (let at = blockText.indexOf(raw); at !== -1; at = blockText.indexOf(raw, at + 1)) {
+        total += 1;
+        if (at < relative) before += 1;
+      }
+      if (total >= 2) {
+        const where = block.kind === 'code' ? 'code block' : 'paragraph';
+        occurrence = `, occurrence ${String(before + 1)} of ${String(total)} in this ${where}`;
+        ambiguous = true;
+      }
+    }
+  }
+
+  if (!ambiguous) return '';
+
+  const sourceLine = offsetToSourceLine(doc, anchorOffset);
+  if (sourceLine < 0) return '';
+  const line = `line ${String(sourceLine + 1)}`;
+
+  const under = parent
+    ? `under "${'#'.repeat(parent.headingLevel ?? 1)} ${truncateQuote(collapse(doc.text.slice(parent.start, parent.end)))}", `
+    : '';
+  return ` (${under}${line}${occurrence})`;
 }
 
 /**

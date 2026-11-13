@@ -358,6 +358,14 @@ If you disagree with a comment or need clarification, tell me instead of guessin
 Rules:
 - Truncate quoted anchor text over 100 chars with a middle ellipsis
 - When an anchor covers an entire heading block, use the "On the section" phrasing
+- **Repeated quotes (D1).** When the quoted text occurs more than once in the document (exact,
+  case-sensitive; for a truncated quote the visible head is checked too), the line gains
+  ` (under "<nearest preceding heading>", line N)`, or ` (line N)` with no preceding heading — e.g.
+  `On: "the token" (under "## Refresh", line 42)`. `N` is the 1-based source line of the block (front
+  matter counted). A repeated section heading names its parent heading and its own line:
+  `On the section "## Examples" (under "# Auth", line 40)`. When the copies share one block the hint
+  adds `, occurrence N of M in this paragraph` (`code block` in fenced code). Unique quotes and
+  unlocatable comments keep the bare form above.
 - Include the workspace-relative path so the user's `@`-mention is unambiguous
 - Copy to clipboard via `vscode.env.clipboard.writeText`, then show an info message:
   *"3 comments copied. Paste into your agent and @-mention docs/auth.md."*

@@ -112,6 +112,29 @@ export function scopeOf(doc: PlainTextDoc, found: TextRange): Scope | null {
   return { start: first.start, end: last.end, kind: 'block' };
 }
 
+/**
+ * The nearest `heading` block before the block containing `offset`, or `null` when there is none.
+ *
+ * With `maxLevel`, only headings of a strictly higher level (`headingLevel < maxLevel`) qualify, which
+ * is how a heading asks for its parent. A heading whose level was not recorded never qualifies then.
+ */
+export function enclosingHeading(
+  doc: PlainTextDoc,
+  offset: number,
+  maxLevel?: number,
+): BlockSpan | null {
+  const index = blockIndexAt(doc, offset);
+  if (index === -1) return null;
+
+  for (let i = index - 1; i >= 0; i--) {
+    const block = doc.blocks[i];
+    if (block?.kind !== 'heading') continue;
+    if (maxLevel !== undefined && !((block.headingLevel ?? Infinity) < maxLevel)) continue;
+    return block;
+  }
+  return null;
+}
+
 /** The section a heading opens: itself, plus everything up to the next heading of `level <= its`. */
 function sectionFrom(doc: PlainTextDoc, headingIndex: number, heading: BlockSpan): Scope {
   const level = heading.headingLevel ?? DEEPEST_HEADING_LEVEL;
