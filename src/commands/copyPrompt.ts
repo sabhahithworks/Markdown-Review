@@ -61,7 +61,7 @@ export async function copyPrompt(
   // that no longer exists is worse than not asking at all.
   store.applyReanchor(doc);
 
-  const { prompt, count } = buildPrompt(store.getState(), doc);
+  const { prompt, count, order } = buildPrompt(store.getState(), doc);
   if (count === 0) {
     void vscode.window.showInformationMessage(noOpenCommentsMessage(review.targetPath));
     return;
@@ -70,7 +70,7 @@ export async function copyPrompt(
   await vscode.env.clipboard.writeText(prompt);
   // PRD §7: the baseline is whatever the document said at the moment the prompt was copied — after
   // the write, so a clipboard failure does not leave a baseline for a prompt nobody received.
-  store.snapshotBaseline(doc.text);
+  store.snapshotBaseline(doc.text, order);
 
   void vscode.window.showInformationMessage(promptCopiedMessage(count, review.targetPath));
 }

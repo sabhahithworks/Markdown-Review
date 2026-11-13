@@ -151,6 +151,7 @@ export class ReviewStore {
     // `isReviewFile` itself rejects — duplicate ids quarantine the whole file on the next load
     // (H2). The comment is the same remark; only its identity is re-minted.
     const taken = new Set(destination.getState().comments.map((comment) => comment.id));
+    const idMap = new Map<string, string>();
     const incoming = previous.comments.map((comment) => {
       if (!taken.has(comment.id)) {
         taken.add(comment.id);
@@ -159,6 +160,7 @@ export class ReviewStore {
       let id = nanoid(8);
       while (taken.has(id)) id = nanoid(8);
       taken.add(id);
+      idMap.set(comment.id, id);
       return { ...comment, id };
     });
 
@@ -167,6 +169,9 @@ export class ReviewStore {
       comments: [...destination.getState().comments, ...incoming],
       ...(previous.baselineText === undefined ? {} : { baselineText: previous.baselineText }),
       ...(previous.baselineAt === undefined ? {} : { baselineAt: previous.baselineAt }),
+      ...(previous.promptOrder === undefined
+        ? {}
+        : { promptOrder: previous.promptOrder.map((id) => idMap.get(id) ?? id) }),
     });
 
     // Gate on *this* write landing, not on `lastWritten` — which a successful write earlier in the
@@ -309,26 +314,37 @@ export class ReviewStore {
   }
 
   /**
-   * Records the rendered plain text as the diff baseline (PRD §7).
+   * Records the prompt numbering and the rendered plain text as the diff baseline (PRD §7).
    *
-   * Called at the moment the prompt is copied, which is what makes "the document was rewritten"
-   * answerable later. Deliberately does not notify: nothing renders the baseline, so a `reviewState`
-   * round-trip carrying a quarter of a megabyte would buy nothing.
+   * Called at the moment the prompt is copied. Always commits `promptOrder` and always notifies:
+   * card numbers and the change view both render from this snapshot, so even a re-copy with the
+   * same order must refresh open panels. Over `BASELINE_MAX_CHARS` the baseline is removed rather
+   * than kept from an earlier prompt, while the numbering is still recorded.
    */
-  snapshotBaseline(plainText: string, now: () => string = () => new Date().toISOString()): void {
+  snapshotBaseline(
+    plainText: string,
+    promptOrder: readonly string[],
+    now: () => string = () => new Date().toISOString(),
+  ): void {
     if (plainText.length > BASELINE_MAX_CHARS) {
       this.output.appendLine(
         `[store] ${this.state.targetPath}: rendered text is ${String(plainText.length)} chars, ` +
           `over the ${String(BASELINE_MAX_CHARS)} baseline limit — skipping the snapshot ` +
-          '(the rewrite diff will be unavailable for this file)',
+          '(the rewrite diff will be unavailable for this file) (the previous baseline was cleared)',
       );
+      const next: ReviewFile = { ...this.state, promptOrder: [...promptOrder] };
+      delete next.baselineText;
+      delete next.baselineAt;
+      this.commit(next);
       return;
     }
 
-    this.commit(
-      { ...this.state, baselineText: plainText, baselineAt: now() },
-      { notify: false },
-    );
+    this.commit({
+      ...this.state,
+      baselineText: plainText,
+      baselineAt: now(),
+      promptOrder: [...promptOrder],
+    });
   }
 
   /**
@@ -432,12 +448,9 @@ export class ReviewStore {
   /**
    * Applies new state, notifies subscribers immediately, and schedules the disk write.
    *
-   * Both effects are optional because Phase 4 has changes that legitimately want only one of them:
-   * a re-anchor pass that moved nothing but hints must be adopted in memory *without* a write (see
-   * `ReanchorResult.changed` — making hint drift persist turns every keystroke into disk I/O), and
-   * a baseline snapshot must persist *without* a notify, because nothing renders the baseline and a
-   * `reviewState` round-trip for it would be pure waste. The defaults are the Phase 3 behaviour, so
-   * existing callers are unaffected.
+   * Both effects are optional because a re-anchor pass that moved nothing but hints must be adopted
+   * in memory *without* a write (see `ReanchorResult.changed` — making hint drift persist turns
+   * every keystroke into disk I/O). The defaults persist and notify.
    */
   private commit(next: ReviewFile, options: { persist?: boolean; notify?: boolean } = {}): void {
     const { persist = true, notify = true } = options;

@@ -594,7 +594,7 @@ coverage-hash: 9a4a97af
 | 0 | docs | - | branch, plan copy, laws | done | tag | branch created; plan copied; laws committed |
 | Q1 | app | 0 | prompt quote context | done | tag | repeated quotes get (under heading, line N); 526 tests pass |
 | N1 | app | Q1 | promptOrder model | done | tag | ReviewFile.promptOrder + guard, summary carries it, buildPrompt returns order; 530 tests pass |
-| N2 | app | N1 | save order on copy | todo | | |
+| N2 | app | N1 | save order on copy | done | tag | snapshotBaseline records promptOrder, always notifies, clears baseline over limit; relink maps order; 530 + 54 integration pass |
 | N3 | app | N2 | card numbers | todo | | |
 | V1 | app | N3 | counts helper, indicator text | todo | | |
 | V2 | app | V1 | index, status bar, badges | todo | | |

@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The review prompt now says where a quoted passage is when it appears more than once, for example
   `On: "the token" (under "## Refresh", line 42)`. Quotes that appear once are unchanged.
 
+### Changed
+
+- Copying a prompt for a document too large to snapshot now clears the earlier baseline. Before,
+  the rewrite diff kept comparing against an older prompt.
+
 ## [0.1.0] — 2026-08-06
 
 First release.
