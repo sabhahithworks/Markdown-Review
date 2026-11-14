@@ -608,5 +608,6 @@ coverage-hash: 9a4a97af
 | F | app | R1 | final gates | done | tag | 0 (tree clean; F-r1.diff is empty); Tests 563 passed (563); SUMMARY shift=0 review=0 applied_lines=0 base=54f3386c code_files=41 nosym=0 |
 | O1 | docs | F | manual acceptance | todo | | |
 | O2 | docs | O1 | package, record, publish | todo | | |
+| V | all | O2 | verification | in-progress | - | - |
 
 Order: 0 → Q1 → N1 → N2 → N3 → V1 → V2 → V3 → CV1 → CV2 → CV3 → CV4 → R1 → F → O1 → O2
