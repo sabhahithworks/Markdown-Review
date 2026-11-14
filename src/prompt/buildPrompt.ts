@@ -149,6 +149,29 @@ function occursTwice(haystack: string, needle: string): boolean {
 }
 
 /**
+ * The stretch of `raw` that `collapse` turns into its first `length` characters.
+ *
+ * The truncated head is measured in the collapsed quote, but fenced code keeps its whitespace
+ * verbatim in anchor space, so the same visible head spans more raw characters. Cutting `raw` at
+ * `length` would test a shorter, likelier-to-repeat prefix than the one the agent is shown.
+ */
+function rawHead(raw: string, length: number): string {
+  let at = 0;
+  while (at < raw.length && /\s/.test(raw.charAt(at))) at++;
+  const start = at;
+  let counted = 0;
+  while (at < raw.length && counted < length) {
+    if (/\s/.test(raw.charAt(at))) {
+      while (at < raw.length && /\s/.test(raw.charAt(at))) at++;
+    } else {
+      at++;
+    }
+    counted++;
+  }
+  return raw.slice(start, at);
+}
+
+/**
  * The ` (under "<heading>", line N)` suffix, or `''` when the quote is unambiguous (D1).
  *
  * Added only when the quote would match more than one place for an agent grepping the file, so a
@@ -182,7 +205,7 @@ function locationHint(entry: Entry, doc: PlainTextDoc, scope: Scope | null): str
     ambiguous = occursTwice(doc.text, raw);
     if (!ambiguous && title !== collapsed) {
       const headLength = title.indexOf(' … ');
-      if (headLength > 0) ambiguous = occursTwice(doc.text, raw.slice(0, headLength));
+      if (headLength > 0) ambiguous = occursTwice(doc.text, rawHead(raw, headLength));
     }
     anchorOffset = found.start;
     parent = enclosingHeading(doc, found.start);

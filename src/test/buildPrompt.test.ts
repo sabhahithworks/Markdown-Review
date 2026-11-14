@@ -468,4 +468,25 @@ describe('buildPrompt — repeated quotes (D1)', () => {
 
     expect(firstLine(prompt)).toBe('1. On: "Same sentence here, twice."');
   });
+
+  it('measures a truncated head in raw text when code keeps its whitespace', () => {
+    // Fenced code is verbatim in anchor space, so the 48-char visible head of the collapsed quote
+    // spans far more than 48 raw characters. Cutting the raw text at 48 leaves `alpha` and spaces,
+    // which the second block shares, although the head the agent sees is unique.
+    const first = `alpha${' '.repeat(60)}beta-unique-${'u'.repeat(90)}`;
+    const second = `alpha${' '.repeat(60)}gamma-other`;
+    const doc = docOf(`# Top\n\n\`\`\`\n${first}\n\`\`\`\n\n\`\`\`\n${second}\n\`\`\`\n`);
+    const fence = doc.blocks.find((block) => block.kind === 'code');
+    if (!fence) throw new Error('fixture has no code block');
+    expect(doc.text.slice(fence.start, fence.end)).toBe(first);
+
+    const located: Located = { start: fence.start, end: fence.end, confidence: 1 };
+    const review = makeReviewFile([makeComment(anchorOn(doc, 'Top'))]);
+
+    const line = firstLine(buildPrompt(review, doc, { locate: () => located }).prompt);
+
+    expect(line).toContain(' … ');
+    expect(line).not.toContain('(under');
+    expect(line.endsWith(`${'u'.repeat(48)}"`)).toBe(true);
+  });
 });
