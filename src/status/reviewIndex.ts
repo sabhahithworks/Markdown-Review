@@ -59,9 +59,16 @@ export class ReviewIndex implements vscode.Disposable {
     return this.entries.get(registryKey(uri.toString()))?.counts;
   }
 
-  /** Rebuilds the watchers and the sidecar-derived entries for the current workspace folders. */
+  /**
+   * Rebuilds the watchers and the sidecar-derived entries for the current workspace folders.
+   *
+   * A newer scan, or `dispose`, supersedes this one at any await. A superseded scan creates no
+   * more watchers, which would land in the newer scan's list or outlive `dispose`, and still
+   * announces the entries it cleared: the newer scan never saw them, so nobody else will.
+   */
   async scan(): Promise<void> {
     const generation = ++this.generation;
+    const superseded = (): boolean => this.disposed || generation !== this.generation;
     for (const watcher of this.watchers) watcher.dispose();
     this.watchers = [];
 
@@ -82,6 +89,10 @@ export class ReviewIndex implements vscode.Disposable {
 
     const found: { sidecar: vscode.Uri; folder: vscode.WorkspaceFolder }[] = [];
     for (const folder of folders) {
+      if (superseded()) {
+        this.handOff(changed);
+        return;
+      }
       const pattern = new vscode.RelativePattern(folder, `${REVIEWS_DIR}/*.json`);
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);
       watcher.onDidCreate((uri) => void this.reread(uri, folder));
@@ -92,11 +103,17 @@ export class ReviewIndex implements vscode.Disposable {
       const uris = await vscode.workspace.findFiles(pattern);
       for (const sidecar of uris) found.push({ sidecar, folder });
     }
-    if (this.disposed || generation !== this.generation) return;
+    if (superseded()) {
+      this.handOff(changed);
+      return;
+    }
 
     for (const { sidecar, folder } of found.slice(0, this.cap)) {
       const result = await this.read(sidecar, folder);
-      if (this.disposed || generation !== this.generation) return;
+      if (superseded()) {
+        this.handOff(changed);
+        return;
+      }
       if (result.ok) {
         this.sidecarTargets.set(sidecar.toString(), registryKey(result.target.toString()));
         this.set(result.target, result.counts);
@@ -115,6 +132,11 @@ export class ReviewIndex implements vscode.Disposable {
     for (const watcher of this.watchers) watcher.dispose();
     for (const disposable of this.disposables) disposable.dispose();
     this.changeEmitter.dispose();
+  }
+
+  /** Announces what a superseded scan cleared, so no badge or status bar text keeps stale counts. */
+  private handOff(changed: vscode.Uri[]): void {
+    if (!this.disposed && changed.length > 0) this.changeEmitter.fire(changed);
   }
 
   private rescan(reason: string): void {

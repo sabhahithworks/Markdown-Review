@@ -191,6 +191,29 @@ describe('status bar item and Explorer badge', () => {
     assert.equal(indicators.item.text, '$(comment) 1 open');
   });
 
+  it('a superseded scan still announces the entries it cleared', async () => {
+    await clearReviews();
+    const target = workspaceUri('ind-superseded.md');
+    await showMarkdown(target);
+    const sidecar = workspaceUri(REVIEWS_DIR, 'ind-superseded.md.json');
+    await writeText(sidecar, sidecarText('ind-superseded.md', ['open']));
+    const { index, indicators } = build();
+    await index.scan();
+    assert.equal(indicators.item.text, '$(comment) 1 open');
+
+    // Scan A clears the entry and is replaced by B before it reaches its fire; B never saw the
+    // entry, and the watcher's delete finds nothing left to drop. Only A can announce it.
+    // `item.hide()` keeps the old text, so the observable is the change event the status bar and
+    // the Explorer re-query on.
+    const announced: string[] = [];
+    disposables.push(index.onDidChange((uris) => announced.push(...uris.map((uri) => uri.toString()))));
+    await vscode.workspace.fs.delete(sidecar);
+    await Promise.all([index.scan(), index.scan()]);
+
+    assert.equal(index.countsFor(target), undefined);
+    await waitFor(() => announced.includes(target.toString()), 'a change event for the cleared target');
+  });
+
   it('MAX_INDEXED_SIDECARS', async () => {
     assert.equal(MAX_INDEXED_SIDECARS, 2000);
     await clearReviews();
