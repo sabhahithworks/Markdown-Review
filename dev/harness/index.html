@@ -136,11 +136,26 @@
 
     let currentKey = 'basic';
 
+    /**
+     * The `reviewState` the host would post for a scenario. `changes` is absent from every scenario
+     * but `changed`, which the webview reads as `no-baseline`: nothing marked.
+     */
+    function reviewStateOf(key) {
+      const scenario = fixture.scenarios[key];
+      return {
+        type: 'reviewState',
+        review: scenario.review,
+        located: scenario.located,
+        sectionChanged: scenario.sectionChanged ?? [],
+        changes: scenario.changes,
+      };
+    }
+
     function loadScenario(key) {
       currentKey = key;
       const scenario = fixture.scenarios[key];
       post({ type: 'setContent', html: fixture.html, frontMatterHtml: fixture.frontMatterHtml });
-      post({ type: 'reviewState', review: scenario.review, located: scenario.located, sectionChanged: scenario.sectionChanged ?? [] });
+      post(reviewStateOf(key));
       // Only the host can detect a rewrite — it needs the state from *before* the re-anchor pass —
       // so the scenario declares the outcome and the page plays the host's part.
       if (scenario.rewriteDetected) {
@@ -156,7 +171,7 @@
     themeSelect.addEventListener('change', () => {
       document.documentElement.dataset.theme = themeSelect.value;
       // Colour changes cannot move layout, but the reposition is free and keeps the two in step.
-      post({ type: 'reviewState', review: fixture.scenarios[currentKey].review, located: fixture.scenarios[currentKey].located, sectionChanged: fixture.scenarios[currentKey].sectionChanged ?? [] });
+      post(reviewStateOf(currentKey));
     });
     scenarioSelect.addEventListener('change', () => loadScenario(scenarioSelect.value));
 
@@ -571,6 +586,138 @@
         return uncertain.length > 0
           ? pass(`${uncertain.length} card(s) say "position uncertain"`)
           : fail('the low-confidence card never says "position uncertain"');
+      },
+
+      'change marks land only on the changed blocks'() {
+        if (currentKey !== 'changed') return skip('other scenario');
+        const spans = fixture.scenarios[currentKey].changes.blocks;
+        // Half-open overlap, as the host's spans are; a block that only abuts a span is not in it.
+        const meets = (el, span) => Number(el.dataset.apStart) < span.end && span.start < Number(el.dataset.apEnd);
+
+        const blocks = [...document.querySelectorAll('#content [data-ap-start]')];
+        const marked = blocks.filter((el) => el.hasAttribute('data-mr-changed'));
+        if (marked.length === 0) return fail('nothing is marked');
+
+        const stray = marked.filter((el) => !spans.some((span) => meets(el, span)));
+        if (stray.length > 0) return fail(`${stray.length} marked block(s) outside every change, first <${stray[0].tagName.toLowerCase()}> @${stray[0].dataset.apStart}`);
+        const missed = blocks.filter((el) => !el.hasAttribute('data-mr-changed') && spans.some((span) => meets(el, span)));
+        if (missed.length > 0) return fail(`${missed.length} changed block(s) carry no mark, first <${missed[0].tagName.toLowerCase()}> @${missed[0].dataset.apStart}`);
+        const uncovered = spans.filter((span) => !marked.some((el) => meets(el, span)));
+        if (uncovered.length > 0) return fail(`${uncovered.length} change(s) marked no block`);
+
+        const undescribed = marked.filter((el) => (el.getAttribute('aria-description') || '').trim() === '');
+        if (undescribed.length > 0) return fail(`${undescribed.length} marked block(s) have no aria-description`);
+
+        // One bar per marked block, each beside its own block: a bar is the visible half of a mark.
+        const bars = [...document.querySelectorAll('#highlight-overlay .mr-change-bar')].map((bar) => bar.getBoundingClientRect());
+        if (bars.length !== marked.length) return fail(`${bars.length} bar(s) for ${marked.length} marked block(s)`);
+        for (const el of marked) {
+          const rect = el.getBoundingClientRect();
+          if (!bars.some((bar) => bar.top < rect.bottom && rect.top < bar.bottom && bar.width > 0)) {
+            return fail(`no bar beside the marked <${el.tagName.toLowerCase()}> @${el.dataset.apStart}`);
+          }
+        }
+        const kinds = marked.map((el) => el.tagName.toLowerCase()).join(', ');
+        return pass(`${marked.length} marked block(s) (${kinds}) for ${spans.length} change(s), ${bars.length} bar(s)`);
+      },
+
+      'change marks keep block heights'() {
+        if (currentKey !== 'changed') return skip('other scenario');
+        // Re-renders synchronously with and without `changes`: `dispatchEvent` runs the webview's
+        // `message` listener before returning, where `postMessage` would queue it for later. Offsets
+        // are taken against `#content` so the header's change control, which sits in flow above it
+        // and is not a mark, cannot move them; a mark has to move nothing *inside* the document.
+        const content = document.getElementById('content');
+        const deliver = (message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
+        const measure = () => {
+          const origin = content.getBoundingClientRect();
+          const blocks = [...content.querySelectorAll('[data-ap-start]')].map((el) => {
+            const rect = el.getBoundingClientRect();
+            return { key: `<${el.tagName.toLowerCase()}> @${el.dataset.apStart}`, top: rect.top - origin.top, height: rect.height };
+          });
+          const cards = visibleCards().map((card) => ({ key: card.dataset.commentId, top: card.getBoundingClientRect().top - origin.top }));
+          return { blocks, cards, marked: content.querySelectorAll('[data-mr-changed]').length };
+        };
+
+        const withChanges = reviewStateOf(currentKey);
+        deliver({ ...withChanges, changes: undefined });
+        const without = measure();
+        deliver(withChanges);
+        const marked = measure();
+
+        if (without.marked !== 0) return fail(`${without.marked} block(s) still marked with no changes`);
+        if (marked.marked === 0) return fail('nothing marked with the changes, so the comparison is vacuous');
+        if (without.blocks.length !== marked.blocks.length) return fail(`${without.blocks.length} block(s) without marks, ${marked.blocks.length} with`);
+        for (let i = 0; i < marked.blocks.length; i++) {
+          const a = without.blocks[i];
+          const b = marked.blocks[i];
+          if (Math.abs(a.height - b.height) > 0.5 || Math.abs(a.top - b.top) > 0.5) {
+            return fail(`${b.key} moved: top ${a.top.toFixed(1)} → ${b.top.toFixed(1)}, height ${a.height.toFixed(1)} → ${b.height.toFixed(1)}`);
+          }
+        }
+        if (marked.cards.length === 0) return fail('no cards laid out, so card tops are untested');
+        if (without.cards.length !== marked.cards.length) return fail(`${without.cards.length} card(s) without marks, ${marked.cards.length} with`);
+        for (const card of marked.cards) {
+          const before = without.cards.find((other) => other.key === card.key);
+          if (!before) return fail(`card ${card.key} only exists with marks`);
+          if (Math.abs(before.top - card.top) > 0.5) return fail(`card ${card.key} moved: ${before.top.toFixed(1)} → ${card.top.toFixed(1)}`);
+        }
+        return pass(`${marked.blocks.length} block(s) and ${marked.cards.length} card(s) unmoved by ${marked.marked} mark(s)`);
+      },
+
+      'change bars on a code block'() {
+        if (currentKey !== 'changed') return skip('other scenario');
+        const pre = document.querySelector('#content pre[data-mr-changed]');
+        if (!pre) return fail('the scenario marks no code block');
+        const deliver = (message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
+        // At a wide viewport the fixture's longest fence line fits, and a `pre` that cannot scroll
+        // proves nothing. Narrow it until it must, then re-render synchronously so the bar is
+        // measured against the block as it now is — the state a narrow pane is in.
+        const narrowed = pre.scrollWidth <= pre.clientWidth;
+        if (narrowed) {
+          pre.style.maxWidth = `${Math.floor(pre.scrollWidth / 2)}px`;
+          deliver(reviewStateOf(currentKey));
+        }
+        const overlay = document.getElementById('highlight-overlay').getBoundingClientRect();
+        const original = pre.scrollLeft;
+        pre.scrollLeft = pre.scrollWidth;
+        const scrolled = pre.scrollLeft;
+        try {
+          if (scrolled <= 0) return fail(`the pre would not scroll (${pre.scrollWidth}px in ${pre.clientWidth}px)`);
+          const box = pre.getBoundingClientRect();
+          const bars = [...document.querySelectorAll('#highlight-overlay .mr-change-bar')].map((bar) => bar.getBoundingClientRect());
+          const bar = bars.find((rect) => rect.top < box.bottom && box.top < rect.bottom);
+          if (!bar) return fail(`no bar vertically overlaps the pre (${box.top.toFixed(1)}–${box.bottom.toFixed(1)}) after scrolling it ${scrolled}px`);
+          if (bar.width <= 0 || bar.height <= 0) return fail(`the bar has no area (${bar.width}×${bar.height})`);
+          const inside = bar.left >= overlay.left - 0.5 && bar.right <= overlay.right + 0.5 && bar.top >= overlay.top - 0.5 && bar.bottom <= overlay.bottom + 0.5;
+          if (!inside) return fail(`the bar (${bar.left.toFixed(1)},${bar.top.toFixed(1)} ${bar.width}×${bar.height.toFixed(1)}) leaves the overlay`);
+          // A bar on the `pre` itself would be carried along by the scroll or clipped by it (D30).
+          if (bar.left >= box.left + 0.5) return fail(`the bar sits inside the pre's box (${bar.left.toFixed(1)} ≥ ${box.left.toFixed(1)})`);
+          return pass(`bar ${bar.width}×${bar.height.toFixed(1)} at x=${bar.left.toFixed(1)} beside a pre at x=${box.left.toFixed(1)}, scrolled ${scrolled}px of ${pre.scrollWidth - pre.clientWidth}px${narrowed ? ' (narrowed to scroll)' : ''}`);
+        } finally {
+          pre.scrollLeft = original;
+          if (narrowed) {
+            pre.style.removeProperty('max-width');
+            deliver(reviewStateOf(currentKey));
+          }
+        }
+      },
+
+      'numbered cards show #N'() {
+        if (currentKey !== 'changed') return skip('other scenario');
+        const order = fixture.scenarios[currentKey].review.promptOrder ?? [];
+        if (order.length === 0) return fail('the scenario sets no promptOrder');
+        const cards = [...document.querySelectorAll('#gutter .mr-card')];
+        for (const [index, id] of order.entries()) {
+          const card = cards.find((other) => other.dataset.commentId === id);
+          if (!card) return fail(`no card for ${id}`);
+          const number = card.querySelector('.mr-card-number');
+          const text = number ? number.textContent.trim() : '';
+          if (text !== `#${index + 1}`) return fail(`${id} shows ${JSON.stringify(text)}, expected "#${index + 1}"`);
+        }
+        const unexpected = cards.filter((card) => !order.includes(card.dataset.commentId) && card.querySelector('.mr-card-number'));
+        if (unexpected.length > 0) return fail(`${unexpected.length} card(s) outside the prompt carry a number`);
+        return pass(`${order.length} card(s) numbered in prompt order, ${cards.length - order.length} unnumbered`);
       },
 
       'no uncaught errors'() {

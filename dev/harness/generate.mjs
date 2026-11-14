@@ -42,13 +42,14 @@ const PASSAGES = {
 };
 
 async function loadHostModules() {
-  // One bundle re-exporting the four entry points, so the harness data is produced by exactly the
+  // One bundle re-exporting the host entry points, so the harness data is produced by exactly the
   // code the extension ships rather than a reimplementation of it.
   const entry = `
     export { renderMarkdown } from '${posix(path.join(root, 'src/render/renderer.ts'))}';
     export { renderPlainText } from '${posix(path.join(root, 'src/render/plaintext.ts'))}';
     export { createAnchor } from '${posix(path.join(root, 'src/anchor/create.ts'))}';
     export { createLocator } from '${posix(path.join(root, 'src/anchor/locate.ts'))}';
+    export { changeStateOf, changedRanges } from '${posix(path.join(root, 'src/detect/changedRanges.ts'))}';
   `;
 
   const outfile = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'mdr-harness-')), 'host.cjs');
@@ -87,6 +88,28 @@ function makeComment(host, doc, id, passage, overrides = {}) {
     ...overrides,
     anchor: { ...result.anchor, ...(overrides.anchor ?? {}) },
   };
+}
+
+/**
+ * What the document looked like when the prompt was copied, for the `changed` scenario: the real
+ * fixture with one paragraph and one fenced code block rewound. Each edit must apply exactly once,
+ * or the scenario would silently stop exercising the block kind it exists for.
+ */
+const BASELINE_EDITS = [
+  // A paragraph. The commented passage in it is untouched, so the comment stays `open` and its card
+  // sits beside a marked block — the case where a bar and a highlight share a block.
+  ['including\n*rejections*, and it never logs the raw token.', 'including\n*rejections*, and it never stores the raw token.'],
+  // The longest fence line, so the `pre` is the one most likely to scroll horizontally (D30).
+  ['curl -sS -H "Authorization: Bearer $TOKEN" https://example.com/whoami', 'curl -sS https://example.com/whoami'],
+];
+
+function baselineSource(source) {
+  let text = source;
+  for (const [current, previous] of BASELINE_EDITS) {
+    if (text.split(current).length !== 2) throw new Error(`baseline edit does not apply exactly once: ${JSON.stringify(current)}`);
+    text = text.replace(current, previous);
+  }
+  return text;
 }
 
 function review(comments) {
@@ -292,6 +315,29 @@ async function main() {
           }),
         ]),
         baselineAt: '2026-08-01T09:00:00.000Z',
+      },
+    },
+    changed: {
+      label: 'Changed since prompt',
+      description:
+        'The change view (D28/D30): a baseline that differs from the document in one paragraph and one fenced code block, so exactly those blocks carry a bar, and two comments numbered by the prompt that was copied. `changes` comes from the real `changeStateOf`, as `ReviewPanel.changeState` computes it.',
+      changes: (() => {
+        const baseline = host.renderPlainText(baselineSource(source)).text;
+        const state = host.changeStateOf(baseline, doc, host.changedRanges(baseline, doc.text));
+        if (state.state !== 'changed' || state.blocks.length === 0) {
+          throw new Error(`the changed scenario produced ${JSON.stringify(state)}, expected changed blocks`);
+        }
+        return state;
+      })(),
+      review: {
+        ...review([
+          comment('chng0001', PASSAGES.paragraph, { body: 'Say what happens when the key set cannot be fetched.' }),
+          comment('chng0002', PASSAGES.listA, { body: 'Not in the prompt, so it carries no number.' }),
+          comment('chng0003', PASSAGES.fence, { body: 'Should this throw instead of returning?' }),
+        ]),
+        baselineAt: '2026-08-01T09:00:00.000Z',
+        // Prompt order, not document order: the fence comment was listed first.
+        promptOrder: ['chng0003', 'chng0001'],
       },
     },
   };
