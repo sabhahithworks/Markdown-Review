@@ -11,6 +11,7 @@
 import type { Comment, CommentStatus, Located, ReviewSummary } from '../../src/panel/messages.js';
 import { UNCERTAIN_BELOW, truncateQuote } from '../../src/panel/messages.js';
 import { domRangeFor } from './anchorSpace.js';
+import { buildChangeBar, changeBarRects } from './changes.js';
 import { FILTERABLE } from './header.js';
 import { modifierLabel, prefersReducedMotion } from './platform.js';
 
@@ -242,6 +243,12 @@ export function initComments(options: CommentsOptions): CommentsView {
     const gutterOrigin = originOf(options.gutter);
     const placed: Array<{ card: HTMLElement; top: number }> = [];
     hotspots = [];
+
+    // Change bars first, so a highlight on a changed block paints over its bar rather than under
+    // it. The marks themselves are set by `applyChangeMarks` before `setState`; this only measures.
+    for (const rect of changeBarRects(options.root)) {
+      options.overlay.append(buildChangeBar(rect, overlayOrigin));
+    }
 
     for (const comment of comments) {
       const card = cards.get(comment.id);

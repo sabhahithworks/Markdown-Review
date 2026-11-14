@@ -9,6 +9,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Comment, Located, ReviewSummary } from '../../src/panel/messages.js';
+import { applyChangeMarks } from '../src/changes.js';
 import { initComments } from '../src/comments.js';
 import { initOrphans } from '../src/orphans.js';
 
@@ -345,5 +346,22 @@ describe('the gutter and the orphan section partition the comments', () => {
     });
     orphans.setState([comment()], { c1: null });
     expect(root.querySelectorAll('.mr-orphan')).toHaveLength(1);
+  });
+});
+
+describe('change bars in the overlay pass (CV2)', () => {
+  it('draws one bar per marked block beside the highlights, and clears it with the mark', () => {
+    const { view, overlay, gutter } = harness();
+    const root = document.getElementById('content') as HTMLElement;
+
+    applyChangeMarks(root, { state: 'changed', blocks: [{ start: 0, end: 80 }] });
+    view.setState(review([comment()]), { c1: AT.certain! }, []);
+    expect(overlay.querySelectorAll('.mr-change-bar')).toHaveLength(1);
+    // A bar is decoration in the aria-hidden overlay; the card is untouched by it.
+    expect(gutter.querySelectorAll('.mr-card')).toHaveLength(1);
+
+    applyChangeMarks(root, { state: 'unchanged' });
+    view.reposition();
+    expect(overlay.querySelectorAll('.mr-change-bar')).toHaveLength(0);
   });
 });

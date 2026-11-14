@@ -32,6 +32,7 @@ import type {
   WebviewMessage,
 } from '../../src/panel/messages.js';
 import { resetBlockMaps } from './anchorSpace.js';
+import { applyChangeMarks } from './changes.js';
 import type { CommentsView } from './comments.js';
 import { initComments } from './comments.js';
 import type { HeaderView } from './header.js';
@@ -511,11 +512,17 @@ function applyReviewState(message: Extract<HostMessage, { type: 'reviewState' }>
   // showed up as highlights landing on the wrong line.
   header?.setState(message.review);
   if (documentGone) {
+    // The content is gone, but a mark is state on an element: clear it rather than trust that
+    // the element went with it.
+    applyChangeMarks(contentRoot, undefined);
     orphans?.setState([], {});
     comments?.setState({ ...message.review, comments: [] }, {}, []);
     return;
   }
   orphans?.setState(message.review.comments, message.located, message.sectionChanged);
+  // Before the cards: `setState` redraws the overlay, and that pass draws a bar for every block
+  // marked here. The marks add nothing to the flow, so measuring after them is still exact.
+  applyChangeMarks(contentRoot, message.changes);
   comments?.setState(message.review, message.located, message.sectionChanged);
 }
 

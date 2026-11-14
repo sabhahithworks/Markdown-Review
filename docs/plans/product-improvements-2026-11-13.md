@@ -420,6 +420,7 @@ CHANGE:
 MIRROR: `media/src/comments.ts:391-400` (`buildHighlight`) for the bar; `media/test/cards.test.ts:164-181` for jsdom over real-renderer markup.
 INVARIANTS: L-block-offsets-single-source (read `data-ap-*` only); L-innerhtml-sanitized-only (attributes and `createElement` only); L-theme-vars-only; L-state-not-by-colour-alone (shape plus `aria-description`, and the forced-colors rule); L-webview-imports-messages-only; L-baseline-stays-on-host; L-harness-shell-in-step (the overlay already exists in both shells).
 DECIDED: D28, D30. Expected decision: the bar's horizontal offset. Default: `left: -8px` relative to the block's rect, clamped to ≥ 0 within the overlay.
+- **Amended during run (2026-11-14):** The gutter-bar colour the brief picked (VS Code's 'modified line' gutter colour) is missing from the dev harness's three theme presets, so the build's theme-variable check fails. Who adds it to the presets? → Let CV2 add --vscode-editorGutter-modifiedBackground to dev/harness/themes.css (base/dark, light and hc blocks, using VS Code's default values) so the CV2 commit builds (an assumption the owner confirms after the run) (grants: dev/harness/themes.css) [assumption: recommended option, owner confirms]
 OUT OF SCOPE: the header control (CV3); harness (CV4). `orphans.ts` is unaffected.
 ACCEPTANCE: `npx vitest run --project webview media/test/changes.test.ts media/test/cards.test.ts`, then `npm run check` (the build runs the CSS colour and theme-variable checks). Tests:
 - `marks only intersecting blocks`, asserting the exact set of `data-ap-start` values marked.
@@ -600,7 +601,7 @@ coverage-hash: 9a4a97af
 | V2 | app | V1 | index, status bar, badges | done | tag | ReviewIndex (scan+watcher+onDidChangeAny), status bar item, Explorer badge; 541 + 65 integration pass |
 | V3 | app | V2 | activation event | done | tag | activationEvents adds workspaceContains:.reviews/*.json; laws/CLAUDE/PRD amended; 541 + 65 integration pass |
 | CV1 | app | V3 | changed blocks host-side | done | tag | Tests 25 passed (25); Tests 549 passed (549) |
-| CV2 | app | CV1 | change marks (overlay bars) | todo | | |
+| CV2 | app | CV1 | change marks (overlay bars) | done | tag | leeway: dev/harness/themes.css (Recommended option: CV2 defines --vscode-editorGutter-modifiedBackground in the base/dark, light and hc preset blocks so check-theme-vars passes and the CV2 commit… |
 | CV3 | app | CV2 | header "Show changes" control | todo | | |
 | CV4 | app | CV3 | harness checks | todo | | |
 | R1 | docs | CV4 | README, changelog, runsheets | todo | | |
