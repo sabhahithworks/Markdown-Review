@@ -214,6 +214,31 @@ describe('status bar item and Explorer badge', () => {
     await waitFor(() => announced.includes(target.toString()), 'a change event for the cleared target');
   });
 
+  it('a scan that fails after clearing still announces the entries it cleared', async () => {
+    await clearReviews();
+    const target = workspaceUri('ind-failed.md');
+    await showMarkdown(target);
+    await writeText(workspaceUri(REVIEWS_DIR, 'ind-failed.md.json'), sidecarText('ind-failed.md', ['open']));
+    const { index } = build();
+    await index.scan();
+    assert.deepEqual(index.countsFor(target)?.open, 1);
+
+    const announced: string[] = [];
+    disposables.push(index.onDidChange((uris) => announced.push(...uris.map((uri) => uri.toString()))));
+    // A folder removed mid-scan, say: the scan has already emptied its entries when findFiles fails.
+    const workspace = vscode.workspace as { findFiles: typeof vscode.workspace.findFiles };
+    const findFiles = workspace.findFiles;
+    workspace.findFiles = () => Promise.reject(new Error('folder gone'));
+    try {
+      await assert.rejects(index.scan(), /folder gone/);
+    } finally {
+      workspace.findFiles = findFiles;
+    }
+
+    assert.equal(index.countsFor(target), undefined);
+    assert.ok(announced.includes(target.toString()), `expected a change event, got: ${announced.join(' | ')}`);
+  });
+
   it('MAX_INDEXED_SIDECARS', async () => {
     assert.equal(MAX_INDEXED_SIDECARS, 2000);
     await clearReviews();

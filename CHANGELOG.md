@@ -44,8 +44,8 @@ it reports itself.
   header shows `Show changes (4)`, which opens the side-by-side diff against the copied version.
   When nothing changed it reads `No changes since prompt`. For a document too large to mark
   inline, the button still opens the diff and its tooltip says why there are no marks. A document
-  over 256 KB of rendered text at copy time gets no baseline, so it shows neither, and the output
-  channel says why.
+  over 262,144 characters (256 K) of rendered text at copy time gets no baseline, so it shows
+  neither, and the output channel says why.
 
 - **The pane is usable without a mouse, and audible to a screen reader.** Comment cards announce
   their author and status, take Enter and Space, and mark the active one with `aria-current`.

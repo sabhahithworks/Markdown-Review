@@ -66,9 +66,9 @@ in a multi-root workspace.
 After you copy a prompt, the blocks the agent changed are marked with a bar in the margin, and the
 header shows `Show changes (4)`, which opens a side-by-side diff against the version you copied.
 When nothing changed it reads `No changes since prompt`. For a document too large to mark inline,
-the button still opens the diff and its tooltip says why there are no marks. A document over 256 KB
-of rendered text when you copy the prompt gets no baseline, so it shows neither marks nor the
-button; the `Markdown Review` output channel says why.
+the button still opens the diff and its tooltip says why there are no marks. A document over
+262,144 characters (256 K) of rendered text when you copy the prompt gets no baseline, so it shows
+neither marks nor the button; the `Markdown Review` output channel says why.
 
 ## How detection works — and what it does not promise
 
