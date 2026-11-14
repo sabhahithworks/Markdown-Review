@@ -36,7 +36,7 @@ import { applyChangeMarks } from './changes.js';
 import type { CommentsView } from './comments.js';
 import { initComments } from './comments.js';
 import type { HeaderView } from './header.js';
-import { FILTERABLE, initHeader } from './header.js';
+import { FILTERABLE, SHOW_CHANGES_MESSAGE, initHeader } from './header.js';
 import type { OrphansView } from './orphans.js';
 import { initOrphans } from './orphans.js';
 import type { SelectionController } from './selection.js';
@@ -257,6 +257,9 @@ function startCommenting(author: string): CommentsView {
     },
     onClearAll: () => {
       vscode.postMessage({ type: 'clearAll' });
+    },
+    onShowChanges: () => {
+      vscode.postMessage(SHOW_CHANGES_MESSAGE);
     },
     onFilterChange: (statuses) => {
       filter = statuses;
@@ -510,19 +513,22 @@ function applyReviewState(message: Extract<HostMessage, { type: 'reviewState' }>
   // highlights are placed from measured rectangles, so they have to be measured last — updating
   // them first left every highlight offset by the height of whatever appeared above it, which
   // showed up as highlights landing on the wrong line.
-  header?.setState(message.review);
+  // Marks go first, because the header's count is the number of blocks marked (D31), not the
+  // number of spans: adjacent changed blocks arrive merged into one span (D28). The marks are
+  // attributes only and add nothing to the flow, so they do not disturb the order above, and the
+  // overlay that draws their bars is still redrawn last, by `comments.setState`.
+  // A gone document has nothing to diff against, so its change control hides with its marks. The
+  // content is gone too, but a mark is state on an element: clear it rather than trust that the
+  // element went with it.
+  const changes = documentGone ? undefined : message.changes;
+  const marked = applyChangeMarks(contentRoot, changes);
+  header?.setState(message.review, changes, marked);
   if (documentGone) {
-    // The content is gone, but a mark is state on an element: clear it rather than trust that
-    // the element went with it.
-    applyChangeMarks(contentRoot, undefined);
     orphans?.setState([], {});
     comments?.setState({ ...message.review, comments: [] }, {}, []);
     return;
   }
   orphans?.setState(message.review.comments, message.located, message.sectionChanged);
-  // Before the cards: `setState` redraws the overlay, and that pass draws a bar for every block
-  // marked here. The marks add nothing to the flow, so measuring after them is still exact.
-  applyChangeMarks(contentRoot, message.changes);
   comments?.setState(message.review, message.located, message.sectionChanged);
 }
 

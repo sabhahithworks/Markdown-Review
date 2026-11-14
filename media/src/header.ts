@@ -11,7 +11,12 @@
  * bar would be worthless, but none of these three needs layout to be checked.
  */
 
-import type { CommentStatus, ReviewSummary } from '../../src/panel/messages.js';
+import type {
+  ChangeState,
+  CommentStatus,
+  ReviewSummary,
+  WebviewMessage,
+} from '../../src/panel/messages.js';
 import { countByStatus } from '../../src/panel/messages.js';
 
 export { countByStatus };
@@ -26,10 +31,14 @@ export interface HeaderOptions {
   /** PRD §6's second destructive command, which had no in-pane surface at all (H27). */
   onClearAll(): void;
   onFilterChange(statuses: CommentStatus[]): void;
+  /** The change view's button (D31): opens the baseline↔current diff. */
+  onShowChanges(): void;
 }
 
 export interface HeaderView {
-  setState(review: ReviewSummary): void;
+  /** `changes` undefined hides the change control, as `no-baseline` does. */
+  /** `marked` is how many blocks `applyChangeMarks` marked for `changes`; it is the count shown. */
+  setState(review: ReviewSummary, changes?: ChangeState, marked?: number): void;
   /** Applies a filter restored from `setState`, without echoing it back to the host. */
   setFilter(statuses: readonly CommentStatus[]): void;
 }
@@ -44,6 +53,43 @@ export function copyPromptLabel(open: number): { label: string; disabled: boolea
   return open === 0
     ? { label: 'Copy review prompt', disabled: true }
     : { label: `Copy review prompt (${String(open)})`, disabled: false };
+}
+
+/**
+ * What the "Show changes" button posts. The existing rewrite-diff message, not a new type: the host
+ * already guards it and opens the baseline↔current diff for it (D31, L-message-guard).
+ */
+export const SHOW_CHANGES_MESSAGE = { type: 'showRewriteDiff' } as const satisfies WebviewMessage;
+
+export type ChangesControl =
+  | { kind: 'hidden' }
+  | { kind: 'text'; label: string }
+  | { kind: 'button'; label: string; title?: string };
+
+/**
+ * The change view's header control (D31).
+ *
+ * `changed` counts the blocks the inline marks actually marked, passed in as `marked` from
+ * `applyChangeMarks`, so the number matches the bars a reader can see. The host merges adjacent
+ * changed blocks into one span (D28), so a span count would undercount: three rewritten paragraphs
+ * in a row are one span and three bars. Without `marked` — a caller that did not mark anything —
+ * the span count is the only number there is. `too-large` keeps the button, since the side-by-side diff still works
+ * where inline marks were skipped, and its tooltip says why there are no marks. `unchanged` is
+ * plain text rather than a disabled button: there is nothing to open. No baseline, or no state at
+ * all, means there is no prompt to compare against, so nothing is shown.
+ */
+export function changesControl(changes: ChangeState | undefined, marked?: number): ChangesControl {
+  switch (changes?.state) {
+    case 'changed':
+      return { kind: 'button', label: `Show changes (${String(marked ?? changes.blocks.length)})` };
+    case 'too-large':
+      return { kind: 'button', label: 'Show changes', title: 'Too large to mark inline' };
+    case 'unchanged':
+      return { kind: 'text', label: 'No changes since prompt' };
+    case 'no-baseline':
+    case undefined:
+      return { kind: 'hidden' };
+  }
 }
 
 /**
@@ -89,6 +135,7 @@ export function hiddenNotice(
 export function initHeader(options: HeaderOptions): HeaderView {
   let filter: CommentStatus[] = [...FILTERABLE];
   let counts = countByStatus([]);
+  let control: ChangesControl = { kind: 'hidden' };
 
   const chips = new Map<CommentStatus, HTMLButtonElement>();
 
@@ -143,7 +190,16 @@ export function initHeader(options: HeaderOptions): HeaderView {
   });
   countsRow.append(hidden);
 
-  actions.append(copy, clear, clearAll);
+  const showChanges = document.createElement('button');
+  showChanges.type = 'button';
+  showChanges.className = 'mr-button-secondary';
+  showChanges.addEventListener('click', options.onShowChanges);
+
+  // Muted, like the popover's hint: a fact about the document, not something to act on.
+  const noChanges = document.createElement('span');
+  noChanges.className = 'mr-popover-hint';
+
+  actions.append(copy, clear, clearAll, showChanges, noChanges);
   options.root.replaceChildren(countsRow, actions);
 
   function paint(): void {
@@ -175,15 +231,29 @@ export function initHeader(options: HeaderOptions): HeaderView {
       hidden.setAttribute('aria-label', `${notice}. Show all comments.`);
     }
 
-    // The whole bar is dead weight on a document nobody has commented on yet.
-    options.root.hidden = Object.values(counts).every((count) => count === 0);
+    showChanges.hidden = control.kind !== 'button';
+    noChanges.hidden = control.kind !== 'text';
+    if (control.kind === 'button') {
+      showChanges.textContent = control.label;
+      if (control.title === undefined) showChanges.removeAttribute('title');
+      else showChanges.title = control.title;
+    } else if (control.kind === 'text') {
+      noChanges.textContent = control.label;
+    }
+
+    // The whole bar is dead weight on a document nobody has commented on yet. A change control
+    // keeps it up: after "Clear all" the baseline and its inline marks remain, and the button is
+    // the only way to the diff that explains them.
+    options.root.hidden =
+      Object.values(counts).every((count) => count === 0) && control.kind === 'hidden';
   }
 
   paint();
 
   return {
-    setState(review): void {
+    setState(review, changes, marked): void {
       counts = countByStatus(review.comments);
+      control = changesControl(changes, marked);
       paint();
     },
     setFilter(statuses): void {

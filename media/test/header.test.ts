@@ -7,13 +7,16 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { Comment, CommentStatus } from '../../src/panel/messages.js';
+import type { Comment, CommentStatus, WebviewMessage } from '../../src/panel/messages.js';
 import {
   FILTERABLE,
+  SHOW_CHANGES_MESSAGE,
+  changesControl,
   chipLabel,
   copyPromptLabel,
   countByStatus,
   hiddenNotice,
+  initHeader,
   toggleStatus,
 } from '../src/header.js';
 
@@ -115,5 +118,72 @@ describe('hiddenNotice', () => {
 
   it('says nothing when there is nothing to hide', () => {
     expect(hiddenNotice({ open: 0, addressed: 0, orphaned: 0, resolved: 0 }, [])).toBeUndefined();
+  });
+});
+
+describe('changesControl (D31)', () => {
+  it('no-baseline hides the control', () => {
+    expect(changesControl({ state: 'no-baseline' })).toEqual({ kind: 'hidden' });
+    // Undefined is the failure path: no state at all reads as nothing to compare against.
+    expect(changesControl(undefined)).toEqual({ kind: 'hidden' });
+  });
+
+  it('unchanged shows "No changes since prompt"', () => {
+    expect(changesControl({ state: 'unchanged' })).toEqual({
+      kind: 'text',
+      label: 'No changes since prompt',
+    });
+  });
+
+  it('changed shows "Show changes (4)"', () => {
+    const blocks = [0, 10, 20, 30].map((start) => ({ start, end: start + 5 }));
+    expect(changesControl({ state: 'changed', blocks })).toEqual({
+      kind: 'button',
+      label: 'Show changes (4)',
+    });
+  });
+
+  it('changed counts marked blocks, not merged spans', () => {
+    // One merged span (D28) over three rewritten paragraphs: three bars, so the button says 3.
+    expect(changesControl({ state: 'changed', blocks: [{ start: 0, end: 30 }] }, 3)).toEqual({
+      kind: 'button',
+      label: 'Show changes (3)',
+    });
+  });
+
+  it('too-large shows the button without a count', () => {
+    expect(changesControl({ state: 'too-large' })).toEqual({
+      kind: 'button',
+      label: 'Show changes',
+      title: 'Too large to mark inline',
+    });
+  });
+
+  it('the button posts showRewriteDiff', () => {
+    // Wired the way webview.ts wires it, so the message the click produces is the one asserted.
+    const posted: WebviewMessage[] = [];
+    const root = document.createElement('div');
+    const view = initHeader({
+      root,
+      onCopyPrompt: () => undefined,
+      onClearAddressed: () => undefined,
+      onClearAll: () => undefined,
+      onFilterChange: () => undefined,
+      onShowChanges: () => posted.push(SHOW_CHANGES_MESSAGE),
+    });
+    const summary = { version: 1 as const, targetPath: 'docs/auth.md', comments: [comment('open')] };
+    view.setState(summary, { state: 'too-large' });
+
+    const button = [...root.querySelectorAll('button')].find(
+      (element) => element.textContent === 'Show changes',
+    );
+    expect(button?.hidden).toBe(false);
+    expect(button?.title).toBe('Too large to mark inline');
+    button?.click();
+    expect(posted).toEqual([{ type: 'showRewriteDiff' }]);
+
+    // And it goes away again once there is no baseline.
+    view.setState(summary, { state: 'no-baseline' });
+    expect(button?.hidden).toBe(true);
   });
 });

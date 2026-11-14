@@ -602,7 +602,7 @@ coverage-hash: 9a4a97af
 | V3 | app | V2 | activation event | done | tag | activationEvents adds workspaceContains:.reviews/*.json; laws/CLAUDE/PRD amended; 541 + 65 integration pass |
 | CV1 | app | V3 | changed blocks host-side | done | tag | Tests 25 passed (25); Tests 549 passed (549) |
 | CV2 | app | CV1 | change marks (overlay bars) | done | tag | leeway: dev/harness/themes.css (Recommended option: CV2 defines --vscode-editorGutter-modifiedBackground in the base/dark, light and hc preset blocks so check-theme-vars passes and the CV2 commit… |
-| CV3 | app | CV2 | header "Show changes" control | todo | | |
+| CV3 | app | CV2 | header "Show changes" control | done | tag | 1 fix round; Tests 19 passed (19); Tests 563 passed (563) |
 | CV4 | app | CV3 | harness checks | todo | | |
 | R1 | docs | CV4 | README, changelog, runsheets | todo | | |
 | F | app | R1 | final gates | todo | | |

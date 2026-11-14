@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `3 open · 2 to confirm`, and opens the review pane when clicked. Reviewed files get an Explorer
   badge with the number of comments needing action. Both show as soon as a workspace that holds
   reviews is opened, with no pane open.
+- After you copy a prompt, blocks the agent changed are marked with a bar in the margin, and the
+  header shows `Show changes (4)`, which opens the side-by-side diff against the copied version.
+  When nothing changed it reads `No changes since prompt`. For a document too large to mark
+  inline, the button still opens the diff and its tooltip says why there are no marks.
 
 ### Changed
 
