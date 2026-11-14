@@ -335,7 +335,8 @@ export class ReviewStore {
       this.output.appendLine(
         `[store] ${this.state.targetPath}: rendered text is ${String(plainText.length)} chars, ` +
           `over the ${String(BASELINE_MAX_CHARS)} baseline limit — skipping the snapshot ` +
-          '(the rewrite diff will be unavailable for this file) (the previous baseline was cleared)',
+          '(the rewrite diff will be unavailable for this file)' +
+          (this.state.baselineText === undefined ? '' : ' (the previous baseline was cleared)'),
       );
       const next: ReviewFile = { ...this.state, promptOrder: [...promptOrder] };
       delete next.baselineText;

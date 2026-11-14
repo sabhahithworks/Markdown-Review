@@ -462,9 +462,29 @@ describe('baseline snapshots (PRD §7)', () => {
     assert.equal(parsed.baselineAt, undefined);
     assert.deepEqual(parsed.promptOrder, ['huge0001']);
     assert.ok(
-      lines.some((line) => line.includes('over the') && line.includes('baseline limit')),
+      lines.some(
+        (line) =>
+          line.includes('over the') &&
+          line.includes('baseline limit') &&
+          line.includes('(the previous baseline was cleared)'),
+      ),
       `expected a skip explanation in the output channel, got: ${lines.join(' | ')}`,
     );
+  });
+
+  it('says nothing was cleared when an oversize first copy had no baseline', async () => {
+    const { store, sidecar, lines } = await storeOn('baseline-huge-first.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'hugf0001' }));
+
+    store.snapshotBaseline('x'.repeat(BASELINE_MAX_CHARS + 1), ['hugf0001']);
+    await store.flush();
+
+    const parsed = await readSidecar(sidecar);
+    assert.equal(parsed.baselineText, undefined);
+    assert.deepEqual(parsed.promptOrder, ['hugf0001']);
+    const skip = lines.filter((line) => line.includes('baseline limit'));
+    assert.equal(skip.length, 1, `expected one skip line, got: ${lines.join(' | ')}`);
+    assert.ok(!skip[0]?.includes('previous baseline'), `no baseline existed to clear: ${skip[0] ?? ''}`);
   });
 });
 
