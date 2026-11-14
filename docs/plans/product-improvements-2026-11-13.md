@@ -604,7 +604,7 @@ coverage-hash: 9a4a97af
 | CV2 | app | CV1 | change marks (overlay bars) | done | tag | leeway: dev/harness/themes.css (Recommended option: CV2 defines --vscode-editorGutter-modifiedBackground in the base/dark, light and hc preset blocks so check-theme-vars passes and the CV2 commit… |
 | CV3 | app | CV2 | header "Show changes" control | done | tag | 1 fix round; Tests 19 passed (19); Tests 563 passed (563) |
 | CV4 | app | CV3 | harness checks | done | tag | 2; changed 1.0, 1.0, 1.0; Tests 563 passed (563); ALL CHECKS PASSED; ALL CHECKS PASSED; ALL CHECKS PASSED; ALL CHECKS PASSED |
-| R1 | docs | CV4 | README, changelog, runsheets | todo | | |
+| R1 | docs | CV4 | README, changelog, runsheets | done | tag | 2 fix rounds; 0; 1; 1; Tests 563 passed (563) |
 | F | app | R1 | final gates | todo | | |
 | O1 | docs | F | manual acceptance | todo | | |
 | O2 | docs | O1 | package, record, publish | todo | | |

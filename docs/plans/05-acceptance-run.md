@@ -45,21 +45,70 @@ Two documents, and the difference matters — the same rule as Plan 04's run:
 
 ---
 
-## Part A — the Phase 4 gate
+## Part A — the Phase 4 gate and the 2026-11 features
 
-Run `docs/plans/04-acceptance-run.md` end to end. Its open boxes — **B1d**, **B1e**, **B1c**'s blind
-re-run, **B4a–B4c**, **B5a–B5e**, and **A3** — are Plan 05 §1's prerequisite table, and Plan 04 §10
-D21 must be fixed before B1b can be re-run without a caveat.
+Run `docs/plans/04-acceptance-run.md` end to end, then the feature checks below. If Part A is not
+green, stop: everything after it tests packaging, and packaging a product whose loop is unverified
+just produces a verified archive of an unverified product.
 
-This document does not restate them. If Part A is not green, stop: everything below tests packaging,
-and packaging a product whose loop is unverified just produces a verified archive of an unverified
-product.
+**Plan 04's four open boxes** (`docs/plans/04-acceptance-run.md`):
+
+- [ ] **B3a** — replace the entire contents of `review-run.md` with at least two located comments;
+      every comment orphans and the rewrite banner appears.
+- [ ] **B3b** — **Review the diff** opens the snapshot against the current file.
+- [ ] **B3c** — **Dismiss**, then edit the document again; the banner does not come back for a
+      document already dismissed.
+- [ ] Plan 04's `autoDetectResolution = false` box (the last open `[ ]` in that file): leave two
+      comments with the setting off, edit the file, and confirm nothing flips to `addressed`.
+
+**Plan 04 loops that need a real agent and a real dialog:**
+
+- [ ] **Blind real-agent run.** Paste a copied prompt at an agent that has not read any plan or
+      this runsheet, in the packaged build. At least one comment flips to `addressed` with a
+      before/after that is the agent's own edit.
+- [ ] **B4 re-link.** Rename a reviewed file on disk, open the pane, click **Locate file…**, pick
+      the renamed file in the dialog, and confirm the comments migrate and the old sidecar is left
+      empty rather than deleted.
+
+**New in this release:**
+
+- [ ] **Q1, ambiguous quotes.** In a document where one sentence appears twice, comment on one
+      occurrence and copy the prompt. The item reads `On: "…" (under "## Heading", line N)`. A
+      quote that appears once has no such suffix.
+- [ ] **N3, prompt numbers.** After copying a prompt, each card shows `#<item number>` matching its
+      position in the prompt. Add a comment afterwards: it has no number until the next copy.
+- [ ] **V2, status bar.** With a Markdown file active in a reviewed workspace, the status bar reads
+      for example `3 open · 2 to confirm`, and clicking it opens the review pane.
+- [ ] **V3, activation where reviews exist.** Open a folder that already holds
+      `.reviews/*.json`, run no command, and the status bar item and Explorer badges show with no
+      pane open. Open a folder with no `.reviews/` and confirm the extension is absent from
+      *Developer: Show Running Extensions*.
+- [ ] **U1, reload with the pane open.** Open the pane, run *Developer: Reload Window*, and confirm
+      the pane comes back with its comments. **If this check fails, stop and add row `V3b` to the
+      plan's tracker** (owner call) before going on.
+- [ ] **CV2, change marks.** Copy a prompt, let an agent edit two blocks, and confirm a bar appears
+      in the margin beside each changed block and no other.
+- [ ] **CV3, Show changes.** The header reads `Show changes (N)` with N matching the marked blocks;
+      clicking it opens the side-by-side diff against the copied version. With no edits it reads
+      `No changes since prompt`. On a document too large to mark inline the button still opens the
+      diff and its tooltip says why there are no marks.
 
 ---
 
 ## Part B — the packaged build
 
 Run C1 → C5 in order; each leaves the state the next needs. About twenty minutes.
+
+The C1–C5 records below are from the 2026-08 D24 archive. They are history, not a pass for the
+rebuilt 0.1.0 archive (two `activationEvents`, change marks, indicators): re-run each check on
+that archive and tick its box here.
+
+- [ ] **C1 re-run** on the rebuilt 0.1.0 archive.
+- [ ] **C2 re-run** on the rebuilt 0.1.0 archive.
+- [ ] **C3 re-run** on the rebuilt 0.1.0 archive; the manifest has exactly two `activationEvents`
+      entries (`onWebviewPanel:markdownReview.panel`, `workspaceContains:.reviews/*.json`).
+- [ ] **C4 re-run** on the rebuilt 0.1.0 archive.
+- [ ] **C5 re-run** on the rebuilt 0.1.0 archive.
 
 ### C1 — install and identity — §12 items 3, 4
 
@@ -135,9 +184,10 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
       > profile does not leave you with the cold start this box is about.
       >
       > Do the static half first — it fails faster. Unzip the `.vsix` and check
-      > `extension/package.json` has **exactly one `activationEvents` entry,
-      > `onWebviewPanel:markdownReview.panel`** (D24 — anything else, or none at all, is a
-      > regression), a `main`, four `contributes.commands` and `engines.vscode` ≥ 1.74. That
+      > `extension/package.json` has **exactly two `activationEvents` entries,
+      > `onWebviewPanel:markdownReview.panel` and `workspaceContains:.reviews/*.json`** (D24 and
+      > product-improvements D3 — anything else, or none at all, is a regression), a `main`,
+      > four `contributes.commands` and `engines.vscode` ≥ 1.74. That
       > establishes the precondition; only the Running Extensions view establishes the behaviour.
       >
       > **`exthost.log` answers this, and answers it better than the view** — it is the same
@@ -160,11 +210,12 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 > Expect: Markdown Review is **not** in the list. Then run *Markdown Review: Open Review Pane* and
 > look again — now it is, with an activation reason naming the command.
 >
-> The manifest declares exactly one `activationEvents` entry and no `onStartupFinished`; VS Code
-> infers the rest from `contributes.commands`, and that one event fires only during an actual panel
-> restore. This is the only check that the inference actually held in a packaged build, and a fresh
-> profile is what makes it meaningful — an existing profile may have the extension already activated
-> by a restored webview from a previous session.
+> The manifest declares exactly two `activationEvents` entries and no `onStartupFinished`; VS Code
+> infers the rest from `contributes.commands`. The first fires only during an actual panel restore;
+> the second only in a workspace that holds `.reviews/*.json`, so the fresh-profile folder for this
+> check must not contain one. This is the only check that the inference actually held in a
+> packaged build, and a fresh profile is what makes it meaningful — an existing profile may have
+> the extension already activated by a restored webview from a previous session.
 
 ### C4 — the listing, as VS Code renders it — §12 items 5, 7, 15
 
@@ -227,8 +278,8 @@ Run C1 → C5 in order; each leaves the state the next needs. About twenty minut
 
 ## Part C — deferred to publish day
 
-Not part of 0.1.0's definition of done. Recorded here so publish day is a checklist rather than a
-research session (Plan 05 §10).
+The owner's publish-day steps for 0.1.0 on both registries (D6, D33), run by the owner only.
+Recorded here so publish day is a checklist rather than a research session (Plan 05 §10).
 
 - [x] Publisher claimed 2026-08-06 at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage)
       as **`SabhahithWorks`** — note the capitals, which Plan 05 §2 wrongly said were impossible —
@@ -244,6 +295,15 @@ research session (Plan 05 §10).
       2026-08-06:** public, all three `docs/media/*.jpg` on `origin/main` — the branch the raw URLs
       name — and Phase 6 plus the release prep are merged, so `main` carries the source the shipped
       bytes came from and `v0.1.0` can be tagged against it.
+- [ ] **Open VSX, owner steps** (`vsce` and `ovsx` publishing are run by the owner, never by an agent):
+  - [ ] Link an Eclipse account to your open-vsx.org profile, then sign the Publisher Agreement from
+        that profile page.
+  - [ ] Generate an access token on open-vsx.org and export it as `OVSX_PAT`.
+  - [ ] `npx ovsx create-namespace SabhahithWorks -p $OVSX_PAT`
+  - [ ] `npx ovsx publish markdown-review-pane-0.1.0.vsix -p $OVSX_PAT`
+  - [ ] If the listing shows the namespace as unverified, file the namespace-ownership claim on the
+        open-vsx.org namespace page (U2).
+  - [ ] The Open VSX listing renders the README and its images.
 - [ ] Published; the listing renders as C4 predicted.
 - [ ] **The publisher line reads "Sabhahith Works", not the id.** Moved here from C1: the display
       name lives on the Marketplace publisher account, so a locally installed `.vsix` can only show
