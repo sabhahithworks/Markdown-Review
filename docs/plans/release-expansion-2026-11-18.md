@@ -1228,7 +1228,7 @@ coverage-hash: 0300423e
 | N6 | app | N5 | note on a card | done | tag | Tests 48 passed (48); Tests 688 passed (688) |
 | S1 | app | N6 | send message and wording | done | tag | Tests 99 passed (99); Tests 692 passed (692) |
 | S2 | app | S1 | commands and delivery | done | tag | Tests 692 passed (692); media/mermaid.min.js 5408.0 KB (SUMMARY=none); 87 passed, 0 failed (SUMMARY=none); 0 |
-| S3 | app | S2 | Send menu | todo | - | - |
+| S3 | app | S2 | Send menu | done | tag | Tests 25 passed (25); Tests 697 passed (697); media/mermaid.min.js 5408.0 KB; theme variables: 41 used, all defined and overridden in every preset; typecheck=0 (three tsconfig projects clean)… |
 | S4 | app | S3 | terminal paste proof | todo | - | - |
 | T1 | app | S4 | Dismiss and unreadable coverage | todo | - | - |
 | H1 | app | T1 | harness for new cards and menu | todo | - | - |

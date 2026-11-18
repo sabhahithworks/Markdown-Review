@@ -929,6 +929,53 @@ body:not(.mr-narrow):not(.mr-no-cards) {
   align-items: center;
 }
 
+.mr-send {
+  position: relative;
+}
+
+.mr-button-secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mr-send-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  min-width: max-content;
+  max-width: calc(100vw - 16px);
+  margin-top: 2px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-editorWidget-background);
+  color: var(--vscode-editor-foreground);
+}
+
+.mr-send-menu[hidden] {
+  display: none;
+}
+
+.mr-send-item {
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.9em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mr-send-item:hover,
+.mr-send-item:focus-visible {
+  background-color: var(--vscode-toolbar-hoverBackground);
+  border-color: var(--vscode-focusBorder);
+}
+
 .mr-chip {
   padding: 2px 10px;
   border: 1px solid var(--vscode-panel-border);

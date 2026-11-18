@@ -299,6 +299,9 @@ function startCommenting(author: string): CommentsView {
     onCopyPrompt: () => {
       vscode.postMessage({ type: 'copyPrompt' });
     },
+    onSendPrompt: (target) => {
+      vscode.postMessage({ type: 'sendPrompt', target });
+    },
     onClearAddressed: () => {
       vscode.postMessage({ type: 'clearAddressed' });
     },

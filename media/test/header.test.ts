@@ -166,6 +166,7 @@ describe('changesControl (D31)', () => {
     const view = initHeader({
       root,
       onCopyPrompt: () => undefined,
+      onSendPrompt: () => undefined,
       onClearAddressed: () => undefined,
       onClearAll: () => undefined,
       onFilterChange: () => undefined,
@@ -196,6 +197,7 @@ describe('Comment on document button', () => {
     initHeader({
       root,
       onCopyPrompt: () => undefined,
+      onSendPrompt: () => undefined,
       onClearAddressed: () => undefined,
       onClearAll: () => undefined,
       onFilterChange: () => undefined,
@@ -210,5 +212,85 @@ describe('Comment on document button', () => {
     button?.click();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith(button);
+  });
+});
+
+describe('Send to menu', () => {
+  function build() {
+    const sent: string[] = [];
+    const root = document.createElement('div');
+    document.body.append(root);
+    const view = initHeader({
+      root,
+      onCopyPrompt: () => undefined,
+      onSendPrompt: (target) => sent.push(target),
+      onClearAddressed: () => undefined,
+      onClearAll: () => undefined,
+      onFilterChange: () => undefined,
+      onShowChanges: () => undefined,
+      onCommentOnDocument: () => undefined,
+    });
+    const summary = { version: 1 as const, targetPath: 'docs/auth.md', comments: [comment('open')] };
+    const button = root.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
+    const menu = root.querySelector<HTMLElement>('[role="menu"]');
+    const items = [...root.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+    if (!button || !menu) throw new Error('no Send to control');
+    return { root, view, summary, button, menu, items, sent };
+  }
+  const key = (target: HTMLElement, name: string): void => {
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
+  };
+
+  it('Send to is disabled with no open comments', () => {
+    const { view, summary, button } = build();
+    view.setState({ ...summary, comments: [] });
+    expect(button.disabled).toBe(true);
+    view.setState(summary);
+    expect(button.disabled).toBe(false);
+  });
+
+  it('menu opens with Enter and closes with Escape', () => {
+    const { view, summary, button, menu, items, sent } = build();
+    view.setState(summary);
+    expect(menu.hidden).toBe(true);
+    button.click(); // the click a keyboard Enter or Space produces
+    expect(menu.hidden).toBe(false);
+    expect(document.activeElement).toBe(items[0]);
+    key(items[0] as HTMLElement, 'Escape');
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(button);
+    expect(sent).toEqual([]);
+  });
+
+  it('arrow keys move between the two items and wrap', () => {
+    const { view, summary, button, items } = build();
+    view.setState(summary);
+    button.click();
+    key(items[0] as HTMLElement, 'ArrowDown');
+    expect(document.activeElement).toBe(items[1]);
+    key(items[1] as HTMLElement, 'ArrowDown');
+    expect(document.activeElement).toBe(items[0]);
+    key(items[0] as HTMLElement, 'ArrowUp');
+    expect(document.activeElement).toBe(items[1]);
+  });
+
+  it("choosing Active terminal calls onSendPrompt('terminal') and closes the menu", () => {
+    const { view, summary, button, menu, items, sent } = build();
+    view.setState(summary);
+    button.click();
+    expect(items.map((item) => item.textContent)).toEqual(['VS Code chat', 'Active terminal']);
+    items[1]?.click();
+    expect(sent).toEqual(['terminal']);
+    expect(menu.hidden).toBe(true);
+  });
+
+  it('aria-expanded follows the menu', () => {
+    const { view, summary, button } = build();
+    view.setState(summary);
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    button.click();
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(button.getAttribute('aria-expanded')).toBe('false');
   });
 });
