@@ -6,7 +6,7 @@
  * which is why counting, the primary action's state and chip toggling are exported separately.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Comment, CommentStatus, WebviewMessage } from '../../src/panel/messages.js';
 import {
   FILTERABLE,
@@ -170,6 +170,7 @@ describe('changesControl (D31)', () => {
       onClearAll: () => undefined,
       onFilterChange: () => undefined,
       onShowChanges: () => posted.push(SHOW_CHANGES_MESSAGE),
+      onCommentOnDocument: () => undefined,
     });
     const summary = { version: 1 as const, targetPath: 'docs/auth.md', comments: [comment('open')] };
     view.setState(summary, { state: 'too-large' });
@@ -185,5 +186,29 @@ describe('changesControl (D31)', () => {
     // And it goes away again once there is no baseline.
     view.setState(summary, { state: 'no-baseline' });
     expect(button?.hidden).toBe(true);
+  });
+});
+
+describe('Comment on document button', () => {
+  it('header has a Comment on document button', () => {
+    const root = document.createElement('div');
+    const handler = vi.fn();
+    initHeader({
+      root,
+      onCopyPrompt: () => undefined,
+      onClearAddressed: () => undefined,
+      onClearAll: () => undefined,
+      onFilterChange: () => undefined,
+      onShowChanges: () => undefined,
+      onCommentOnDocument: handler,
+    });
+
+    const button = [...root.querySelectorAll('button')].find(
+      (element) => element.textContent === 'Comment on document',
+    );
+    expect(button).toBeDefined();
+    button?.click();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(button);
   });
 });

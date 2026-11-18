@@ -257,6 +257,10 @@ function startCommenting(author: string): CommentsView {
       announce('Comment added.');
       vscode.postMessage({ type: 'addComment', selectedText, offset, hintLine, body });
     },
+    onDocumentSubmit: (body) => {
+      announce('Comment added.');
+      vscode.postMessage({ type: 'addDocumentComment', body });
+    },
     onReanchor: ({ id, selectedText, offset, hintLine }) => {
       announce('Comment re-anchored to the selected text.');
       vscode.postMessage({ type: 'reanchorComment', id, selectedText, offset, hintLine });
@@ -289,6 +293,7 @@ function startCommenting(author: string): CommentsView {
     onShowChanges: () => {
       vscode.postMessage(SHOW_CHANGES_MESSAGE);
     },
+    onCommentOnDocument: openDocumentComposerFrom,
     onFilterChange: (statuses) => {
       filter = statuses;
       saveState();
@@ -519,6 +524,10 @@ let lastReviewState: Extract<HostMessage, { type: 'reviewState' }> | undefined;
  */
 let emptyStateDismissed = false;
 
+function openDocumentComposerFrom(button: HTMLElement): void {
+  selection?.openDocumentComposer(button.getBoundingClientRect(), button);
+}
+
 function paintEmptyState(isEmpty: boolean): void {
   if (!isEmpty || emptyStateDismissed || documentGone) {
     emptyStateRoot.hidden = true;
@@ -545,7 +554,15 @@ function paintEmptyState(isEmpty: boolean): void {
     paintEmptyState(true);
   });
 
-  emptyStateRoot.replaceChildren(title, body, dismiss);
+  const commentOnDocument = document.createElement('button');
+  commentOnDocument.type = 'button';
+  commentOnDocument.className = 'mr-button-secondary';
+  commentOnDocument.textContent = 'Comment on document';
+  commentOnDocument.addEventListener('click', () => {
+    openDocumentComposerFrom(commentOnDocument);
+  });
+
+  emptyStateRoot.replaceChildren(title, body, commentOnDocument, dismiss);
   emptyStateRoot.hidden = false;
 }
 

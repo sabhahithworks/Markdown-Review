@@ -33,6 +33,8 @@ export interface HeaderOptions {
   onFilterChange(statuses: CommentStatus[]): void;
   /** The change view's button (D31): opens the baseline↔current diff. */
   onShowChanges(): void;
+  /** Opens the whole-document composer; `button` is where focus returns and the composer sits. */
+  onCommentOnDocument(button: HTMLElement): void;
 }
 
 export interface HeaderView {
@@ -170,6 +172,14 @@ export function initHeader(options: HeaderOptions): HeaderView {
   clear.textContent = 'Clear addressed';
   clear.addEventListener('click', options.onClearAddressed);
 
+  const commentOnDocument = document.createElement('button');
+  commentOnDocument.type = 'button';
+  commentOnDocument.className = 'mr-button-secondary';
+  commentOnDocument.textContent = 'Comment on document';
+  commentOnDocument.addEventListener('click', () => {
+    options.onCommentOnDocument(commentOnDocument);
+  });
+
   // Both clears are modal-confirmed and backed up host-side, so surfacing this one costs nothing
   // in safety and closes the gap where PRD §6's other command existed only in the palette (H27).
   const clearAll = document.createElement('button');
@@ -199,7 +209,7 @@ export function initHeader(options: HeaderOptions): HeaderView {
   const noChanges = document.createElement('span');
   noChanges.className = 'mr-popover-hint';
 
-  actions.append(copy, clear, clearAll, showChanges, noChanges);
+  actions.append(copy, commentOnDocument, clear, clearAll, showChanges, noChanges);
   options.root.replaceChildren(countsRow, actions);
 
   function paint(): void {

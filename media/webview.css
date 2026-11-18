@@ -785,6 +785,11 @@ body:not(.mr-narrow):not(.mr-no-cards) {
   background-color: var(--vscode-editorWidget-background);
 }
 
+.mr-popover-heading {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
 .mr-popover-actions {
   display: flex;
   justify-content: flex-end;

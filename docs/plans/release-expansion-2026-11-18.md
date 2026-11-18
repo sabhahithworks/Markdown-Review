@@ -1213,7 +1213,7 @@ coverage-hash: 0300423e
 | W1 | app | M6 | optional anchor in the model | done | tag | leeway: src/test/perf.test.ts (npm run typecheck reports line 205 once Comment.anchor is optional. W1 DECIDED (plan :500) says to fix every site typecheck reports by skipping whole-document… |
 | W2 | app | W1 | document comments in the prompt | done | tag | Tests 37 passed (37); Tests 635 passed (635) |
 | W3 | app | W2 | host message and store | done | tag | Tests 71 passed (71); Tests 638 passed (638) |
-| W4 | app | W3 | composer and buttons | todo | - | - |
+| W4 | app | W3 | composer and buttons | done | tag | Tests 26 passed (26); Tests 645 passed (645) |
 | W5 | app | W4 | whole-document card | todo | - | - |
 | N1 | app | W5 | notes model and parsing | todo | - | - |
 | N2 | app | N1 | prompt sentence, rule amendments | todo | - | - |

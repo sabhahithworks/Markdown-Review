@@ -40,6 +40,8 @@ export interface SelectionOptions {
   /** Shown in the popover so it is clear whose name the comment will carry. */
   author: string;
   onSubmit(payload: SelectionPayload): void;
+  /** The composer opened by `openDocumentComposer`: a comment on the whole document, no passage. */
+  onDocumentSubmit(body: string): void;
   onReanchor(payload: ReanchorPayload): void;
   /** Mirrors the armed state into the orphan section, which shows which row is waiting. */
   onArmChange(id: string | undefined): void;
@@ -57,6 +59,8 @@ export interface SelectionController {
   armReanchor(id: string): void;
   disarm(): void;
   isArmed(): boolean;
+  /** Opens the composer beside `at` with no passage; `restoreFocusTo` gets focus back on close. */
+  openDocumentComposer(at: DOMRect, restoreFocusTo: Element): void;
 }
 
 interface Captured {
@@ -190,7 +194,11 @@ export function initSelection(options: SelectionOptions): SelectionController {
     hideButton();
   });
 
-  popover.onSubmit((body) => {
+  popover.onSubmit((body, wholeDocument) => {
+    if (wholeDocument) {
+      options.onDocumentSubmit(body);
+      return;
+    }
     const payload = captured;
     hideButton();
     if (!payload) return;
@@ -211,6 +219,11 @@ export function initSelection(options: SelectionOptions): SelectionController {
     },
     isArmed(): boolean {
       return arming !== undefined;
+    },
+    openDocumentComposer(at, restoreFocusTo): void {
+      hideButton();
+      hideHint(hint);
+      popover.openDocument(at, restoreFocusTo);
     },
   };
 }
@@ -371,7 +384,9 @@ interface Popover {
   element: HTMLElement;
   open(at: Captured, restoreFocusTo?: Element | null): void;
   isOpen(): boolean;
-  onSubmit(handler: (body: string) => void): void;
+  /** Opens with no passage: the heading shows and a submit reports `wholeDocument`. */
+  openDocument(at: DOMRect, restoreFocusTo: Element): void;
+  onSubmit(handler: (body: string, wholeDocument: boolean) => void): void;
   onCancel(handler: () => void): void;
 }
 
@@ -381,6 +396,11 @@ function createPopover(options: SelectionOptions): Popover {
   element.hidden = true;
   element.setAttribute('role', 'dialog');
   element.setAttribute('aria-label', 'New comment');
+
+  const heading = document.createElement('div');
+  heading.className = 'mr-popover-heading';
+  heading.textContent = 'Comment on the whole document';
+  heading.hidden = true;
 
   const author = document.createElement('div');
   author.className = 'mr-popover-author';
@@ -411,16 +431,18 @@ function createPopover(options: SelectionOptions): Popover {
   submit.disabled = true;
 
   actions.append(cancel, submit);
-  element.append(author, textarea, hint, actions);
+  element.append(heading, author, textarea, hint, actions);
 
   let open = false;
   /** Restored on close so dismissing the popover does not dump focus on `<body>`. */
   let previousFocus: Element | null = null;
-  const submitHandlers: Array<(body: string) => void> = [];
+  let wholeDocument = false;
+  const submitHandlers: Array<(body: string, wholeDocument: boolean) => void> = [];
   const cancelHandlers: Array<() => void> = [];
 
   function close(): void {
     open = false;
+    wholeDocument = false;
     element.hidden = true;
     textarea.value = '';
     submit.disabled = true;
@@ -430,8 +452,9 @@ function createPopover(options: SelectionOptions): Popover {
   function commit(): void {
     const body = textarea.value.trim();
     if (body.length === 0) return;
+    const forDocument = wholeDocument;
     close();
-    for (const handler of submitHandlers) handler(body);
+    for (const handler of submitHandlers) handler(body, forDocument);
   }
 
   function dismiss(): void {
@@ -460,18 +483,28 @@ function createPopover(options: SelectionOptions): Popover {
   cancel.addEventListener('click', dismiss);
   submit.addEventListener('click', commit);
 
+  function show(rect: DOMRect, restoreFocusTo: Element | null | undefined, forDocument: boolean): void {
+    // The caller passes what had focus *before* it hid the Comment button. Reading
+    // `document.activeElement` here instead — as this did — always saw `<body>`, because hiding
+    // the button had already dropped focus, so `close()`'s restore was a silent no-op (H18).
+    previousFocus = restoreFocusTo ?? document.activeElement;
+    wholeDocument = forDocument;
+    heading.hidden = !forDocument;
+    element.setAttribute('aria-label', forDocument ? 'Comment on the whole document' : 'New comment');
+    open = true;
+    element.hidden = false;
+    placeFixed(element, rect, 'below');
+    textarea.focus();
+  }
+
   return {
     element,
     isOpen: () => open,
+    openDocument(at, restoreFocusTo) {
+      show(at, restoreFocusTo, true);
+    },
     open(at: Captured, restoreFocusTo?: Element | null) {
-      // The caller passes what had focus *before* it hid the Comment button. Reading
-      // `document.activeElement` here instead — as this did — always saw `<body>`, because hiding
-      // the button had already dropped focus, so `close()`'s restore was a silent no-op (H18).
-      previousFocus = restoreFocusTo ?? document.activeElement;
-      open = true;
-      element.hidden = false;
-      placeFixed(element, at.rect, 'below');
-      textarea.focus();
+      show(at.rect, restoreFocusTo, false);
     },
     onSubmit(handler) {
       submitHandlers.push(handler);
