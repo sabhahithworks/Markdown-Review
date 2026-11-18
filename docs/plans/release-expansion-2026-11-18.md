@@ -1218,7 +1218,7 @@ coverage-hash: 0300423e
 | W4 | app | W3 | composer and buttons | done | tag | Tests 26 passed (26); Tests 645 passed (645) |
 | W5 | app | W4 | whole-document card | done | tag | 1 fix round; Tests 25 passed (25); Tests 650 passed (650) |
 | N1 | app | W5 | notes model and parsing | done | tag | Tests 116 passed (116); Tests 666 passed (666) |
-| N2 | app | N1 | prompt sentence, rule amendments | todo | - | - |
+| N2 | app | N1 | prompt sentence, rule amendments | done | tag | Tests 59 passed (59); Tests 671 passed (671) |
 | N3 | app | N2 | store: ingest, dismiss, rounds | todo | - | - |
 | N4 | app | N3 | prompt command, dismiss message | todo | - | - |
 | N5 | app | N4 | notes section and shell | todo | - | - |

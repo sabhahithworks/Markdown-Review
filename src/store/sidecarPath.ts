@@ -47,6 +47,16 @@ export function globalSidecarFileName(absolutePath: string): string {
   return `${createHash('sha256').update(absolutePath).digest('hex').slice(0, 16)}.json`;
 }
 
+/** The agent-notes file for a sidecar: a trailing `.json` becomes `.notes.md`, otherwise `.notes.md` is appended. */
+export function notesFileName(sidecarName: string): string {
+  return `${sidecarName.replace(/\.json$/, '')}.notes.md`;
+}
+
+/** The notes path as the prompt names it: forward slashes by concatenation, never `path.join`. */
+export function notesPromptPath(sidecarName: string): string {
+  return `${REVIEWS_DIR}/${notesFileName(sidecarName)}`;
+}
+
 /** The backup written before a corrupt or unmigratable sidecar is replaced (PRD §11). */
 export function backupFileName(sidecarName: string): string {
   return `${sidecarName}.bak`;

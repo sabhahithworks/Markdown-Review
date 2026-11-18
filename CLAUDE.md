@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A VS Code extension (working name `markdown-review`) that renders any Markdown file in a review pane where the user selects passages and leaves comments — Google Docs-style commenting for local `.md` files. The user copies a generated prompt into any AI agent, the agent edits the file as plain prose, and the extension detects which comments were addressed by watching the file change.
 
-**The core design principle:** the agent is never asked to write structured data or follow a schema — it only edits prose. All bookkeeping (anchoring, status tracking, sidecar storage) is the extension's job. This is what makes it agent-agnostic.
+**The core design principle:** the agent is never asked to write structured data or follow a schema — it only edits prose. All bookkeeping (anchoring, status tracking, sidecar storage) is the extension's job. This is what makes it agent-agnostic. The one thing the prompt asks beyond editing is a notes file for disagreements, which is free prose; all matching of notes to comments is the extension's job.
 
 `MARKDOWN_REVIEW_PRD.md` is the authoritative spec. Read it before implementing anything. The rest of this file is orientation, not a substitute.
 

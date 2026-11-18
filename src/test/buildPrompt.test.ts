@@ -556,3 +556,31 @@ describe('buildPrompt — whole-document comments (D15)', () => {
     expect(buildPrompt(review, doc)).toEqual({ prompt: '', count: 0, order: [] });
   });
 });
+
+describe('buildPrompt — agent notes sentence', () => {
+  const doc = docOf(AUTH_MARKDOWN);
+  const review = makeReviewFile(
+    [
+      makeComment(anchorOn(doc, AUTH_ANCHORS.retries), { body: AUTH_BODIES.retries }),
+      makeComment(anchorOn(doc, AUTH_ANCHORS.parallel), { body: AUTH_BODIES.parallel }),
+      makeComment(anchorOn(doc, AUTH_ANCHORS.heading), { body: AUTH_BODIES.heading }),
+    ],
+    { targetPath: AUTH_TARGET_PATH },
+  );
+  const oldSentence = 'If you disagree with a comment or need clarification, tell me instead of guessing.\n';
+
+  it('notes path changes the third header line', () => {
+    const notesPath = '.reviews/docs__specs__auth.md.notes.md';
+    const { prompt } = buildPrompt(review, doc, { notesPath });
+    const newSentence = `If you disagree with a comment or need clarification, write that in plain words in \`${notesPath}\` instead of guessing, and mention the comment's number.\n`;
+
+    expect(prompt).toBe(AUTH_EXPECTED_PROMPT.replace(oldSentence, newSentence));
+    expect(prompt).not.toBe(AUTH_EXPECTED_PROMPT);
+  });
+
+  it('no notes path keeps the old sentence', () => {
+    expect(buildPrompt(review, doc).prompt).toBe(AUTH_EXPECTED_PROMPT);
+    expect(buildPrompt(review, doc, { notesPath: '' }).prompt).toBe(AUTH_EXPECTED_PROMPT);
+    expect(AUTH_EXPECTED_PROMPT).toContain(oldSentence);
+  });
+});

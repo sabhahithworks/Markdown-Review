@@ -31,7 +31,7 @@ line of the README.
 
 Do not build these. They are deferred deliberately; adding them will sink the release.
 
-- Comment threads or replies (single comment per anchor only)
+- Comment threads or replies (single comment per anchor only). Agent notes are not threads: one-way, plain text, no reply, never sent back to the agent (release-expansion D42)
 - Multi-user identity, avatars, or attribution beyond a configurable display name
 - Real-time collaboration or any backend service
 - An MCP server (a good v2, explicitly out of scope now)
@@ -383,6 +383,17 @@ Rules:
   `On the section "## Examples" (under "# Auth", line 40)`. When the copies share one block the hint
   adds `, occurrence N of M in this paragraph` (`code block` in fenced code). Unique quotes and
   unlocatable comments keep the bare form above.
+- **Agent notes (release-expansion D14, D18, D20, D47).** With `workspace` storage and a target inside
+  a workspace folder, the third header line becomes
+  ``If you disagree with a comment or need clarification, write that in plain words in `.reviews/<sidecar name without .json>.notes.md` instead of guessing, and mention the comment's number.``
+  Otherwise (`global` storage, or a document outside every workspace folder) the sentence above is
+  unchanged (D20). The notes file is free prose; the extension matches a mention of a comment's
+  number to that comment and shows the rest as "Notes from the agent". The path is relative to the
+  same folder as the target path on the prompt's first line. A "round" runs from one prompt to the
+  next: copying the next prompt reads the file once more, deletes it only if what was read has been
+  ingested, and clears the stored raw text and the dismissed record. A note stays until the user
+  dismisses it or the agent writes a newer note for the same comment; dismissed chunks stay
+  filtered within the round; unattached notes carry into the next round.
 - Include the workspace-relative path so the user's `@`-mention is unambiguous
 - Copy to clipboard via `vscode.env.clipboard.writeText`, then show an info message:
   *"3 comments copied. Paste into your agent and @-mention docs/auth.md."*

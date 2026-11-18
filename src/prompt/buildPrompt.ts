@@ -35,6 +35,8 @@ export interface BuildPromptOptions {
    * unlocatable-but-open case, which is otherwise unreachable through the public API.
    */
   locate?: Locator;
+  /** Workspace-relative path of the agent notes file. Empty or absent keeps the sentence without a notes file. */
+  notesPath?: string;
 }
 
 /** A comment paired with where it currently sits, so ordering and quoting agree on one answer. */
@@ -66,7 +68,9 @@ export function buildPrompt(
     `I've left review comments on \`${review.targetPath}\`. Please revise the document to address them.\n` +
     `\n` +
     `Edit the file directly. Don't add annotations, comments, or replies — just make the changes.\n` +
-    `If you disagree with a comment or need clarification, tell me instead of guessing.\n`;
+    (options.notesPath
+      ? `If you disagree with a comment or need clarification, write that in plain words in \`${options.notesPath}\` instead of guessing, and mention the comment's number.\n`
+      : `If you disagree with a comment or need clarification, tell me instead of guessing.\n`);
 
   const items = [
     ...documentComments.map(
