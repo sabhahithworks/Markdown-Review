@@ -166,6 +166,12 @@ async function main() {
     richComment('rich0003', RICH_PASSAGES.flowchart, { body: 'Should the yes branch loop back?' }),
   ];
 
+  const kitchenSinkBaseline = host.renderPlainText(baselineSource(source)).text;
+  const kitchenSinkChanges = host.changeStateOf(kitchenSinkBaseline, doc, host.changedRanges(kitchenSinkBaseline, doc.text));
+  if (kitchenSinkChanges.state !== 'changed' || kitchenSinkChanges.blocks.length === 0) {
+    throw new Error(`the kitchen-sink baseline produced ${JSON.stringify(kitchenSinkChanges)}, expected changed blocks`);
+  }
+
   const scenarios = {
     basic: {
       label: 'Spread out',
@@ -361,14 +367,7 @@ async function main() {
       label: 'Changed since prompt',
       description:
         'The change view (D28/D30): a baseline that differs from the document in one paragraph and one fenced code block, so exactly those blocks carry a bar, and two comments numbered by the prompt that was copied. `changes` comes from the real `changeStateOf`, as `ReviewPanel.changeState` computes it.',
-      changes: (() => {
-        const baseline = host.renderPlainText(baselineSource(source)).text;
-        const state = host.changeStateOf(baseline, doc, host.changedRanges(baseline, doc.text));
-        if (state.state !== 'changed' || state.blocks.length === 0) {
-          throw new Error(`the changed scenario produced ${JSON.stringify(state)}, expected changed blocks`);
-        }
-        return state;
-      })(),
+      changes: kitchenSinkChanges,
       review: {
         ...review([
           comment('chng0001', PASSAGES.paragraph, { body: 'Say what happens when the key set cannot be fetched.' }),
@@ -380,6 +379,63 @@ async function main() {
         promptOrder: ['chng0003', 'chng0001'],
       },
     },
+  };
+
+  // A whole-document comment has no anchor, so it is built by hand rather than through `makeComment`.
+  const documentComment = (id, overrides) => ({
+    id,
+    body: 'Overall, the document needs a short summary at the top.',
+    author: 'harness',
+    createdAt: '2026-08-01T09:00:00.000Z',
+    status: 'open',
+    ...overrides,
+  });
+
+  const documentComments = [
+    documentComment('docm0001'),
+    comment('docm0002', PASSAGES.paragraph, { body: 'Say what happens when the key set cannot be fetched.' }),
+    comment('docm0003', PASSAGES.fence, { body: 'Should this throw instead of returning?' }),
+  ];
+  scenarios.document = {
+    label: 'Whole-document comment',
+    description:
+      'One whole-document comment and two anchored comments, numbered by `promptOrder`, with a change state of `changed`: the whole-document card sits first and says the document changed.',
+    changes: kitchenSinkChanges,
+    review: {
+      ...review(documentComments),
+      baselineAt: '2026-08-01T09:00:00.000Z',
+      promptOrder: ['docm0001', 'docm0002', 'docm0003'],
+    },
+    located: Object.fromEntries(
+      documentComments.filter((item) => item.anchor !== undefined).map((item) => [item.id, locate(item.anchor)]),
+    ),
+  };
+
+  const noteComments = [
+    comment('note0001', PASSAGES.paragraph, {
+      body: 'Say what happens when the key set cannot be fetched.',
+      agentNote: {
+        text: 'I added a sentence on the fallback. The cached key set is used for up to five minutes, and I was not sure whether that figure is right.',
+        receivedAt: '2026-08-01T10:00:00.000Z',
+      },
+    }),
+    comment('note0002', PASSAGES.fence, { body: 'Should this throw instead of returning?' }),
+  ];
+  scenarios.notes = {
+    label: 'Agent notes',
+    description:
+      'One comment carrying an agent note, and the "Notes from the agent" section above the document with unattached text and the cut line.',
+    review: {
+      ...review(noteComments),
+      baselineAt: '2026-08-01T09:00:00.000Z',
+      promptOrder: ['note0001', 'note0002'],
+      agentNotes: {
+        unattached: 'I also tidied the headings, which none of your comments asked for. Check that the section names still match the links.',
+        cut: true,
+        receivedAt: '2026-08-01T10:00:00.000Z',
+      },
+    },
+    located: Object.fromEntries(noteComments.map((item) => [item.id, locate(item.anchor)])),
   };
 
   scenarios.rich = {

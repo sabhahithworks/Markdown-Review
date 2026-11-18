@@ -1078,6 +1078,85 @@
         }
       },
 
+      'the whole-document card is first'() {
+        if (currentKey !== 'document') return skip('other scenario');
+        if (document.body.classList.contains('mr-narrow')) return skip('needs the gutter');
+        const cards = visibleCards().sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+        if (cards.length < 2) return fail(`${cards.length} card(s) laid out, expected the document card and the others`);
+        const doc = cards.find((card) => card.dataset.commentId === 'docm0001');
+        if (!doc) return fail('the whole-document card is not laid out');
+        if (cards[0] !== doc) return fail('another card sits above the whole-document card');
+        const next = cards[1].getBoundingClientRect();
+        if (next.top < doc.getBoundingClientRect().bottom - 0.5) return fail('the whole-document card overlaps the next card');
+        return pass(`first of ${cards.length}, clear of the next card`);
+      },
+
+      'the whole-document card says the document changed'() {
+        if (currentKey !== 'document') return skip('other scenario');
+        const doc = document.querySelector('#gutter .mr-card[data-comment-id="docm0001"]');
+        if (!doc) return fail('the whole-document card is missing');
+        const note = doc.querySelector('.mr-card-note');
+        if (!note || !(note.textContent || '').includes('Document changed since the prompt')) {
+          return fail('the card carries no "Document changed since the prompt" note');
+        }
+        return pass('note present');
+      },
+
+      'agent notes section is visible above the document'() {
+        if (currentKey !== 'notes') return skip('other scenario');
+        const section = document.getElementById('agent-notes');
+        if (section.hidden) return fail('the agent notes section is hidden');
+        const rect = section.getBoundingClientRect();
+        if (rect.height === 0) return fail('the agent notes section has no height');
+        const firstBlock = document.querySelector('#content [data-ap-start]');
+        if (firstBlock && rect.bottom > firstBlock.getBoundingClientRect().top + 1) {
+          return fail('the agent notes section overlaps the document');
+        }
+        const cut = section.querySelector('.mr-agent-notes-cut');
+        if (!cut || (cut.textContent || '').trim() !== 'Notes cut at 16,000 characters.') return fail(`the cut line reads ${JSON.stringify(cut && cut.textContent)}`);
+        const heading = section.querySelector('.mr-agent-notes-heading');
+        if (!heading || (heading.textContent || '').trim() !== 'Notes from the agent') return fail(`the section heading reads ${JSON.stringify(heading && heading.textContent)}`);
+        return pass('visible above the document, with the cut line');
+      },
+
+      'a card shows its agent note'() {
+        if (currentKey !== 'notes') return skip('other scenario');
+        if (document.body.classList.contains('mr-narrow')) return skip('needs the gutter');
+        const card = document.querySelector('#gutter .mr-card[data-comment-id="note0001"]');
+        if (!card || card.getBoundingClientRect().height === 0) return fail('the card with the note is not laid out');
+        const note = card.querySelector('.mr-agent-note');
+        if (!note) return fail('the card shows no agent note');
+        const label = note.querySelector('.mr-agent-note-label');
+        if (!label || (label.textContent || '').trim() !== 'Agent note') return fail(`the note label reads ${JSON.stringify(label && label.textContent)}`);
+        const noteText = note.querySelector('.mr-agent-note-text');
+        if (!noteText || !(noteText.textContent || '').includes('I added a sentence on the fallback')) return fail('the note text is not the fixture text');
+        const cardRect = card.getBoundingClientRect();
+        const noteRect = note.getBoundingClientRect();
+        if (noteRect.bottom > cardRect.bottom + 0.5) return fail('the card is shorter than its note');
+        const next = visibleCards()
+          .filter((other) => other !== card && other.getBoundingClientRect().top >= cardRect.top)
+          .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
+        if (next && next.getBoundingClientRect().top < cardRect.bottom - 0.5) return fail('the next card overlaps the card with the note');
+        return pass('note inside the card, no overlap');
+      },
+
+      async 'the Send menu stays inside the pane'() {
+        if (currentKey !== 'document') return skip('other scenario');
+        const button = document.querySelector('#header .mr-send > button');
+        const menu = document.querySelector('#header .mr-send-menu');
+        if (!button || !menu) return fail('the header has no Send menu');
+        if (button.disabled) return fail('the Send button is disabled');
+        button.click();
+        await wait(50);
+        const rect = menu.getBoundingClientRect();
+        const width = document.documentElement.clientWidth;
+        const inside = !menu.hidden && rect.width > 0 && rect.left >= 0 && rect.right <= width + 0.5 && rect.top >= 0 && rect.bottom <= window.innerHeight + 0.5;
+        const detail = `menu ${rect.left.toFixed(0)}..${rect.right.toFixed(0)} of ${width} px, ${rect.top.toFixed(0)}..${rect.bottom.toFixed(0)} of ${window.innerHeight} px`;
+        button.click();
+        await wait(50);
+        return inside ? pass(detail) : fail(detail);
+      },
+
       'no CSP violations'() {
         const list = window.__CSP_VIOLATIONS__;
         return list.length === 0 ? pass('none recorded') : fail(list.join(' | '));
