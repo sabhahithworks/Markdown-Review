@@ -1206,7 +1206,7 @@ coverage-hash: 0300423e
 | M2 | app | M1 | lazy loader, CSP probe in the harness | done | tag | Tests 8 passed (8); Tests 603 passed (603); ALL CHECKS PASSED |
 | M3 | app | M2 | diagram module | done | tag | 1 fix round; Tests 16 passed (16); Tests 619 passed (619) |
 | M4 | app | M3 | diagrams in the pane, scroll, hint | done | tag | 1 fix round; Tests 17 passed (17); Tests 620 passed (620) |
-| M5 | app | M4 | comments on diagram source | todo | - | - |
+| M5 | app | M4 | comments on diagram source | done | tag | Tests 39 passed (39); Tests 627 passed (627) |
 | M6 | app | M5 | harness rich-blocks scenarios | todo | - | - |
 | W1 | app | M6 | optional anchor in the model | todo | - | - |
 | W2 | app | W1 | document comments in the prompt | todo | - | - |

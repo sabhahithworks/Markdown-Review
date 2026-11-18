@@ -286,3 +286,66 @@ describe('diagram sanitizing', () => {
     expect(diagram.innerHTML).not.toContain('onclick');
   });
 });
+
+
+describe('markers and rectFor', () => {
+  const rangeIn = (root: HTMLElement): Range => {
+    const range = document.createRange();
+    const text = (root.querySelector('pre code') as HTMLElement).firstChild as Text;
+    range.setStart(text, 1);
+    range.setEnd(text, 3);
+    return range;
+  };
+  const markerOf = (root: HTMLElement): HTMLButtonElement =>
+    root.querySelector('button.mr-mermaid-marker') as HTMLButtonElement;
+
+  it('marker counts comments inside the block', async () => {
+    const { root, view } = setup(fence(SOURCE, 10));
+    view.refresh();
+    await flush();
+    view.setMarkers({
+      a: { start: 10, end: 12 },
+      b: { start: 15, end: 20 },
+      c: { start: 99, end: 100 },
+      d: null,
+    });
+    expect(markerOf(root).hidden).toBe(false);
+    expect(markerOf(root).textContent).toBe('2 comments in source');
+    view.setMarkers({ a: { start: 10, end: 12 } });
+    expect(markerOf(root).textContent).toBe('1 comment in source');
+    view.setMarkers({});
+    expect(markerOf(root).hidden).toBe(true);
+  });
+
+  it('marker click shows the source', async () => {
+    const { root, view } = setup(fence(SOURCE));
+    view.refresh();
+    await flush();
+    view.setMarkers({ a: { start: 1, end: 2 } });
+    expect(wrapperOf(root).getAttribute('data-view')).toBe('diagram');
+    markerOf(root).click();
+    expect(wrapperOf(root).getAttribute('data-view')).toBe('source');
+  });
+
+  it('rectFor returns the wrapper rect for a hidden pre', async () => {
+    const { root, view } = setup(fence(SOURCE));
+    view.refresh();
+    await flush();
+    const rect = new DOMRect(1, 2, 3, 4);
+    wrapperOf(root).getBoundingClientRect = () => rect;
+    expect(view.rectFor(rangeIn(root))).toBe(rect);
+    expect(view.showSourceFor(rangeIn(root))).toBe(true);
+  });
+
+  it('rectFor returns undefined in Source view, and outside any diagram', async () => {
+    const { root, view } = setup(`${fence(SOURCE)}<p id="p">plain</p>`);
+    view.refresh();
+    await flush();
+    view.showSource(root.querySelector('pre') as HTMLElement);
+    expect(view.rectFor(rangeIn(root))).toBeUndefined();
+    expect(view.showSourceFor(rangeIn(root))).toBe(false);
+    const outside = document.createRange();
+    outside.selectNodeContents(root.querySelector('#p') as HTMLElement);
+    expect(view.rectFor(outside)).toBeUndefined();
+  });
+});

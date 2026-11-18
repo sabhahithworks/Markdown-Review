@@ -36,6 +36,10 @@ export interface CommentsOptions {
   onReopen(id: string): void;
   /** Speaks a sentence through the pane's live region (H18). */
   announce(message: string): void;
+  /** A rectangle to place a card from when its range has no layout rects of its own. */
+  fallbackRect?(range: Range): DOMRect | undefined;
+  /** Called before a card click acts on its range; returns true when it changed the layout. */
+  onReveal?(range: Range): boolean;
 }
 
 export interface CommentsView {
@@ -210,6 +214,9 @@ export function initComments(options: CommentsOptions): CommentsView {
   }
 
   function toggleExpanded(id: string): void {
+    const target = located[id];
+    const revealRange = target ? domRangeFor(options.root, target.start, target.end) : null;
+    if (revealRange && options.onReveal?.(revealRange)) reposition();
     // In wide mode every card is already visible, so toggling `expanded` changed nothing on screen
     // while still tearing down and rebuilding the whole overlay (H27). Make the click mean
     // something instead: select the card and bring its highlight into view.
@@ -262,7 +269,9 @@ export function initComments(options: CommentsOptions): CommentsView {
       const range = domRangeFor(options.root, position.start, position.end);
       if (!range) continue;
 
-      const rects = [...range.getClientRects()];
+      const ownRects = [...range.getClientRects()];
+      const fallback = ownRects.length === 0 ? options.fallbackRect?.(range) : undefined;
+      const rects = ownRects;
       const uncertain = position.confidence < UNCERTAIN_BELOW;
 
       for (const rect of rects) {
@@ -276,7 +285,7 @@ export function initComments(options: CommentsOptions): CommentsView {
         });
       }
 
-      const first = rects[0];
+      const first = rects[0] ?? fallback;
       if (!first) continue;
 
       if (narrow) {

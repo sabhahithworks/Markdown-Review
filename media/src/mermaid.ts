@@ -25,6 +25,11 @@ export interface MermaidOptions {
 export interface MermaidView {
   refresh(): void;
   showSource(pre: HTMLElement): void;
+  /** The wrapper's rect when `range` starts inside a Mermaid `<pre>` that is hidden. */
+  rectFor(range: Range): DOMRect | undefined;
+  /** Switches the block holding `range` to Source; true when it did. */
+  showSourceFor(range: Range): boolean;
+  setMarkers(located: Record<string, { start: number; end: number } | null>): void;
 }
 
 export interface ThemeVariables {
@@ -127,6 +132,7 @@ interface Block {
   switchEl: HTMLElement;
   diagramButton: HTMLButtonElement;
   sourceButton: HTMLButtonElement;
+  marker: HTMLButtonElement;
 }
 
 export function initMermaid(options: MermaidOptions): MermaidView {
@@ -135,6 +141,7 @@ export function initMermaid(options: MermaidOptions): MermaidView {
   const blocks = new Map<HTMLElement, Block>();
   let generation = 0;
   let renderCounter = 0;
+  let lastLocated: Record<string, { start: number; end: number } | null> = {};
   let lastTheme = JSON.stringify(readThemeVariables());
 
   function applyView(block: Block, view: View): void {
@@ -174,7 +181,12 @@ export function initMermaid(options: MermaidOptions): MermaidView {
     diagram.setAttribute('role', 'img');
     diagram.setAttribute('aria-label', 'Mermaid diagram');
 
-    wrapper.append(switchEl, status, diagram);
+    const marker = document.createElement('button');
+    marker.type = 'button';
+    marker.className = 'mr-mermaid-marker';
+    marker.hidden = true;
+
+    wrapper.append(switchEl, marker, status, diagram);
     pre.before(wrapper);
 
     const block: Block = {
@@ -187,7 +199,9 @@ export function initMermaid(options: MermaidOptions): MermaidView {
       switchEl,
       diagramButton,
       sourceButton,
+      marker,
     };
+    marker.addEventListener('click', () => choose(block, 'source'));
     diagramButton.addEventListener('click', () => choose(block, 'diagram'));
     sourceButton.addEventListener('click', () => choose(block, 'source'));
     applyView(block, 'source');
@@ -271,6 +285,7 @@ export function initMermaid(options: MermaidOptions): MermaidView {
       blocks.set(pre, block);
       list.push(block);
     }
+    applyMarkers();
     if (list.length === 0) return;
     void run(list, mine);
   }
@@ -278,6 +293,46 @@ export function initMermaid(options: MermaidOptions): MermaidView {
   function showSource(pre: HTMLElement): void {
     const block = blocks.get(pre);
     if (block) choose(block, 'source');
+  }
+
+  function blockHolding(range: Range): Block | undefined {
+    for (const block of blocks.values()) {
+      if (block.pre.contains(range.startContainer)) return block;
+    }
+    return undefined;
+  }
+
+  function rectFor(range: Range): DOMRect | undefined {
+    const block = blockHolding(range);
+    if (!block || block.wrapper.getAttribute('data-view') !== 'diagram') return undefined;
+    return block.wrapper.getBoundingClientRect();
+  }
+
+  function showSourceFor(range: Range): boolean {
+    const block = blockHolding(range);
+    if (!block || block.wrapper.getAttribute('data-view') !== 'diagram') return false;
+    choose(block, 'source');
+    return true;
+  }
+
+  function applyMarkers(): void {
+    for (const block of blocks.values()) {
+      const start = Number(block.pre.getAttribute('data-ap-start'));
+      const end = Number(block.pre.getAttribute('data-ap-end'));
+      let count = 0;
+      if (block.pre.hasAttribute('data-ap-start') && block.pre.hasAttribute('data-ap-end')) {
+        for (const position of Object.values(lastLocated)) {
+          if (position && position.start >= start && position.start < end) count += 1;
+        }
+      }
+      block.marker.hidden = count === 0;
+      block.marker.textContent = count === 1 ? '1 comment in source' : `${String(count)} comments in source`;
+    }
+  }
+
+  function setMarkers(located: Record<string, { start: number; end: number } | null>): void {
+    lastLocated = located;
+    applyMarkers();
   }
 
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -295,5 +350,5 @@ export function initMermaid(options: MermaidOptions): MermaidView {
   observer.observe(document.documentElement, watch);
   if (document.body) observer.observe(document.body, watch);
 
-  return { refresh, showSource };
+  return { refresh, showSource, rectFor, showSourceFor, setMarkers };
 }

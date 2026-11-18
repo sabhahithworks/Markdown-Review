@@ -234,6 +234,22 @@ pre {
   font-weight: 700;
 }
 
+.mr-mermaid-marker {
+  display: inline-block;
+  margin: 0 0 4px 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--vscode-focusBorder);
+  background: none;
+  color: var(--vscode-foreground);
+  font-family: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.mr-mermaid-marker[hidden] {
+  display: none;
+}
+
 .mr-mermaid-status {
   margin: 0 0 4px;
   font-size: 0.9em;

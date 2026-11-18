@@ -203,6 +203,7 @@ const mermaid = initMermaid({
       restoreScroll(pinnedLine);
     }
     rebuildLineIndex();
+    if (lastReviewState && !documentGone) mermaid.setMarkers(lastReviewState.located);
     comments?.reposition();
   },
 });
@@ -315,6 +316,8 @@ function startCommenting(author: string): CommentsView {
     overlay: overlayRoot,
     markerLayer: markerRoot,
     announce,
+    fallbackRect: (range) => mermaid.rectFor(range),
+    onReveal: (range) => mermaid.showSourceFor(range),
     onEdit: (id, body) => {
       vscode.postMessage({ type: 'editComment', id, body });
     },
@@ -560,6 +563,7 @@ function applyReviewState(message: Extract<HostMessage, { type: 'reviewState' }>
   // A gone document has nothing to diff against, so its change control hides with its marks. The
   // content is gone too, but a mark is state on an element: clear it rather than trust that the
   // element went with it.
+  mermaid.setMarkers(documentGone ? {} : message.located);
   const changes = documentGone ? undefined : message.changes;
   const marked = applyChangeMarks(contentRoot, changes);
   header?.setState(message.review, changes, marked);
