@@ -138,6 +138,27 @@ describe('toReviewSummary', () => {
     });
     expect('baselineText' in summary).toBe(false);
   });
+
+  it('summary drops the raw notes', () => {
+    const review = {
+      ...emptyReviewFile('a.md'),
+      agentNotes: {
+        raw: 'RAW',
+        carried: 'CARRIED',
+        unattached: 'shown',
+        cut: true,
+        receivedAt: '2026-01-01T00:00:00.000Z',
+        dismissed: ['gone'],
+      },
+    };
+    const summary = toReviewSummary(review);
+    expect(summary.agentNotes).toEqual({
+      unattached: 'shown',
+      cut: true,
+      receivedAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(JSON.stringify(summary)).not.toMatch(/RAW|CARRIED|gone|dismissed/);
+  });
 });
 
 describe('isPanelState', () => {

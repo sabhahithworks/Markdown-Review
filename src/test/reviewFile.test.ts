@@ -199,3 +199,30 @@ describe('isReviewFile', () => {
     expect(isReviewFile({ ...review(), version: 2 })).toBe(false);
   });
 });
+
+describe('agent notes', () => {
+  const notes = {
+    raw: 'r',
+    carried: '',
+    unattached: 'u',
+    cut: false,
+    receivedAt: '2026-01-01T00:00:00.000Z',
+    dismissed: ['d'],
+  };
+
+  it('review file with agent notes is valid', () => {
+    const original = review({
+      agentNotes: notes,
+      comments: [comment({ agentNote: { text: 'hi', receivedAt: '2026-01-01T00:00:00.000Z' } })],
+    });
+    const result = parseReviewFile(serializeReviewFile(original));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.review).toEqual(original);
+  });
+
+  it('a non-string note text is rejected', () => {
+    expect(isComment(comment({ agentNote: { text: 5, receivedAt: 'x' } as never }))).toBe(false);
+    expect(isReviewFile(review({ agentNotes: { ...notes, raw: 5 } as never }))).toBe(false);
+    expect(isReviewFile(review({ agentNotes: { ...notes, dismissed: [1] } as never }))).toBe(false);
+  });
+});

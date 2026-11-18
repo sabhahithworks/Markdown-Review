@@ -60,6 +60,8 @@ export default tseslint.config(
       // string and a `PlainTextDoc`, so none of it should need a dev host to test.
       'src/detect/scope.ts',
       'src/detect/changedRanges.ts',
+      // D33. The notes splitter is a function of a string and a count.
+      'src/detect/agentNotes.ts',
     ],
     rules: {
       'no-restricted-imports': [

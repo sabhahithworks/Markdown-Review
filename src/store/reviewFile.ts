@@ -87,6 +87,11 @@ export function isComment(value: unknown): value is Comment {
       return false;
     }
   }
+  const agentNote = value['agentNote'];
+  if (agentNote !== undefined) {
+    if (!isRecord(agentNote)) return false;
+    if (!isString(agentNote['text']) || !isString(agentNote['receivedAt'])) return false;
+  }
   return true;
 }
 
@@ -103,6 +108,21 @@ export function isReviewFile(value: unknown): value is ReviewFile {
   const promptOrder = value['promptOrder'];
   if (promptOrder !== undefined && !(Array.isArray(promptOrder) && promptOrder.every(isString))) {
     return false;
+  }
+  const agentNotes = value['agentNotes'];
+  if (agentNotes !== undefined) {
+    if (!isRecord(agentNotes)) return false;
+    const dismissed = agentNotes['dismissed'];
+    if (
+      !isString(agentNotes['raw']) ||
+      !isString(agentNotes['carried']) ||
+      !isString(agentNotes['unattached']) ||
+      typeof agentNotes['cut'] !== 'boolean' ||
+      !isString(agentNotes['receivedAt']) ||
+      !(Array.isArray(dismissed) && dismissed.every(isString))
+    ) {
+      return false;
+    }
   }
 
   // Duplicate ids would make `updateCommentBody`/`deleteComment` ambiguous, and only a hand-edit

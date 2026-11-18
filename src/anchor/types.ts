@@ -24,6 +24,31 @@ export interface ReviewFile {
   baselineAt?: string;
   /** Ids of the comments in the last copied prompt, in prompt order; a comment's number is its index + 1. */
   promptOrder?: string[];
+  /**
+   * What the agent wrote to the notes file, as last read (release-expansion D47). Held on the host;
+   * the webview gets only `unattached`, `cut` and `receivedAt`.
+   */
+  agentNotes?: {
+    /** The notes file's text as last ingested; a read equal to it is a no-op. Cleared when a round ends. */
+    raw: string;
+    /** The part of `unattached` that came from earlier rounds and was not dismissed. */
+    carried: string;
+    /** The text shown under "Notes from the agent": `carried` followed by this round's unattached chunks. */
+    unattached: string;
+    /** True when `raw` was cut at the length limit. */
+    cut: boolean;
+    /** ISO timestamp of the read that last changed these notes. */
+    receivedAt: string;
+    /** Exact text of the chunks the user dismissed this round; filtered out of later reads. Cleared when a round ends. */
+    dismissed: string[];
+  };
+}
+
+/** A note the agent wrote about one comment (release-expansion D33). */
+export interface AgentNote {
+  text: string;
+  /** ISO timestamp */
+  receivedAt: string;
 }
 
 export interface Comment {
@@ -43,6 +68,8 @@ export interface Comment {
     currentText: string;
     detectedAt: string;
   };
+  /** The agent's note about this comment, from the notes file. */
+  agentNote?: AgentNote;
 }
 
 /** True for a whole-document comment, which carries no anchor (release-expansion D26). */

@@ -17,6 +17,7 @@ import type { ChangeState, CommentStatus, Located, ReviewFile } from '../anchor/
  * with no node, vscode or DOM dependency, so it bundles into the webview for free.
  */
 export type {
+  AgentNote,
   Anchor,
   ChangeSpan,
   ChangeState,
@@ -43,7 +44,9 @@ export { countByStatus } from '../anchor/counts.js';
  * webview channel each time a status flips. The webview never renders it (the rewrite diff is opened
  * host-side), so it is stripped at the boundary, and this type makes forgetting a compile error.
  */
-export type ReviewSummary = Omit<ReviewFile, 'baselineText'>;
+export type ReviewSummary = Omit<ReviewFile, 'baselineText' | 'agentNotes'> & {
+  agentNotes?: { unattached: string; cut: boolean; receivedAt: string };
+};
 
 /**
  * Drops the baseline on its way to the webview.
@@ -58,6 +61,15 @@ export function toReviewSummary(review: ReviewFile): ReviewSummary {
     comments: review.comments,
     baselineAt: review.baselineAt,
     ...(review.promptOrder ? { promptOrder: [...review.promptOrder] } : {}),
+    ...(review.agentNotes
+      ? {
+          agentNotes: {
+            unattached: review.agentNotes.unattached,
+            cut: review.agentNotes.cut,
+            receivedAt: review.agentNotes.receivedAt,
+          },
+        }
+      : {}),
   };
 }
 
