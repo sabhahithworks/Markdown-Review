@@ -308,6 +308,12 @@ export class ReviewPanel {
           case 'dismissAgentNote':
             this.store.dismissAgentNote(raw.id);
             break;
+          case 'sendPrompt':
+            void vscode.commands.executeCommand(
+              raw.target === 'chat' ? 'markdownReview.sendPromptToChat' : 'markdownReview.sendPromptToTerminal',
+              this.target,
+            );
+            break;
           case 'copyPrompt':
             void vscode.commands.executeCommand('markdownReview.copyPrompt', this.target);
             break;

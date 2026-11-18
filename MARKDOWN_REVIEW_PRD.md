@@ -398,6 +398,7 @@ Rules:
 - Copy to clipboard via `vscode.env.clipboard.writeText`, then show an info message:
   *"3 comments copied. Paste into your agent and @-mention docs/auth.md."*
 - **Snapshot `baselineText` at this moment** — this is what change detection diffs against
+- **Sending:** `Send Review Prompt to Chat` opens VS Code chat with the prompt prefilled (`workbench.action.chat.open`, `isPartialQuery: true`); `Send Review Prompt to Terminal` focuses the active terminal and pastes the clipboard with `workbench.action.terminal.paste`. Nothing is submitted; the user presses Enter. The prompt is always on the clipboard first. Text is never typed into a terminal. If the target is unavailable the prompt stays copied, a message says so, and the baseline is still snapshotted.
 
 ---
 
@@ -448,6 +449,8 @@ Rules:
     "commands": [
       { "command": "markdownReview.open", "title": "Markdown Review: Open Review Pane", "icon": "$(comment-discussion)" },
       { "command": "markdownReview.copyPrompt", "title": "Markdown Review: Copy Review Prompt" },
+      { "command": "markdownReview.sendPromptToChat", "title": "Markdown Review: Send Review Prompt to Chat" },
+      { "command": "markdownReview.sendPromptToTerminal", "title": "Markdown Review: Send Review Prompt to Terminal" },
       { "command": "markdownReview.clearAddressed", "title": "Markdown Review: Clear Addressed Comments" },
       { "command": "markdownReview.clearAll", "title": "Markdown Review: Clear All Comments" }
     ],

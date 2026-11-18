@@ -17,6 +17,8 @@ import { delay, describe, it, waitFor } from './harness.js';
 const COMMANDS = [
   'markdownReview.open',
   'markdownReview.copyPrompt',
+  'markdownReview.sendPromptToChat',
+  'markdownReview.sendPromptToTerminal',
   'markdownReview.clearAddressed',
   'markdownReview.clearAll',
 ];
@@ -72,7 +74,7 @@ describe('activation', () => {
     assert.equal(extension().isActive, false, 'declaring the event must not activate anything');
   });
 
-  it('activates on markdownReview.open and registers all four commands', async () => {
+  it('activates on markdownReview.open and registers all six commands', async () => {
     const target = workspaceUri('activation.md');
     await writeText(target, '# activation\n\nsome prose to render.\n');
 

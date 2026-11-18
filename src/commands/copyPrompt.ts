@@ -9,20 +9,38 @@
 
 import * as vscode from 'vscode';
 import { renderPlainText } from '../render/plaintext.js';
-import { noOpenCommentsMessage, promptCopiedMessage } from '../panel/notices.js';
+import {
+  noOpenCommentsMessage,
+  promptCopiedMessage,
+  promptSentMessage,
+  sendFallbackMessage,
+} from '../panel/notices.js';
 import { readTarget } from '../panel/readTarget.js';
 import { buildPrompt } from '../prompt/buildPrompt.js';
 import { ReviewStore } from '../store/ReviewStore.js';
+import { defaultIo, type PromptIo } from './promptTargets.js';
 import { resolveTarget } from './resolveTarget.js';
+
+export type PromptTarget = 'clipboard' | 'chat' | 'terminal';
 
 export async function copyPrompt(
   context: vscode.ExtensionContext,
   output: vscode.OutputChannel,
   arg: unknown,
 ): Promise<void> {
+  await deliverPrompt(context, output, arg, 'clipboard');
+}
+
+export async function deliverPrompt(
+  context: vscode.ExtensionContext,
+  output: vscode.OutputChannel,
+  arg: unknown,
+  sendTarget: PromptTarget,
+  io: PromptIo = defaultIo,
+): Promise<void> {
   const resolved = resolveTarget(arg);
   if (!resolved.ok) {
-    void vscode.window.showErrorMessage(resolved.detail);
+    io.notify(resolved.detail);
     return;
   }
   const { target } = resolved;
@@ -34,7 +52,7 @@ export async function copyPrompt(
   // but anything else can become `open` in the re-anchor below — an orphan whose text reappeared
   // does exactly that — so only an entirely resolved (or empty) review can be answered this early.
   if (!review.comments.some((comment) => comment.status !== 'resolved')) {
-    void vscode.window.showInformationMessage(noOpenCommentsMessage(review.targetPath));
+    io.notify(noOpenCommentsMessage(review.targetPath));
     return;
   }
 
@@ -48,9 +66,7 @@ export async function copyPrompt(
     // unreadable file. Say so and stop; nothing has been copied and no baseline was taken.
     const detail = read.reason === 'too-large' ? `${String(read.sizeBytes)} bytes` : read.detail;
     output.appendLine(`[copyPrompt] cannot read ${target.fsPath}: ${detail}`);
-    void vscode.window.showErrorMessage(
-      `Markdown Review could not read ${review.targetPath}. Your comments have not been changed.`,
-    );
+    io.notify(`Markdown Review could not read ${review.targetPath}. Your comments have not been changed.`);
     return;
   }
 
@@ -69,11 +85,21 @@ export async function copyPrompt(
     notesPath: store.notesPromptPath(),
   });
   if (count === 0) {
-    void vscode.window.showInformationMessage(noOpenCommentsMessage(review.targetPath));
+    io.notify(noOpenCommentsMessage(review.targetPath));
     return;
   }
 
   await vscode.env.clipboard.writeText(prompt);
+
+  // The prompt is on the clipboard before any hand-off, so a refused or failed hand-off is a copy.
+  let sent = false;
+  if (sendTarget !== 'clipboard') {
+    try {
+      sent = sendTarget === 'chat' ? await io.toChat(prompt) : await io.toTerminal();
+    } catch (error) {
+      output.appendLine(`[copyPrompt] sending to ${sendTarget} failed: ${String(error)}`);
+    }
+  }
   // After the write, so a clipboard failure leaves the notes file for the next attempt; before the
   // snapshot, which replaces the prompt order the notes were matched against.
   await store.endNotesRound();
@@ -81,5 +107,9 @@ export async function copyPrompt(
   // the write, so a clipboard failure does not leave a baseline for a prompt nobody received.
   store.snapshotBaseline(doc.text, order);
 
-  void vscode.window.showInformationMessage(promptCopiedMessage(count, review.targetPath));
+  if (sendTarget === 'clipboard') {
+    io.notify(promptCopiedMessage(count, review.targetPath));
+  } else {
+    io.notify(sent ? promptSentMessage(count, sendTarget) : sendFallbackMessage(sendTarget));
+  }
 }

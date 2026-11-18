@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Send the review prompt to VS Code chat or paste it into the active terminal (two new commands); nothing is submitted, and if the target is unavailable the prompt is copied instead.
 - Agent notes on a card: when the agent pushes back on a comment, its note shows under "Agent note" on that card, in the margin and in the lost-anchor section, with a Dismiss button.
 - Whole-document comments: comment on the document as a whole, without selecting text; the card sits first, labelled "Whole document", and notes when the file has changed since the prompt.
 - Footnotes: `[^1]` renders as a `[1]` link to the note at the end of the document; both can be commented on.

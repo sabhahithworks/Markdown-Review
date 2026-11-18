@@ -52,6 +52,14 @@
         "title": "Markdown Review: Copy Review Prompt"
       },
       {
+        "command": "markdownReview.sendPromptToChat",
+        "title": "Markdown Review: Send Review Prompt to Chat"
+      },
+      {
+        "command": "markdownReview.sendPromptToTerminal",
+        "title": "Markdown Review: Send Review Prompt to Terminal"
+      },
+      {
         "command": "markdownReview.clearAddressed",
         "title": "Markdown Review: Clear Addressed Comments"
       },
