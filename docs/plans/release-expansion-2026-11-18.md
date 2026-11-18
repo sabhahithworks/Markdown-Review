@@ -1238,6 +1238,7 @@ coverage-hash: 0300423e
 | CI2 | infra | F | recorded green CI run | todo | - | - |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |
+| V | all | F | verification | in-progress | - | - |
 
 **Order:** `0 → CI1 → B1 → A1 → A2 → M1 → M2 → M3 → M4 → M5 → M6 → W1 → W2 → W3 → W4 → W5 → N1 → N2 → N3 → N4 → N5 → N6 → S1 → S2 → S3 → S4 → T1 → H1 → P1 → R1 → F → CI2 → O1 → O2`
 
