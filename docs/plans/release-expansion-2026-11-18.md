@@ -99,6 +99,7 @@ Planner decisions:
 - **D50** Scroll position survives the new blocks. Footnote blocks carry no `data-line`, because their source lines are earlier than their place in the page. A hidden diagram source is left out of the scroll line index and of `restoreScroll`. After each diagram settles the pane restores the saved line again, until the user's first wheel, touch, pointer or key input.
 - **D51** CI1 runs right after phase 0, so every push during the work is checked on Linux and Windows. CI2, the recorded green run on the final code, stays after F.
 - **D52** A diagram keeps its Diagram or Source view across re-renders, keyed by its position and source text. Clicking the card of a comment whose source is hidden reveals the source, in a wide pane as well as a narrow one.
+- **D-q1** (M2, owner 2026-11-18) The M2 browser check (harness scenario `basic` under the pane's CSP) is run by the run-phase executor in the main session with the Chrome tools, which records the result lines in the M2 notes; M2 is then reviewed again. It is not moved to M6, and M2 is not committed before it passes.
 
 Rejected (discussion): shipping 0.1.0 now and deferring Mermaid; a "not rendered" label only.
 
