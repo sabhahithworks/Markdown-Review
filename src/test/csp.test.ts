@@ -22,6 +22,12 @@ describe('buildCsp (H6)', () => {
     expect(csp).not.toContain('*');
   });
 
+  it('has no connect-src and no wildcard', () => {
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).not.toContain('connect-src');
+    expect(csp).not.toContain('*');
+  });
+
   it('locks images to the webview origin and data URIs', () => {
     expect(csp).toContain(`img-src ${CSP_SOURCE} data:;`);
   });

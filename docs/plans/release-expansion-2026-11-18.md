@@ -1200,7 +1200,7 @@ coverage-hash: 0300423e
 | B1 | app | CI1 | no-anchor subtrees skipped | done | tag | Tests 33 passed (33); Tests 566 passed (566) |
 | A1 | app | B1 | GitHub alerts | done | tag | leeway: src/types/markdown-it-github-alerts.d.ts (The plugin ships ESM-only types (dist/index.d.mts with type: module), which the node16/CJS extension tsconfig cannot import (TS1479). This ambient… |
 | A2 | app | A1 | footnotes | done | tag | 1 fix round; Tests 121 passed (121); Tests 594 passed (594) |
-| M1 | app | A2 | Mermaid file, size cap, guard | todo | - | - |
+| M1 | app | A2 | Mermaid file, size cap, guard | done | tag | leeway: eslint.config.mjs (The round-1 fix needed this edit: 'media/mermaid.min.js' is added to the ignores list next to 'media/webview.js' because that generated file was breaking the npm run… |
 | M2 | app | M1 | lazy loader, CSP probe in the harness | todo | - | - |
 | M3 | app | M2 | diagram module | todo | - | - |
 | M4 | app | M3 | diagrams in the pane, scroll, hint | todo | - | - |

@@ -45,13 +45,23 @@ const BUNDLES = [
     maxKB: 220,
     // The extension host has no business carrying a syntax highlighter. If this fires, the two
     // bundles have stopped tree-shaking independently and the webview's copy has leaked across.
-    banned: [{ needle: 'hljs', why: 'highlight.js belongs to the webview bundle only' }],
+    banned: [
+      { needle: 'hljs', why: 'highlight.js belongs to the webview bundle only' },
+      { needle: 'mermaidAPI', why: 'Mermaid ships as its own lazily loaded file' },
+    ],
   },
   {
     file: process.env.WEBVIEW_BUNDLE ?? 'media/webview.js',
     // ~30% over today's 124 KB.
     maxKB: 160,
+    banned: [{ needle: 'mermaidAPI', why: 'Mermaid ships as its own lazily loaded file' }],
+  },
+  {
+    file: process.env.MERMAID_BUNDLE ?? 'media/mermaid.min.js',
+    // About 10% over today's 5.4 MB.
+    maxKB: 6144,
     banned: [],
+    network: false,
   },
 ];
 
@@ -69,7 +79,7 @@ function fail(message) {
   failures += 1;
 }
 
-for (const { file, maxKB, banned } of BUNDLES) {
+for (const { file, maxKB, banned, network = true } of BUNDLES) {
   let source;
   try {
     source = readFileSync(file, 'utf8');
@@ -78,7 +88,9 @@ for (const { file, maxKB, banned } of BUNDLES) {
     continue;
   }
 
-  for (const needle of NETWORK) {
+  // The Mermaid file is exempt from the name ban (release-expansion D21): it names network APIs
+  // it never reaches under the pane's CSP, which allows no connection.
+  for (const needle of network ? NETWORK : []) {
     const at = source.indexOf(needle);
     if (at !== -1) {
       fail(`${file}: network API "${needle}" — PRD §2/§13 permit no network calls at all.`);
@@ -98,7 +110,7 @@ for (const { file, maxKB, banned } of BUNDLES) {
   if (kb > maxKB) {
     fail(
       `${file}: ${kb.toFixed(1)} KB exceeds its ${maxKB} KB ceiling. ` +
-        `Find what was added, or raise the ceiling deliberately — the package budget is 500 KB (Plan 05 §8).`,
+        `Find what was added, or raise the ceiling deliberately — the package budget is 2 MB (release-expansion D11).`,
     );
   }
 }

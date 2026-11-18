@@ -79,6 +79,7 @@ media/
 | Sanitizer | `dompurify` | Webview renders untrusted file content |
 | GitHub alerts | `markdown-it-github-alerts` | `> [!NOTE]` blocks render as callouts instead of quotes with a literal marker |
 | Footnotes | `markdown-it-footnote` | `[^1]` references render as links to notes at the end of the document |
+| Diagrams | `mermaid` | `mermaid` code blocks render as diagrams; shipped as its own lazily loaded file |
 | Fuzzy match | `diff-match-patch` (`match_main`) | Purpose-built for relocating text after edits |
 | Webview UI | Vanilla TS + CSS. **No framework.** | Bundle size and startup time matter here |
 | Tests | `vitest` for units, `@vscode/test-electron` for integration | |
@@ -305,6 +306,7 @@ Do not consider this module done until all of these pass:
 - All local resource URIs via `webview.asWebviewUri()`
 - External links open via `vscode.env.openExternal`, never navigate the webview
 - Never `eval`, never inject unsanitized file content
+- Mermaid ships as a separate file loaded with the page nonce; the CSP allows no connection, which is what enforces no-network for it
 
 ### Theming
 
@@ -493,7 +495,7 @@ status inference, before/after display.
 `addressed`; a full document rewrite produces orphaned comments and no crash.
 
 **Phase 5 — Ship.** Icon, README with an animated GIF of the loop, CHANGELOG, LICENSE,
-`.vscodeignore`, `npx @vscode/vsce package` under 500 KB.
+`.vscodeignore`, `npx @vscode/vsce package` under 2 MB.
 
 ---
 
