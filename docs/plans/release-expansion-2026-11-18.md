@@ -102,6 +102,10 @@ Planner decisions:
 - **D-q1** (M2, owner 2026-11-18) The M2 browser check (harness scenario `basic` under the pane's CSP) is run by the run-phase executor in the main session with the Chrome tools, which records the result lines in the M2 notes; M2 is then reviewed again. It is not moved to M6, and M2 is not committed before it passes.
 - **D-q2** (W5, owner 2026-11-19) `npm run lint:css` fails on `media/webview.css:243`: M5's `.mr-mermaid-marker` uses `--vscode-foreground`, which no harness preset defines. W5 changes that line to `color: var(--vscode-editor-foreground);` (used elsewhere in the stylesheet, defined in all three presets). `dev/harness/themes.css` is not edited.
 - **D-q3** (N3, auto-decided 2026-11-19 under the owner's standing "take the recommended option" rule) Review FIX: `ReviewStore.load()` must not start the notes watcher on an unsafe path, i.e. when the sidecar exists but cannot be read, or when `quarantine()` returns false because the backup failed. On those paths `watchNotes()` is not called and the output channel logs that agent notes are off until reload. With no watcher, a later notes-file write cannot run `settleNotes()` → `commit()` → `scheduleWrite()` over the original sidecar (L-corrupt-sidecar-backup). The safe paths are unchanged: no sidecar (not found), a parsed sidecar, or a quarantine whose backup succeeded. New integration test in `src/test/integration/suite/notes.spec.ts`: with a quarantine whose backup fails, writing the notes file leaves the sidecar's bytes unchanged.
+- **D-q4** (V-8, auto-decided 2026-11-19 under the owner's standing "take the best option" rule) When the round-end notes read fails (EBUSY/EACCES), `endNotesRound` retries it twice, 100 ms apart (V1). If it still fails, the residual is accepted: the extension cannot know the file's text, so words never ingested this round, or written after the last settle, may attach by the next prompt's numbers. The failure is logged with the path (E16). Persisting the old `promptOrder` (option 2) was rejected: it adds stored state to a path with no real-world repro, and only display is affected.
+- **D-q5** (V-7, auto-decided 2026-11-19) Accepted residual, refining D47: after a failed round-end delete or read, the kept chunks go into `dismissed`, so a chunk with identical text written again for the new round is not shown. D47's "the same words written again in the next round count as new" holds only when the round-end delete succeeded.
+- **D-q6** (V-3, auto-decided 2026-11-19) D33 is kept: "Comments 2 and 3" and "Comments 1-3" attach the chunk to the first number named only. Not changed in 0.1.0.
+- **D-q7** (V-4, auto-decided 2026-11-19) E31 (multi-root notes path) stays without a test, because the integration harness is single-root. `resolveSidecar` uses one folder for both the sidecar and the notes file, so it is correct by construction.
 
 Rejected (discussion): shipping 0.1.0 now and deferring Mermaid; a "not rendered" label only.
 
@@ -135,7 +139,7 @@ Rejected (discussion): shipping 0.1.0 now and deferring Mermaid; a "not rendered
 | E13 | invalid | comment on a diagram | a commented source is edited until the diagram is invalid | Source view with the reason line; the comment is highlighted on the visible source (D17) | yes | M5 | `rectFor returns undefined in Source view` |
 | E14 | failure | render document | `mermaid.min.js` fails to load | Source view plus the D22 load-failure line | yes | M3 | `load failure shows the reason` |
 | E15 | failure | copy or send prompt | the chat command is missing or throws (Cursor, old VS Code); no terminal is open | the prompt is copied and the exact D18 or D22 fallback message shows | yes | S2 | `falls back to copy` |
-| E16 | failure | agent notes | the notes file cannot be read or deleted | logged with the path; the prompt is still delivered; shown notes stay | no | N3 | `unreadable notes file is logged`; V: `a notes file that could not be deleted is not read again by the next numbering`, `a notes file that could not be read at round end is not read again by the next numbering` (its words are kept out of the next round) |
+| E16 | failure | agent notes | the notes file cannot be read or deleted | logged with the path; the prompt is still delivered; shown notes stay; a failed round-end read is retried twice, 100 ms apart (V1), then the D-q4 residual applies | no | N3 | `unreadable notes file is logged`; V: `a notes file that could not be deleted is not read again by the next numbering`, `a notes file that could not be read at round end is not read again by the next numbering` (its words are kept out of the next round) |
 | E17 | partial | copy or send prompt | the clipboard is written but the chat or terminal step fails | fallback message; the baseline is taken because the prompt is on the clipboard (D13, D35) | yes | S2 | `falls back to copy` |
 | E18 | partial | agent notes | the agent saves the notes file several times in one round | each change is read again; a comment's note follows its newest chunk (D19) | yes | N3 | `re-ingest replaces` |
 | E19 | retry | copy or send prompt | Send twice in a row | each send delivers again and re-snapshots, as copying twice does (D13) | yes | S2 | `second send re-snapshots` |
@@ -1028,6 +1032,23 @@ Depends on: O1.
 Entry check: `grep -c "\- \[x\]" docs/plans/05-acceptance-run.md` prints ≥ 1.
 Done: the owner records the publish, tracker row updated.
 
+### V1: Retry the round-end notes read (lane: app)
+
+GOAL: A notes file that is locked for a moment when a prompt is copied (EBUSY/EACCES) is still read, ingested against the old numbering and deleted, instead of falling straight to the D-q4 residual.
+READ FIRST: `src/store/ReviewStore.ts:770-850` (`endNotesRound`, `queueNotes`, `readNotes`, `deleteNotes`); `src/test/integration/suite/notes.spec.ts:123-177` (the two stale-path tests; the second stubs `readNotes` through `store as unknown as { readNotes }`).
+CHANGE:
+- `src/store/ReviewStore.ts`: add module constants `NOTES_ROUND_END_RETRIES = 2` and `NOTES_RETRY_MS = 100`. In `endNotesRound`, after the first `readNotes()`, while `read.kind === 'unreadable'` and fewer than `NOTES_ROUND_END_RETRIES` retries have run, wait `NOTES_RETRY_MS` (a `setTimeout` promise) and call `readNotes()` again. The code after that is unchanged: text is ingested and deleted as today, and a read that is still unreadable keeps today's stale path. Update the doc comment above `endNotesRound` to name the retry and D-q4. Settle reads (`settleNotes`) are not retried.
+- `src/test/integration/suite/notes.spec.ts`: add `a round-end read that fails once is retried and ends the round normally`. Stub `readNotes` to return `{ kind: 'unreadable' }` on its first call only and delegate to the original after that. Assert that after `endNotesRound()` the notes file no longer exists, the comment-1 note is ingested, and after `snapshotBaseline('plain', [b, a])` + `settleNotes()` comment `b` has no note. The existing test at :155 (always unreadable) must still pass unchanged.
+MIRROR: `src/test/integration/suite/notes.spec.ts:155-176`.
+INVARIANTS: L-no-network; L-corrupt-sidecar-backup; L-never-auto-delete-comment; notes reads stay inside `queueNotes` (no read may land after the round ended).
+DECIDED: D47, D-q4, D-q5. Two retries, 100 ms apart, round end only.
+OUT OF SCOPE: persisting the old `promptOrder`; separating kept chunks from `dismissed` (D-q5); D33 (D-q6); a multi-root test (D-q7).
+ACCEPTANCE: `npm run check`, then `node esbuild.mjs --integration` and `npm run test:integration`; both report 0 failed and the new test passes.
+FAILURE PATHS: still unreadable after the retries → today's stale path and log line (E16, D-q4).
+Depends on: F.
+Entry check: `grep -c NOTES_ROUND_END_RETRIES src/store/ReviewStore.ts` prints 0.
+Done: tests pass, committed, tracker row updated.
+
 ## Lanes and the contract
 
 There is one lane (`app`, repo root; runner `npm (run )?(test|check)` / `npx vitest`), plus `docs` for 0, R1 and two owner rows, and `infra` for CI1 and CI2. There is no contract phase (D24): `messages.ts` is compiled into both bundles and type-checked by `npm run typecheck`, so drift fails the build. Shared files touched in several phases are all on the one sequential chain:
@@ -1235,6 +1256,7 @@ coverage-hash: 0300423e
 | P1 | app | H1 | listing polish | done | tag | exit 0; Tests 698 passed (698); 1 |
 | R1 | docs | P1 | README, changelog, runsheet | done | tag | 1 fix round; 4; 3; 2; 1; 0 |
 | F | app | R1 | final checks | done | tag | Tests 698 passed (698); SUMMARY shift=0 review=0 applied_lines=0 base=21985746 code_files=77 nosym=0 |
+| V1 | app | F | notes round-end read retry | todo | - | - |
 | CI2 | infra | F | recorded green CI run | todo | - | - |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |
