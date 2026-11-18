@@ -467,7 +467,10 @@ export class ReviewPanel {
         this.locatorMemo = { doc: this.doc, locate: createLocator(this.doc) };
       }
       const locate = this.locatorMemo.locate;
-      for (const comment of review.comments) located[comment.id] = locate(comment.anchor);
+      for (const comment of review.comments) {
+        if (comment.anchor === undefined) continue;
+        located[comment.id] = locate(comment.anchor);
+      }
     } else {
       // Nothing rendered yet; the cards still render, without highlights.
       for (const comment of review.comments) located[comment.id] = null;
@@ -546,6 +549,7 @@ export class ReviewPanel {
       // loss. The same weaker signal applies: not a status, just "the text around where this
       // lived changed since you asked".
       if (comment.status !== 'open' && comment.status !== 'orphaned') continue;
+      if (comment.anchor === undefined) continue;
 
       const found = located[comment.id];
       // An orphan has no current position — that is what orphaned means — but its hint was

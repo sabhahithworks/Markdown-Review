@@ -511,7 +511,7 @@ describe('applyReanchor', () => {
     assert.equal(addressed?.resolution?.previousText, 'retries failed requests up to three times');
     assert.equal(addressed?.resolution?.currentText, 'retries failed requests up to five times');
     // The original selection is the durable record and must survive for the before/after.
-    assert.equal(addressed?.anchor.exact, 'retries failed requests up to three times');
+    assert.equal(addressed?.anchor?.exact, 'retries failed requests up to three times');
   });
 
   it('orphans an anchor whose text is gone, and reports no change when nothing moved', async () => {
@@ -599,7 +599,7 @@ describe('reattach (manual re-anchor, PRD §6)', () => {
     assert.equal(reattached?.id, 'reat0001');
     assert.equal(reattached?.body, 'still the same concern');
     assert.equal(reattached?.createdAt, '2026-02-02T00:00:00.000Z');
-    assert.equal(reattached?.anchor.exact, 'processes requests in parallel');
+    assert.equal(reattached?.anchor?.exact, 'processes requests in parallel');
     assert.equal(reattached?.resolution, undefined, 'a stale before/after would render as a phantom diff');
   });
 });
@@ -701,7 +701,7 @@ describe('relink (PRD §11 — target renamed or deleted)', () => {
     assert.equal(destination.targetPath, 'relink-to.md');
     assert.equal(destination.baselineText, 'the baseline text');
     // Anchors ride across untouched; the next re-anchor decides whether they still fit.
-    assert.equal(destination.comments[0]?.anchor.exact, 'the anchored sentence');
+    assert.equal(destination.comments[0]?.anchor?.exact, 'the anchored sentence');
 
     // PRD §11: the old sidecar is emptied, never deleted — the comments now live elsewhere.
     const origin = JSON.parse(

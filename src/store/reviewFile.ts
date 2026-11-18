@@ -74,7 +74,7 @@ export function isComment(value: unknown): value is Comment {
   if (!isString(value['author'])) return false;
   if (!isString(value['createdAt'])) return false;
   if (!STATUSES.includes(value['status'] as CommentStatus)) return false;
-  if (!isAnchor(value['anchor'])) return false;
+  if (value['anchor'] !== undefined && !isAnchor(value['anchor'])) return false;
 
   const resolution = value['resolution'];
   if (resolution !== undefined) {

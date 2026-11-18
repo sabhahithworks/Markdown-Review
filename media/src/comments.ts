@@ -9,7 +9,7 @@
  */
 
 import type { Comment, CommentStatus, Located, ReviewSummary } from '../../src/panel/messages.js';
-import { UNCERTAIN_BELOW, truncateQuote } from '../../src/panel/messages.js';
+import { UNCERTAIN_BELOW, isDocumentComment, truncateQuote } from '../../src/panel/messages.js';
 import { domRangeFor } from './anchorSpace.js';
 import { buildChangeBar, changeBarRects } from './changes.js';
 import { FILTERABLE } from './header.js';
@@ -72,6 +72,7 @@ const DIFF_QUOTE_LENGTH = 160;
  */
 function belongsInOrphans(comment: Comment, located: Record<string, Located | null>): boolean {
   if (comment.status === 'resolved') return false;
+  if (isDocumentComment(comment)) return false;
   return comment.status === 'orphaned' || !located[comment.id];
 }
 
@@ -210,6 +211,7 @@ export function initComments(options: CommentsOptions): CommentsView {
   }
 
   function anchorStart(comment: Comment): number {
+    if (isDocumentComment(comment)) return -1;
     return located[comment.id]?.start ?? Number.MAX_SAFE_INTEGER;
   }
 

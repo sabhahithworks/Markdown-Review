@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { reanchor } from '../anchor/reanchor.js';
-import type { ReviewFile } from '../anchor/types.js';
+import type { Comment, ReviewFile } from '../anchor/types.js';
 import { anchorOn, docOf, fixedClock, makeComment, makeReviewFile } from './helpers.js';
 
 const BEFORE = [
@@ -82,11 +82,11 @@ describe('reanchor — status inference', () => {
 
   it('never mutates anchor.exact when a comment becomes addressed', () => {
     const { review } = baseline();
-    const original = review.comments[0]?.anchor.exact;
+    const original = review.comments[0]?.anchor?.exact;
     const after = docOf(BEFORE.replace('is refilled once per', 'gets refilled exactly once per'));
 
     const result = reanchor(review, after, { now: fixedClock() });
-    expect(result.reviewFile.comments[0]?.anchor.exact).toBe(original);
+    expect(result.reviewFile.comments[0]?.anchor?.exact).toBe(original);
   });
 
   it('orphans a comment whose anchored sentence was deleted', () => {
@@ -97,7 +97,7 @@ describe('reanchor — status inference', () => {
     const [first, second, third] = result.reviewFile.comments;
 
     expect(second?.status).toBe('orphaned');
-    expect(second?.anchor.exact).toBe(
+    expect(second?.anchor?.exact).toBe(
       'Tokens are validated at the edge, never inside the service mesh.',
     );
     expect(first?.status).toBe('open');
@@ -212,8 +212,8 @@ describe('reanchor — hint drift does not force a write', () => {
     const moved = result.reviewFile.comments[0];
 
     expect(moved?.status).toBe('open');
-    expect(moved?.anchor.hintOffset).not.toBe(review.comments[0]?.anchor.hintOffset);
-    expect(moved?.anchor.hintLine).toBeGreaterThan(review.comments[0]?.anchor.hintLine ?? 0);
+    expect(moved?.anchor?.hintOffset).not.toBe(review.comments[0]?.anchor?.hintOffset);
+    expect(moved?.anchor?.hintLine).toBeGreaterThan(review.comments[0]?.anchor?.hintLine ?? 0);
     expect(result.changed).toBe(false);
   });
 });
@@ -395,5 +395,27 @@ describe('reanchor — code blocks on an unedited document', () => {
     const newFence = edited.blocks.find((block) => block.kind === 'code');
     const newText = edited.text.slice(newFence?.start, newFence?.end);
     expect(newText.startsWith(resolution?.currentText ?? '')).toBe(true);
+  });
+});
+
+describe('reanchor — whole-document comments', () => {
+  it('reanchor leaves a document comment untouched', () => {
+    const documentComment: Comment = {
+      id: 'doc00001',
+      body: 'about the whole document',
+      author: 'tester',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      status: 'open',
+    };
+    const review = makeReviewFile([documentComment]);
+    const after = docOf(BEFORE.replace('Every rejection is written to the structured audit log.', 'Nothing is logged.'));
+
+    const result = reanchor(review, after, { now: fixedClock(), inferAddressed: true });
+    const [kept] = result.reviewFile.comments;
+
+    expect(kept?.status).toBe('open');
+    expect(kept?.body).toBe('about the whole document');
+    expect(kept && 'anchor' in kept).toBe(false);
+    expect(result.changed).toBe(false);
   });
 });

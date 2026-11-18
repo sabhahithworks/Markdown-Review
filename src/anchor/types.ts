@@ -35,13 +35,19 @@ export interface Comment {
   /** ISO */
   createdAt: string;
   status: CommentStatus;
-  anchor: Anchor;
+  /** Absent on a whole-document comment (release-expansion D26). */
+  anchor?: Anchor;
   /** Set when status flips to 'addressed'. Shown as before/after in the UI. */
   resolution?: {
     previousText: string;
     currentText: string;
     detectedAt: string;
   };
+}
+
+/** True for a whole-document comment, which carries no anchor (release-expansion D26). */
+export function isDocumentComment(comment: Pick<Comment, 'anchor'>): boolean {
+  return comment.anchor === undefined;
 }
 
 export interface Anchor {

@@ -11,7 +11,7 @@
  */
 
 import type { Comment, CommentStatus, Located } from '../../src/panel/messages.js';
-import { truncateQuote } from '../../src/panel/messages.js';
+import { isDocumentComment, truncateQuote } from '../../src/panel/messages.js';
 import { belongsInOrphans } from './comments.js';
 import { FILTERABLE } from './header.js';
 
@@ -64,7 +64,8 @@ export function initOrphans(options: OrphansOptions): OrphansView {
    */
   function recompute(): void {
     orphans = all.filter(
-      (comment) => belongsInOrphans(comment, positions) && filter.includes(comment.status),
+      (comment) =>
+        !isDocumentComment(comment) && belongsInOrphans(comment, positions) && filter.includes(comment.status),
     );
     if (armed !== undefined && !orphans.some((comment) => comment.id === armed)) {
       armed = undefined;
@@ -116,7 +117,7 @@ export function initOrphans(options: OrphansOptions): OrphansView {
       quote.className = 'mr-orphan-quote';
       // The anchor's own text, not the document's: the document no longer contains it, and this is
       // the record of what the user was commenting on.
-      quote.textContent = truncateQuote(comment.anchor.exact, QUOTE_LENGTH);
+      quote.textContent = truncateQuote(comment.anchor?.exact ?? '', QUOTE_LENGTH);
       detail.append('was on ', quote);
     }
 
@@ -148,7 +149,7 @@ export function initOrphans(options: OrphansOptions): OrphansView {
       isArmed ? 'Cancel' : 'Re-anchor',
       isArmed
         ? 'Cancel re-anchoring this comment'
-        : `Re-anchor "${truncateQuote(comment.anchor.exact, 40)}" to new text`,
+        : `Re-anchor "${truncateQuote(comment.anchor?.exact ?? '', 40)}" to new text`,
       () => {
         if (isArmed) options.onCancelReanchor();
         else options.onReanchor(comment.id);

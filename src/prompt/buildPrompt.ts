@@ -50,11 +50,13 @@ export function buildPrompt(
   // Open only. `addressed` would ask the agent to redo work it already did; `orphaned` would quote
   // text that is no longer in the document, sending it hunting for something that cannot be found;
   // `resolved` is terminal (PRD §4).
-  const open = review.comments.filter((comment) => comment.status === 'open');
+  const open = review.comments.filter(
+    (comment) => comment.status === 'open' && comment.anchor !== undefined,
+  );
   if (open.length === 0) return { prompt: '', count: 0, order: [] };
 
   const locate = options.locate ?? createLocator(doc);
-  const entries: Entry[] = open.map((comment) => ({ comment, found: locate(comment.anchor) }));
+  const entries: Entry[] = open.map((comment) => ({ comment, found: comment.anchor ? locate(comment.anchor) : null }));
   entries.sort(byDocumentOrder);
 
   const header =
@@ -124,7 +126,7 @@ function describeAnchor(entry: Entry, doc: PlainTextDoc): string {
       ? doc.text.slice(scope.heading.start, scope.heading.end)
       : entry.found
         ? doc.text.slice(entry.found.start, entry.found.end)
-        : entry.comment.anchor.exact;
+        : (entry.comment.anchor?.exact ?? '');
 
   // Collapse before truncating: fenced code is preserved verbatim in anchor space, so a code anchor
   // carries real newlines that would break this single-line form. Only the *quote* is collapsed —

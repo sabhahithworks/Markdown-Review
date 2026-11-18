@@ -38,6 +38,8 @@ export function reanchor(
   const comments = reviewFile.comments.map((comment) => {
     // `resolved` is terminal and is never re-evaluated (PRD §4).
     if (comment.status === 'resolved') return comment;
+    // A whole-document comment has no anchor to locate (release-expansion D26).
+    if (comment.anchor === undefined) return comment;
 
     const next = relocate(comment, newDoc, locate, now, inferAddressed);
     if (next.status !== comment.status || !resolutionEquals(next.resolution, comment.resolution)) {
@@ -56,18 +58,20 @@ function relocate(
   now: () => string,
   inferAddressed: boolean,
 ): Comment {
-  const found = locate(comment.anchor);
+  const base = comment.anchor;
+  if (base === undefined) return comment;
+  const found = locate(base);
 
   if (!found) {
     // Orphaned. The anchor is left exactly as it was — its `exact` is the record of what the user
     // commented on, and Phase 4's orphan section quotes it.
-    return withStatus(comment, 'orphaned', comment.anchor, comment.resolution);
+    return withStatus(comment, 'orphaned', base, comment.resolution);
   }
 
   // Hints are refreshed on every pass but deliberately do not count as a change; see the doc
   // comment on `ReanchorResult.changed`.
   const anchor: Anchor = {
-    ...comment.anchor,
+    ...base,
     hintOffset: found.start,
     hintLine: offsetToSourceLine(doc, found.start),
   };
@@ -85,7 +89,7 @@ function relocate(
   // be normalized, but a sidecar written by an older build — or hand-edited by the user, which
   // PRD §11 explicitly supports — may not be, and a whitespace-only difference would otherwise
   // flip every comment in the file to `addressed` at once.
-  if (normalizeAnchorText(currentText) === normalizeAnchorText(comment.anchor.exact)) {
+  if (normalizeAnchorText(currentText) === normalizeAnchorText(base.exact)) {
     // Unchanged. This also self-heals an orphan whose text reappeared after a restructure.
     // Clearing `resolution` matters: a reverted edit would otherwise keep rendering a phantom
     // before/after diff on the card.
@@ -101,7 +105,7 @@ function relocate(
     normalizeAnchorText(previous.currentText) === normalizeAnchorText(currentText);
 
   return withStatus(comment, 'addressed', anchor, {
-    previousText: comment.anchor.exact,
+    previousText: base.exact,
     currentText,
     // Keeping the original timestamp when nothing actually moved is what stops every 400 ms
     // debounce tick from rewriting `detectedAt`, flipping `changed`, and churning the sidecar to

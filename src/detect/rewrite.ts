@@ -9,6 +9,7 @@
  * by wrecking a file in a dev host.
  */
 
+import { isDocumentComment } from '../anchor/types.js';
 import type { CommentStatus, ReviewFile } from '../anchor/types.js';
 
 export interface RewriteVerdict {
@@ -44,7 +45,9 @@ export function detectRewrite(before: ReviewFile, after: ReviewFile): RewriteVer
 
   // Only comments that *were* located can be lost. Excluding the already-orphaned is what stops an
   // untouched document from re-arming the banner forever; `resolved` is terminal (PRD §4).
-  const candidates = before.comments.filter((comment) => LOCATED.includes(comment.status));
+  const candidates = before.comments.filter(
+    (comment) => !isDocumentComment(comment) && LOCATED.includes(comment.status),
+  );
   if (candidates.length < MIN_REWRITE_COMMENTS) return none;
 
   const status = new Map(after.comments.map((comment) => [comment.id, comment.status]));

@@ -122,3 +122,21 @@ describe('detectRewrite', () => {
     expect(detectRewrite(before, after).rewritten).toBe(false);
   });
 });
+
+describe('detectRewrite — whole-document comments', () => {
+  it('rewrite detection ignores document comments', () => {
+    const documentComment: Comment = {
+      id: 'd',
+      body: 'about the whole document',
+      author: 'tester',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      status: 'open',
+    };
+    const before = review({ a: 'open', b: 'open' });
+    before.comments.push(documentComment);
+    const after = review({ a: 'orphaned', b: 'orphaned' });
+    after.comments.push(documentComment);
+
+    expect(detectRewrite(before, after)).toEqual({ rewritten: true, orphaned: 2 });
+  });
+});

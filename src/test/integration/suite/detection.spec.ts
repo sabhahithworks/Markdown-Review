@@ -204,7 +204,7 @@ describe('change detection (PRD §8)', () => {
       'the before/after must carry what the agent actually wrote',
     );
     assert.equal(
-      addressed?.anchor.exact,
+      addressed?.anchor?.exact,
       AUTH_ANCHORS.retries,
       'anchor.exact is the durable record and must survive the flip',
     );
