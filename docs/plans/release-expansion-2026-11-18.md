@@ -1224,7 +1224,7 @@ coverage-hash: 0300423e
 | N2 | app | N1 | prompt sentence, rule amendments | done | tag | Tests 59 passed (59); Tests 671 passed (671) |
 | N3 | app | N2 | store: ingest, dismiss, rounds | done | tag | Tests 671 passed (671) |
 | N4 | app | N3 | prompt command, dismiss message | done | tag | leeway: src/test/integration/suite/detection.spec.ts (Its golden-prompt test (line 103) fails once copyPrompt passes notesPath in workspace mode. Build the expected text as AUTH_EXPECTED_PROMPT with… |
-| N5 | app | N4 | notes section and shell | todo | - | - |
+| N5 | app | N4 | notes section and shell | done | tag | 1 fix round; Tests 7 passed (7); Tests 683 passed (683); dev/harness/index.html:1 |
 | N6 | app | N5 | note on a card | todo | - | - |
 | S1 | app | N6 | send message and wording | todo | - | - |
 | S2 | app | S1 | commands and delivery | todo | - | - |

@@ -34,6 +34,8 @@ import type {
 import { isDocumentComment } from '../../src/panel/messages.js';
 import { resetBlockMaps } from './anchorSpace.js';
 import { applyChangeMarks } from './changes.js';
+import type { AgentNotesView } from './agentNotes.js';
+import { initAgentNotes, notesArrived, notesKey } from './agentNotes.js';
 import type { CommentsView } from './comments.js';
 import { initComments } from './comments.js';
 import type { HeaderView } from './header.js';
@@ -94,6 +96,7 @@ const overlayRoot = requireElement('highlight-overlay');
 const markerRoot = requireElement('marker-layer');
 const headerRoot = requireElement('header');
 const orphansRoot = requireElement('orphans');
+const agentNotesRoot = requireElement('agent-notes');
 const announcerRoot = requireElement('announcer');
 const emptyStateRoot = requireElement('empty-state');
 
@@ -101,6 +104,14 @@ const emptyStateRoot = requireElement('empty-state');
 let comments: CommentsView | undefined;
 let header: HeaderView | undefined;
 let orphans: OrphansView | undefined;
+const agentNotes: AgentNotesView = initAgentNotes({
+  root: agentNotesRoot,
+  onDismiss: () => {
+    vscode.postMessage({ type: 'dismissAgentNote' });
+  },
+});
+/** The notes key of the last state, or undefined before the first `reviewState` of this load. */
+let lastNotesKey: string | undefined;
 let selection: SelectionController | undefined;
 
 /** Set by `setContent` to the line it restored; `onLayout` restores it again until the user acts. */
@@ -568,6 +579,12 @@ function paintEmptyState(isEmpty: boolean): void {
 }
 
 function applyReviewState(message: Extract<HostMessage, { type: 'reviewState' }>): void {
+  const key = notesKey(message.review);
+  if (notesArrived(lastNotesKey, key)) {
+    announce('The agent left notes.');
+  }
+  lastNotesKey = key;
+  agentNotes.setState(message.review.agentNotes);
   paintEmptyState(message.review.comments.length === 0);
   // Order matters, and not cosmetically. `#header` and `#orphans` are both in normal flow
   // *above* `#content`, so showing or resizing either one moves every block below it. Cards and

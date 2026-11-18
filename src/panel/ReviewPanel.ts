@@ -820,6 +820,7 @@ export class ReviewPanel {
   <!-- Orphans live outside the gutter: they have no anchor to align to, so they cannot be
        positioned like a card, and PRD §6 asks for them in a section of their own. -->
   <section id="orphans" hidden aria-label="Comments that lost their anchor"></section>
+  <section id="agent-notes" hidden aria-label="Notes from the agent"></section>
   <!-- First run shows a rendered document and no UI whatsoever: the header hides itself at zero
        counts, and nothing says selecting text does anything (H20). Dismissable, and it never comes
        back once the pane has a comment on it. -->

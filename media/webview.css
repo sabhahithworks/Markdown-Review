@@ -916,7 +916,8 @@ body:not(.mr-narrow):not(.mr-no-cards) {
 }
 
 #header[hidden],
-#orphans[hidden] {
+#orphans[hidden],
+#agent-notes[hidden] {
   display: none;
 }
 
@@ -1225,4 +1226,50 @@ body:not(.mr-narrow):not(.mr-no-cards) {
 .footnote-ref {
   vertical-align: super;
   font-size: 0.75em;
+}
+
+/* ---------- Notes from the agent ---------- */
+
+#agent-notes {
+  max-width: var(--mr-measure);
+  margin-bottom: var(--mr-gap);
+  padding: 12px 14px;
+  border: 1px solid var(--vscode-panel-border);
+  border-left: 3px solid var(--vscode-textBlockQuote-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-editorWidget-background);
+}
+
+.mr-agent-notes-heading {
+  margin: 0 0 8px;
+  border: none;
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.mr-agent-notes-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mr-agent-notes-cut {
+  margin: 8px 0 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+.mr-agent-notes-dismiss {
+  margin-top: 10px;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 4px 14px;
+  border: 1px solid var(--vscode-button-border);
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--vscode-button-foreground);
+  background-color: var(--vscode-button-background);
+}
+
+.mr-agent-notes-dismiss:hover {
+  background-color: var(--vscode-button-hoverBackground);
 }
