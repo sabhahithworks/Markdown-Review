@@ -90,6 +90,15 @@ function readEnv(env: MarkdownIt.Env | undefined): RenderEnv {
   return isRenderEnv(slot) ? slot : FALLBACK_ENV;
 }
 
+/** Default titles for the five GitHub alert types; also the set of types a callout may be styled as. */
+const ALERT_TITLES: Record<string, string> = {
+  note: 'Note',
+  tip: 'Tip',
+  important: 'Important',
+  warning: 'Warning',
+  caution: 'Caution',
+};
+
 /**
  * Builds a configured instance. Exported only as a test seam (R6 compares this instance's token
  * stream against a bare `createMarkdownIt()`); production uses the module singleton below.
@@ -155,6 +164,31 @@ export function createRenderMarkdownIt(): MarkdownIt.MarkdownIt {
 
     return `<pre${attrs}><code${classAttr}>${escapeHtml(token.content)}</code></pre>\n`;
   };
+
+  /**
+   * `alert_open` is hand-built so the plugin's icon markup never reaches the page. The title
+   * paragraph is not a token, so it carries no anchor offsets and `data-no-anchor` marks it for
+   * the webview's selection code.
+   */
+  md.renderer.rules.alert_open = (tokens, idx): string => {
+    const token = tokens[idx];
+    if (!token) return '';
+
+    const meta = (token.meta ?? {}) as { type?: unknown; title?: unknown };
+    const rawType = typeof meta.type === 'string' ? meta.type.toLowerCase() : '';
+    const type = Object.hasOwn(ALERT_TITLES, rawType) ? rawType : 'note';
+    const rawTitle = typeof meta.title === 'string' ? meta.title.trim() : '';
+    const title = rawTitle !== '' ? rawTitle : (ALERT_TITLES[type] ?? 'Note');
+
+    const line = token.attrGet('data-line');
+    const lineAttr = line === null ? '' : ` data-line="${escapeHtml(String(line))}"`;
+
+    return (
+      `<div class="mr-alert mr-alert-${type}"${lineAttr}>` +
+      `<p class="mr-alert-title" data-no-anchor="title">${escapeHtml(title)}</p>`
+    );
+  };
+  md.renderer.rules.alert_close = (): string => '</div>\n';
 
   const baseImage = md.renderer.rules.image;
   md.renderer.rules.image = (tokens, idx, options, env, self): string => {

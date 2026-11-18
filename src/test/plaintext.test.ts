@@ -248,3 +248,31 @@ describe('renderPlainText — idempotence', () => {
     expect(renderPlainText(twice.text).text).toBe(twice.text);
   });
 });
+
+describe('alerts (release-expansion D31)', () => {
+  it('alert marker and title are outside anchor space', () => {
+    expect(renderPlainText('> [!NOTE]\n> Keep this.\n').text).toBe('Keep this.');
+  });
+
+  it('marker-only alert', () => {
+    const doc = renderPlainText('> [!TIP]\n');
+    expect(doc.text).toBe('');
+    expect(doc.blocks).toHaveLength(0);
+  });
+
+  it('lowercase marker is an alert', () => {
+    expect(renderPlainText('> [!warning]\n> x').text).toBe('x');
+  });
+
+  it('ordinary blockquote is unchanged', () => {
+    expect(renderPlainText('> plain quote').text).toBe('plain quote');
+  });
+
+  it('words after the marker become the title', () => {
+    expect(renderPlainText('> [!NOTE] Read this first\n> Body').text).toBe('Body');
+  });
+
+  it('a nested quote stays inside the alert', () => {
+    expect(renderPlainText('> [!NOTE]\n> > inner').text).toBe('inner');
+  });
+});

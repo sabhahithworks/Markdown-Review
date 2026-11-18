@@ -17,6 +17,7 @@ import { createRenderMarkdownIt, renderMarkdown } from '../render/renderer.js';
 import { readFixture } from './helpers.js';
 
 const KITCHEN_SINK = readFixture('kitchen-sink.md');
+const RICH_BLOCKS = readFixture('rich-blocks.md');
 const KITCHEN_SINK_LINES = KITCHEN_SINK.split('\n');
 
 /** Every `data-line` value in a rendered document, in document order. */
@@ -84,6 +85,7 @@ describe('R1 — data-line points at real, on-disk line numbers', () => {
 describe('R2 — front-matter offset agrees with anchor space', () => {
   it.each([
     ['the kitchen-sink fixture', KITCHEN_SINK],
+    ['the rich-blocks fixture', RICH_BLOCKS],
     ['a document with no front matter', '# Title\n\nBody text.\n'],
     ['a document that is only front matter', '---\na: 1\n---\n'],
     // `splitFrontMatter` deliberately strips nothing when the closing delimiter is missing —
@@ -295,6 +297,7 @@ describe('R7 — data-line covers every block in anchor space', () => {
    */
   it.each([
     ['the kitchen-sink fixture', KITCHEN_SINK],
+    ['the rich-blocks fixture', RICH_BLOCKS],
     ['a document with no front matter', '# A\n\ntext\n\n```js\ncode\n```\n\n- a\n- b\n'],
     ['nested lists and tables', '| a | b |\n|---|---|\n| 1 | 2 |\n\n- x\n  - y\n    - z\n'],
     ['consecutive fences', '```js\na\n```\n\n```py\nb\n```\n\n```\nc\n```\n'],
@@ -319,6 +322,7 @@ describe('R13 — data-ap-* carries every anchor-space offset into the DOM', () 
    */
   it.each([
     ['the kitchen-sink fixture', KITCHEN_SINK],
+    ['the rich-blocks fixture', RICH_BLOCKS],
     ['a document with no front matter', '# A\n\ntext\n\n```js\ncode\n```\n\n- a\n- b\n'],
     ['nested lists and tables', '| a | b |\n|---|---|\n| 1 | 2 |\n\n- x\n  - y\n    - z\n'],
     ['consecutive fences', '```js\na\n```\n\n```py\nb\n```\n\n```\nc\n```\n'],
@@ -474,5 +478,60 @@ describe('R12 — tight-list paragraphs stay covered', () => {
 
     const rendered = new Set(dataLines(renderMarkdown(KITCHEN_SINK).html));
     expect(hidden.filter((line) => !rendered.has(line))).toEqual([]);
+  });
+});
+
+describe('alerts (release-expansion D31)', () => {
+  it('alert renders its own markup', () => {
+    const html = renderMarkdown('> [!WARNING]\n> careful\n').html;
+    expect(html).toContain('<div class="mr-alert mr-alert-warning"');
+    expect(html).toContain('>Warning</p>');
+    expect(html).not.toContain('<svg');
+  });
+
+  it('alert body carries anchor offsets', () => {
+    const html = renderMarkdown('> [!NOTE]\n> Keep this.\n').html;
+    expect(html).toMatch(/<p data-line="\d+" data-ap-start="0"/);
+  });
+
+  it('title text is escaped', () => {
+    const html = renderMarkdown('> [!NOTE] <b>x</b>\n> body\n').html;
+    expect(html).toContain('data-no-anchor="title">&lt;b&gt;x&lt;/b&gt;</p>');
+    expect(html).not.toContain('<b>');
+  });
+
+  it('words after the marker become the title', () => {
+    const html = renderMarkdown('> [!NOTE] Read this first\n> Body\n').html;
+    expect(html).toContain('<p class="mr-alert-title" data-no-anchor="title">Read this first</p>');
+  });
+
+  it('a nested quote stays inside the alert', () => {
+    const html = renderMarkdown('> [!NOTE]\n> > inner\n').html;
+    const open = html.indexOf('<div class="mr-alert');
+    const quote = html.indexOf('<blockquote');
+    expect(open).toBeGreaterThanOrEqual(0);
+    expect(quote).toBeGreaterThan(open);
+    expect(html.indexOf('</blockquote>')).toBeLessThan(html.lastIndexOf('</div>'));
+  });
+
+  it('an unknown or missing alert type renders as note', () => {
+    const rule = createRenderMarkdownIt().renderer.rules.alert_open;
+    expect(rule).toBeDefined();
+    const make = (meta?: unknown): string => {
+      const token = { meta, attrGet: () => null } as never;
+      return rule?.([token], 0, {} as never, {}, {} as never) ?? '';
+    };
+    for (const html of [make({ type: 'bogus' }), make(undefined)]) {
+      expect(html).toContain('mr-alert-note');
+      expect(html).toContain('>Note</p>');
+    }
+  });
+
+  it('a marker-only alert renders the title alone', () => {
+    const html = renderMarkdown('> [!TIP]\n').html;
+    expect(html).toContain('<div class="mr-alert mr-alert-tip"');
+    expect(html).toContain('>Tip</p>');
+    expect(html).not.toMatch(/<p data-line="0"><\/p>/);
+    expect(html.replace(/<[^>]*>/g, '').trim()).toBe('Tip');
   });
 });

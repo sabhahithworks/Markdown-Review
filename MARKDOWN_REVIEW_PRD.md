@@ -77,6 +77,7 @@ media/
 | Bundler | esbuild, two entry points (extension + webview) | VS Code team's recommendation; webview JS must ship separately |
 | Markdown | `markdown-it` | `token.map` gives source line ranges, needed for anchoring |
 | Sanitizer | `dompurify` | Webview renders untrusted file content |
+| GitHub alerts | `markdown-it-github-alerts` | `> [!NOTE]` blocks render as callouts instead of quotes with a literal marker |
 | Fuzzy match | `diff-match-patch` (`match_main`) | Purpose-built for relocating text after edits |
 | Webview UI | Vanilla TS + CSS. **No framework.** | Bundle size and startup time matter here |
 | Tests | `vitest` for units, `@vscode/test-electron` for integration | |
@@ -287,6 +288,7 @@ Do not consider this module done until all of these pass:
 
 - markdown-it with `html: false`, `linkify: true`, `typographer: false`
 - GFM tables, task lists, strikethrough
+- GitHub alerts render as titled callouts; the marker and title are not anchor text
 - Fenced code with syntax highlighting (`highlight.js`, lazy-load languages)
 - Every block-level token gets `data-line="<start>"` from `token.map`
 - Sanitize the final HTML with DOMPurify before injection

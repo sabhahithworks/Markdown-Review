@@ -223,6 +223,45 @@ blockquote > :last-child {
   margin-bottom: 0;
 }
 
+/* ---------- GitHub alerts ---------- */
+
+.mr-alert {
+  --mr-alert-color: var(--vscode-charts-blue);
+  margin: 1em 0;
+  padding: 0.4em var(--mr-gap);
+  border-left: 4px solid var(--mr-alert-color);
+}
+
+.mr-alert > :last-child {
+  margin-bottom: 0;
+}
+
+.mr-alert-title {
+  margin: 0 0 0.4em;
+  font-weight: 700;
+  color: var(--mr-alert-color);
+}
+
+.mr-alert-note {
+  --mr-alert-color: var(--vscode-charts-blue);
+}
+
+.mr-alert-tip {
+  --mr-alert-color: var(--vscode-charts-green);
+}
+
+.mr-alert-important {
+  --mr-alert-color: var(--vscode-charts-purple);
+}
+
+.mr-alert-warning {
+  --mr-alert-color: var(--vscode-editorWarning-foreground);
+}
+
+.mr-alert-caution {
+  --mr-alert-color: var(--vscode-charts-red);
+}
+
 /* ---------- Tables ---------- */
 
 table {

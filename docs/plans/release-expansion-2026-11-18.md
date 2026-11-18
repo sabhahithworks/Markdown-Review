@@ -1198,7 +1198,7 @@ coverage-hash: 0300423e
 | 0 | docs | - | branch, plan copy | done | 760d3c7 | - |
 | CI1 | infra | 0 | workflow, issue templates, security policy | done | tag | (no output) exit 0; (no output) exit 0; glob matched 3 files; 1; 0 (grep exits 1 on a zero count; criterion is that it prints 0); 0 (grep exits 1 on a zero count; criterion is that it prints 0) |
 | B1 | app | CI1 | no-anchor subtrees skipped | done | tag | Tests 33 passed (33); Tests 566 passed (566) |
-| A1 | app | B1 | GitHub alerts | todo | - | - |
+| A1 | app | B1 | GitHub alerts | done | tag | leeway: src/types/markdown-it-github-alerts.d.ts (The plugin ships ESM-only types (dist/index.d.mts with type: module), which the node16/CJS extension tsconfig cannot import (TS1479). This ambient… |
 | A2 | app | A1 | footnotes | todo | - | - |
 | M1 | app | A2 | Mermaid file, size cap, guard | todo | - | - |
 | M2 | app | M1 | lazy loader, CSP probe in the harness | todo | - | - |
