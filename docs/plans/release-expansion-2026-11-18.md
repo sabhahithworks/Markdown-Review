@@ -687,6 +687,7 @@ CHANGE:
 MIRROR: `src/store/ReviewStore.ts:629-672` (`watchSidecar`, `rereadExternal`); `src/test/integration/suite/store.spec.ts:205` (`adopts a valid external rewrite and fires onDidChange`).
 INVARIANTS: L-single-review-store (only the store ingests); L-watcher-and-debounce; L-never-auto-delete-comment (only the notes file is deleted, and only after its content was ingested); L-corrupt-sidecar-backup; L-starter-no-swallowed-errors (a read or delete failure is logged with the path); L-lazy-activation (`activationEvents` untouched).
 DECIDED: D14, D19, D20, D32, D33, D47. Expected decision: if importing from `changeWatcher.ts` would create an import cycle with the store, import the constant and the coalescer from the module `changeWatcher.ts` itself takes them from, and say so in the tracker note. Residual, accepted: a write that lands in the few milliseconds between `endNotesRound`'s read and its delete is lost.
+- **Amended during run (2026-11-19):** owner answer to the earlier question → Fix the review finding: ReviewStore.load() calls watchNotes() only on safe paths: sidecar not found, sidecar parsed, or quarantine() returned true (backup succeeded). When the sidecar exists but readFile fails for a reason other than not-found, or quarantine() returns false, do not call watchNotes(), and log to the output channel that agent notes are off until reload. Safe paths are unchanged. Add an integration test in src/test/integration/suite/notes.spec.ts: with a quarantine whose backup fails, a later create/change of the notes file leaves the sidecar's bytes unchanged and writes no review (D-q3, auto-decided). [owner answer]
 OUT OF SCOPE: calling these from the prompt command, the message and the panel (N4); the UI (N5, N6). Importers checked and not edited in this phase unless the compiler or a failing test names them: `eslint.config.mjs`, `clearComments.ts`, `copyPrompt.ts`, `baselineDocuments.ts`, `extension.ts`, `ReviewPanel.ts`, `reviewIndex.ts`, `sidecarPath.ts`, `activation.spec.ts`.
 ACCEPTANCE: `npm run check`, `node esbuild.mjs`, then `node esbuild.mjs --integration && node dist-test/run.js` (the integration suite has no per-spec filter, so the whole suite is this phase's related test). New integration tests in `notes.spec.ts`:
 - `ingests a notes file written to disk`: with a `promptOrder` of two comments, an external write of `Comment 1: I left this as is because…` gives the first comment an `agentNote.text` equal to that chunk.
@@ -1220,7 +1221,7 @@ coverage-hash: 0300423e
 | W5 | app | W4 | whole-document card | done | tag | 1 fix round; Tests 25 passed (25); Tests 650 passed (650) |
 | N1 | app | W5 | notes model and parsing | done | tag | Tests 116 passed (116); Tests 666 passed (666) |
 | N2 | app | N1 | prompt sentence, rule amendments | done | tag | Tests 59 passed (59); Tests 671 passed (671) |
-| N3 | app | N2 | store: ingest, dismiss, rounds | todo | - | - |
+| N3 | app | N2 | store: ingest, dismiss, rounds | done | tag | Tests 671 passed (671) |
 | N4 | app | N3 | prompt command, dismiss message | todo | - | - |
 | N5 | app | N4 | notes section and shell | todo | - | - |
 | N6 | app | N5 | note on a card | todo | - | - |
