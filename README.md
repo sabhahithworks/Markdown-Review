@@ -45,6 +45,49 @@ The agent is never asked to write structured data, follow a schema, or preserve 
 to edit prose. All the bookkeeping is this extension's job. That is the whole reason it works with
 any agent at all.
 
+## Diagrams, alerts and footnotes
+
+A fenced `mermaid` block renders as a diagram, with a **Diagram / Source** switch above it. An invalid
+diagram stays in Source view with Mermaid's own message. Comment on a diagram by selecting its source;
+if you select text inside the drawn diagram, the pane tells you to switch to Source, because the
+drawing is not text. Clicking a card on a diagram's source reveals that source.
+
+GitHub alerts (`> [!NOTE]`, Tip, Important, Warning, Caution) render as titled callouts, and an alert
+with its own title keeps it. Footnotes (`[^1]`) render as a `[1]` link to the note at the end of the
+document; both the reference and the note can be commented on, and your reading position in the
+footnotes survives an agent's edit.
+
+## Send to chat or terminal
+
+Besides copying the prompt, the header's **Send to** menu (and the commands *Send Review Prompt to
+Chat* and *Send Review Prompt to Terminal*) delivers it for you. Chat opens VS Code's chat with the
+prompt typed in; the terminal gets it pasted into the active terminal. Nothing is submitted: you press
+Enter yourself. At a plain shell prompt VS Code shows its own multi-line paste warning, and nothing
+runs until you confirm. If the target is unavailable, the prompt is copied instead.
+
+## Whole-document comments
+
+For feedback on the document as a whole, such as "the tone is too formal", click **Comment on
+document** in the header. No selection is needed. The card sits first, labelled **Whole document**,
+and the prompt lists it as a comment on the document rather than on a passage. It notes when the file
+has changed since the prompt.
+
+## Agent notes
+
+When the agent disagrees with a comment or needs clarification, the prompt asks it to say so in plain
+words in a notes file, `.reviews/<document>.notes.md`, and to mention the comment's number. The pane
+shows what it wrote under **Notes from the agent**, and attaches a note to a card when the agent
+mentions that card's number, labelled **Agent note**. This is not a thread: it is one-way, plain text,
+you cannot reply to it, and it is never sent back to the agent in a later prompt.
+
+- A note stays until you click **Dismiss** on it, or the agent writes a newer note for the same
+  comment. Once dismissed it stays dismissed when the agent adds another note.
+- Copying or sending the next prompt deletes the notes file; the agent creates it again if it needs to.
+- Agent notes need `workspace` storage and a document inside a workspace folder. With
+  `markdownReview.storageLocation` set to `global`, or a file outside every workspace folder, the prompt
+  keeps its plain sentence and no notes file is named.
+- An agent that ignores the notes file just behaves as before.
+
 ## Prompt numbers
 
 Each card from the last prompt you copied shows its item number, for example `#3`. When the agent
@@ -124,13 +167,18 @@ Set `storageLocation` to `global` to keep sidecars out of the repo entirely.
 **No telemetry, no network requests, no analytics. Ever.** Not opt-out — absent. The only thing that
 ever leaves your machine is the prompt you copy, to the agent you chose to paste it into.
 
-This is checked rather than promised: `scripts/check-bundles.mjs` fails the build if either shipped
-bundle so much as contains `fetch(`, `XMLHttpRequest`, `WebSocket`, `sendBeacon`, `EventSource` or a
-Node networking `require`.
+Mermaid ships inside the extension, in its own file that the pane loads only when a document contains a
+diagram. The pane's Content Security Policy allows no connection of any kind, so even that file cannot
+reach the network.
+
+This is checked rather than promised: `scripts/check-bundles.mjs` fails the build if the extension or
+the pane bundle so much as contains `fetch(`, `XMLHttpRequest`, `WebSocket`, `sendBeacon`, `EventSource`
+or a Node networking `require`. The Mermaid file is exempt from that name check, since it is a
+third-party library, and is held to a size cap; the CSP is what keeps it offline, and a test pins it.
 
 ## Not in v1
 
-No comment threads or replies (one comment per anchor), no multi-user identity beyond a display
+No comment threads or replies (one comment per anchor; agent notes are one-way plain text, not threads), no multi-user identity beyond a display
 name, no real-time collaboration, no reactions, no editing markdown in the preview, and no MCP
 server — that last one is a good v2 and is deliberately out of scope now.
 

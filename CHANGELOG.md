@@ -7,15 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Send the review prompt to VS Code chat or paste it into the active terminal (two new commands); nothing is submitted, and if the target is unavailable the prompt is copied instead.
-- Agent notes on a card: when the agent pushes back on a comment, its note shows under "Agent note" on that card, in the margin and in the lost-anchor section, with a Dismiss button.
-- Whole-document comments: comment on the document as a whole, without selecting text; the card sits first, labelled "Whole document", and notes when the file has changed since the prompt.
-- Footnotes: `[^1]` renders as a `[1]` link to the note at the end of the document; both can be commented on.
-- GitHub alerts (`> [!NOTE]`, Tip, Important, Warning, Caution) render as titled callouts.
-- Mermaid diagrams: a `mermaid` code block shows as a diagram with a Diagram/Source switch; an invalid diagram stays in Source view with Mermaid's message.
-
 ## [0.1.0] — unreleased
 
 First release.
@@ -28,7 +19,8 @@ comments were addressed, showing you the before and after so you can accept or r
 
 Comments live in readable JSON in `.reviews/` beside the file, so they survive edits, rename, and a
 window reload, and they can be committed and shared. Nothing is deleted automatically. There is no
-telemetry and no network access of any kind.
+telemetry and no network access of any kind: Mermaid ships inside the extension, and the pane's
+Content Security Policy allows no connection.
 
 Below is the full history of how it was built, including the defects found and fixed along the way.
 
@@ -37,6 +29,13 @@ what the extension is for, but how much of it you can reach, how little it can l
 it reports itself.
 
 ### Added
+
+- Send the review prompt to VS Code chat or paste it into the active terminal (two new commands); nothing is submitted, and if the target is unavailable the prompt is copied instead.
+- Agent notes on a card: when the agent pushes back on a comment, its note shows under "Agent note" on that card, in the margin and in the lost-anchor section, with a Dismiss button.
+- Whole-document comments: comment on the document as a whole, without selecting text; the card sits first, labelled "Whole document", and notes when the file has changed since the prompt.
+- Footnotes: `[^1]` renders as a `[1]` link to the note at the end of the document; both can be commented on.
+- GitHub alerts (`> [!NOTE]`, Tip, Important, Warning, Caution) render as titled callouts.
+- Mermaid diagrams: a `mermaid` code block shows as a diagram with a Diagram/Source switch; an invalid diagram stays in Source view with Mermaid's message.
 
 - The review prompt now says where a quoted passage is when it appears more than once, for example
   `On: "the token" (under "## Refresh", line 42)`. Quotes that appear once are unchanged.

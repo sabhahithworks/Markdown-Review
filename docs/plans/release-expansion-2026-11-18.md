@@ -1233,7 +1233,7 @@ coverage-hash: 0300423e
 | T1 | app | S4 | Dismiss and unreadable coverage | done | tag | 1 fix round; Tests 14 passed (14); rich-clean; Tests 698 passed (698) |
 | H1 | app | T1 | harness for new cards and menu | done | tag | 1 fix round; rich-clean; Tests 698 passed (698) |
 | P1 | app | H1 | listing polish | done | tag | exit 0; Tests 698 passed (698); 1 |
-| R1 | docs | P1 | README, changelog, runsheet | todo | - | - |
+| R1 | docs | P1 | README, changelog, runsheet | done | tag | 1 fix round; 4; 3; 2; 1; 0 |
 | F | app | R1 | final checks | todo | - | - |
 | CI2 | infra | F | recorded green CI run | todo | - | - |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
