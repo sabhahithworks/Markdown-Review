@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BlockSpan, PlainTextDoc } from '../anchor/types.js';
 import type { TextRange } from '../detect/scope.js';
-import { scopeOf } from '../detect/scope.js';
+import { enclosingHeading, scopeOf } from '../detect/scope.js';
 import { docOf, offsetOf } from './helpers.js';
 
 const DOC = `# Title
@@ -209,5 +209,30 @@ describe('scopeOf — degenerate input', () => {
     const scope = scopeOf(doc, { start, end: doc.text.length + 999 });
 
     expect(scope?.end).toBe(doc.text.length);
+  });
+});
+
+describe('enclosingHeading', () => {
+  it('returns the nearest preceding heading of any level', () => {
+    const heading = enclosingHeading(doc, offsetOf(doc, 'Nested prose under alpha.'));
+
+    expect(heading?.kind).toBe('heading');
+    expect(doc.text.slice(heading?.start, heading?.end)).toBe('Alpha nested');
+  });
+
+  it('restricts to a strictly higher level when maxLevel is given', () => {
+    const heading = enclosingHeading(doc, offsetOf(doc, 'Alpha nested'), 3);
+
+    expect(doc.text.slice(heading?.start, heading?.end)).toBe('Alpha');
+    expect(heading?.headingLevel).toBe(2);
+  });
+
+  it('returns null when no heading precedes the offset', () => {
+    expect(enclosingHeading(doc, offsetOf(doc, 'Title'))).toBeNull();
+    expect(enclosingHeading(doc, offsetOf(doc, 'Intro paragraph'), 1)).toBeNull();
+  });
+
+  it('returns null for a document with no blocks', () => {
+    expect(enclosingHeading({ ...doc, blocks: [] }, 0)).toBeNull();
   });
 });

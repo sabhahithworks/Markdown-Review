@@ -460,6 +460,21 @@ body:not(.mr-narrow):not(.mr-no-cards) {
   border-bottom: 1px dashed var(--vscode-editorWarning-foreground);
 }
 
+/* ---------- Change marks ---------- */
+
+/*
+ * A bar in the left gutter of a block the agent changed since the prompt was copied (D30). It
+ * lives in the overlay, positioned from the block's measured rectangle (`changes.ts`), never as a
+ * `::before` on the block: `pre` and `table` scroll horizontally and would clip or carry it. The
+ * shape is the signal, not only the colour, and the block carries an `aria-description`.
+ */
+.mr-change-bar {
+  position: absolute;
+  width: 3px;
+  border-radius: 1px;
+  background-color: var(--vscode-editorGutter-modifiedBackground);
+}
+
 /* ---------- Gutter cards ---------- */
 
 #gutter {
@@ -869,6 +884,14 @@ body:not(.mr-narrow):not(.mr-no-cards) {
   overflow-wrap: anywhere;
 }
 
+/* ---------- Prompt number ---------- */
+
+.mr-card-number {
+  margin-right: 6px;
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Orphan triage ---------- */
 
 /*
@@ -1055,6 +1078,12 @@ body:not(.mr-narrow):not(.mr-no-cards) {
 
   .mr-marker {
     border: 1px solid CanvasText;
+  }
+
+  /* A system colour, kept as authored rather than stripped like the themed background. */
+  .mr-change-bar {
+    forced-color-adjust: none;
+    background-color: CanvasText;
   }
 }
 

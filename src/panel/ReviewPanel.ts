@@ -12,9 +12,9 @@ import { nanoid } from 'nanoid';
 import * as vscode from 'vscode';
 import { createAnchor } from '../anchor/create.js';
 import { createLocator } from '../anchor/locate.js';
-import type { Comment, Located, PlainTextDoc, ReviewFile } from '../anchor/types.js';
+import type { ChangeState, Comment, Located, PlainTextDoc, ReviewFile } from '../anchor/types.js';
 import { showRewriteDiff } from '../detect/baselineDocuments.js';
-import { changedRanges, touches } from '../detect/changedRanges.js';
+import { changeStateOf, changedRanges, touches } from '../detect/changedRanges.js';
 import { createChangeWatcher } from '../detect/changeWatcher.js';
 import { detectRewrite } from '../detect/rewrite.js';
 import type { TextRange } from '../detect/scope.js';
@@ -474,10 +474,34 @@ export class ReviewPanel {
     }
 
     const sectionChanged = this.doc ? this.sectionChanged(review, this.doc, located) : [];
+    const changes = this.changeState(review, this.doc);
 
     // The baseline is stripped here rather than left to the webview to ignore: it is the one field
     // that can be hundreds of kilobytes, and this message goes out on every state change.
-    this.post({ type: 'reviewState', review: toReviewSummary(review), located, sectionChanged });
+    this.post({
+      type: 'reviewState',
+      review: toReviewSummary(review),
+      located,
+      sectionChanged,
+      changes,
+    });
+  }
+
+  /**
+   * The change view's state (D28): which blocks differ from the baseline, or why that cannot be said.
+   *
+   * Deliberately **not** gated on `inferAddressed` (D29) — it is a plain diff, not a theory about
+   * comments — and it shares the memoised diff with `sectionChanged`, so a post costs one diff at
+   * most. With nothing rendered there are no blocks to mark, which is "no answer", never
+   * "unchanged".
+   */
+  private changeState(review: ReviewFile, doc: PlainTextDoc | undefined): ChangeState {
+    if (!doc) return { state: 'no-baseline' };
+    const baseline = review.baselineText;
+    const ranges = baseline
+      ? this.changedRanges(baseline, review.baselineAt ?? '', doc.text)
+      : null;
+    return changeStateOf(baseline, doc, ranges);
   }
 
   /**

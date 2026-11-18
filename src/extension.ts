@@ -4,14 +4,20 @@
  * Activation is lazy: inferred from `contributes.commands` (PRD §9), so nothing runs until the user
  * asks for it. There is no `onStartupFinished`.
  *
- * The manifest declares exactly one `activationEvents` entry —
- * `onWebviewPanel:markdownReview.panel` (D24). Inference covers commands, and a command is the only
- * entry point the *user* initiates; restoring a webview panel after a window reload is the one that
- * VS Code initiates. The serializer below is registered at runtime, so without that declaration
- * nothing in the manifest tells VS Code to wake us for a restore, and a reloaded pane comes back
- * with its tab and no contents. The event fires only when a panel of that view type is actually
- * being restored — which means the user already had one open — so a fresh window still loads
- * nothing.
+ * The manifest declares exactly two `activationEvents` entries.
+ *
+ * - `onWebviewPanel:markdownReview.panel` (D24). Inference covers commands, and a command is the
+ *   only entry point the *user* initiates; restoring a webview panel after a window reload is the
+ *   one that VS Code initiates. The serializer below is registered at runtime, so without that
+ *   declaration nothing in the manifest tells VS Code to wake us for a restore, and a reloaded pane
+ *   comes back with its tab and no contents. It fires only when a panel of that view type is
+ *   actually being restored, which means the user already had one open.
+ * - `workspaceContains:.reviews/*.json` (product-improvements D3). The status bar item and the
+ *   Explorer badges have to show in a workspace that already holds reviews before any pane is
+ *   opened, so the review index must be built at window load there. It fires only where a sidecar
+ *   exists.
+ *
+ * A fresh window in a workspace with no reviews still loads nothing.
  */
 
 import * as path from 'node:path';
@@ -22,14 +28,22 @@ import { resolveTarget } from './commands/resolveTarget.js';
 import { registerBaselineProvider } from './detect/baselineDocuments.js';
 import { ReviewPanel } from './panel/ReviewPanel.js';
 import { REVIEW_VIEW_TYPE, isPanelState } from './panel/messages.js';
+import { registerIndicators } from './status/indicators.js';
+import { ReviewIndex } from './status/reviewIndex.js';
 import { ReviewStore } from './store/ReviewStore.js';
 
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('Markdown Review');
+  const index = new ReviewIndex(output);
+  index.scan().catch((error: unknown) => {
+    output.appendLine(`[index] scan failed: ${error instanceof Error ? error.message : String(error)}`);
+  });
 
   context.subscriptions.push(
     output,
+    index,
+    registerIndicators(index),
 
     // Serves the read-only `markdown-review:` documents behind the rewrite banner's diff. Registered
     // at activation rather than on demand: after a window reload VS Code re-requests content for a

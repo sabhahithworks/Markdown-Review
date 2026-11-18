@@ -100,6 +100,10 @@ export function isReviewFile(value: unknown): value is ReviewFile {
   const baselineAt = value['baselineAt'];
   if (baselineText !== undefined && !isString(baselineText)) return false;
   if (baselineAt !== undefined && !isString(baselineAt)) return false;
+  const promptOrder = value['promptOrder'];
+  if (promptOrder !== undefined && !(Array.isArray(promptOrder) && promptOrder.every(isString))) {
+    return false;
+  }
 
   // Duplicate ids would make `updateCommentBody`/`deleteComment` ambiguous, and only a hand-edit
   // can produce them.

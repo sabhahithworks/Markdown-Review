@@ -18,7 +18,7 @@ import {
   AUTH_MARKDOWN,
   AUTH_TARGET_PATH,
 } from './fixtures/reviewLoop.js';
-import { anchorOn, docOf, makeComment, makeReviewFile } from './helpers.js';
+import { anchorOn, anchorOnNth, docOf, makeComment, makeReviewFile } from './helpers.js';
 
 /** A paragraph of exactly `length` characters, for the truncation boundary. */
 function docWithParagraph(text: string) {
@@ -44,6 +44,20 @@ describe('buildPrompt — the PRD §7 golden example', () => {
 
     expect(prompt).toBe(AUTH_EXPECTED_PROMPT);
     expect(count).toBe(3);
+  });
+
+  it('order lists ids in prompt order', () => {
+    const doc = docOf(AUTH_MARKDOWN);
+    const review = makeReviewFile(
+      [
+        makeComment(anchorOn(doc, AUTH_ANCHORS.heading), { id: 'h' }),
+        makeComment(anchorOn(doc, AUTH_ANCHORS.parallel), { id: 'p' }),
+        makeComment(anchorOn(doc, AUTH_ANCHORS.retries), { id: 'r' }),
+      ],
+      { targetPath: AUTH_TARGET_PATH },
+    );
+
+    expect(buildPrompt(review, doc).order).toEqual(['r', 'p', 'h']);
   });
 
   it('numbers in document order however the comments were added', () => {
@@ -98,7 +112,7 @@ describe('buildPrompt — which comments are included', () => {
       makeComment(anchorOn(doc, AUTH_ANCHORS.retries), { status: 'resolved' }),
     ]);
 
-    expect(buildPrompt(review, doc)).toEqual({ prompt: '', count: 0 });
+    expect(buildPrompt(review, doc)).toEqual({ prompt: '', count: 0, order: [] });
   });
 
   it('quotes anchor.exact and sorts last when a comment is open but unlocatable', () => {
@@ -140,7 +154,8 @@ describe('buildPrompt — quote truncation (PRD §7: over 100 chars)', () => {
     const review = makeReviewFile([makeComment(anchorOn(doc, text))]);
     const line = buildPrompt(review, doc).prompt.split('\n').find((l) => l.startsWith('1. On:'));
     if (!line) throw new Error('no quote line in prompt');
-    return line.slice('1. On: "'.length, -1);
+    // Up to the closing quote, so a location hint after it (D1) is not part of the quote.
+    return line.slice('1. On: "'.length, line.lastIndexOf('"'));
   }
 
   it('leaves 99 and 100 characters untouched', () => {
@@ -335,5 +350,143 @@ describe('buildPrompt — format invariants', () => {
     expect(count).toBe(2);
     expect(prompt).toContain('1. On:');
     expect(prompt).toContain('2. On:');
+  });
+});
+
+describe('buildPrompt — repeated quotes (D1)', () => {
+  const REPEATED = [
+    '# Auth',
+    '',
+    '## Refresh',
+    '',
+    'Use the token to refresh the session.',
+    '',
+    '## Revoke',
+    '',
+    'Use the token to refresh the session.',
+    '',
+  ].join('\n');
+
+  function firstLine(prompt: string): string {
+    return prompt.split('\n').find((line) => line.startsWith('1. ')) ?? '';
+  }
+
+  it('adds heading and line when a quote repeats', () => {
+    const doc = docOf(REPEATED);
+    const review = makeReviewFile([
+      makeComment(anchorOnNth(doc, 'Use the token to refresh the session.', 1)),
+    ]);
+
+    expect(firstLine(buildPrompt(review, doc).prompt)).toBe(
+      '1. On: "Use the token to refresh the session." (under "## Revoke", line 9)',
+    );
+  });
+
+  it('leaves a unique quote unchanged', () => {
+    const doc = docOf(REPEATED);
+    const review = makeReviewFile([makeComment(anchorOn(doc, 'Revoke'))]);
+
+    expect(firstLine(buildPrompt(review, doc).prompt)).toBe('1. On the section "## Revoke"');
+  });
+
+  it('gives (line N) alone when no heading precedes the quote', () => {
+    const doc = docOf('Same sentence here, twice over.\n\nSame sentence here, twice over.\n');
+    const review = makeReviewFile([
+      makeComment(anchorOnNth(doc, 'Same sentence here, twice over.', 1)),
+    ]);
+
+    expect(firstLine(buildPrompt(review, doc).prompt)).toBe(
+      '1. On: "Same sentence here, twice over." (line 3)',
+    );
+  });
+
+  it('checks the visible head of a truncated quote', () => {
+    const head = 'Alpha '.repeat(8).trim();
+    const first = `${head} one ${'x'.repeat(150 - head.length - 5)}`;
+    const second = `${head} two ${'y'.repeat(150 - head.length - 5)}`;
+    expect(first).toHaveLength(150);
+    const doc = docOf(`# Top\n\n${first}\n\n${second}\n`);
+    const review = makeReviewFile([makeComment(anchorOn(doc, second))]);
+
+    const line = firstLine(buildPrompt(review, doc).prompt);
+
+    expect(line.endsWith('" (under "# Top", line 5)')).toBe(true);
+    expect(line).toContain(' … ');
+  });
+
+  it('names the parent heading for a repeated section heading', () => {
+    const md = '# Auth\n\n## Examples\n\nOne.\n\n# Billing\n\n## Examples\n\nTwo.\n';
+    const doc = docOf(md);
+    const review = makeReviewFile([makeComment(anchorOnNth(doc, 'Examples', 1))]);
+
+    expect(firstLine(buildPrompt(review, doc).prompt)).toBe(
+      '1. On the section "## Examples" (under "# Billing", line 9)',
+    );
+  });
+
+  it('counts front-matter lines in the reported line', () => {
+    const md = '---\ntitle: x\n---\n# Top\n\nRepeat this exact sentence.\n\nRepeat this exact sentence.\n';
+    const doc = docOf(md);
+    const review = makeReviewFile([
+      makeComment(anchorOnNth(doc, 'Repeat this exact sentence.', 1)),
+    ]);
+
+    expect(firstLine(buildPrompt(review, doc).prompt)).toBe(
+      '1. On: "Repeat this exact sentence." (under "# Top", line 8)',
+    );
+  });
+
+  it('keeps the bare quote when the comment is unlocatable', () => {
+    const doc = docOf(REPEATED);
+    const review = makeReviewFile([
+      makeComment(anchorOnNth(doc, 'Use the token to refresh the session.', 1)),
+    ]);
+
+    const { prompt } = buildPrompt(review, doc, { locate: nowhere });
+
+    expect(firstLine(prompt)).toBe('1. On: "Use the token to refresh the session."');
+  });
+
+  it('names occurrence 2 of 3 when copies share a paragraph', () => {
+    const doc = docOf('## Auth\n\nrefresh the token. refresh the token. refresh the token.\n');
+    const review = makeReviewFile([makeComment(anchorOnNth(doc, 'refresh the token.', 1))]);
+
+    expect(firstLine(buildPrompt(review, doc).prompt)).toBe(
+      '1. On: "refresh the token." (under "## Auth", line 3, occurrence 2 of 3 in this paragraph)',
+    );
+  });
+
+  it('omits the hint for a doc with no blocks', () => {
+    const real = docOf('Same sentence here, twice. Same sentence here, twice.\n');
+    const doc = { ...real, blocks: [] };
+    const found: Located = { start: 0, end: 'Same sentence here, twice.'.length, confidence: 1 };
+    const review = makeReviewFile([
+      makeComment(anchorOnNth(real, 'Same sentence here, twice.', 0)),
+    ]);
+
+    const { prompt } = buildPrompt(review, doc, { locate: () => found });
+
+    expect(firstLine(prompt)).toBe('1. On: "Same sentence here, twice."');
+  });
+
+  it('measures a truncated head in raw text when code keeps its whitespace', () => {
+    // Fenced code is verbatim in anchor space, so the 48-char visible head of the collapsed quote
+    // spans far more than 48 raw characters. Cutting the raw text at 48 leaves `alpha` and spaces,
+    // which the second block shares, although the head the agent sees is unique.
+    const first = `alpha${' '.repeat(60)}beta-unique-${'u'.repeat(90)}`;
+    const second = `alpha${' '.repeat(60)}gamma-other`;
+    const doc = docOf(`# Top\n\n\`\`\`\n${first}\n\`\`\`\n\n\`\`\`\n${second}\n\`\`\`\n`);
+    const fence = doc.blocks.find((block) => block.kind === 'code');
+    if (!fence) throw new Error('fixture has no code block');
+    expect(doc.text.slice(fence.start, fence.end)).toBe(first);
+
+    const located: Located = { start: fence.start, end: fence.end, confidence: 1 };
+    const review = makeReviewFile([makeComment(anchorOn(doc, 'Top'))]);
+
+    const line = firstLine(buildPrompt(review, doc, { locate: () => located }).prompt);
+
+    expect(line).toContain(' … ');
+    expect(line).not.toContain('(under');
+    expect(line.endsWith(`${'u'.repeat(48)}"`)).toBe(true);
   });
 });

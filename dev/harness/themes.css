@@ -53,6 +53,7 @@
   --vscode-editor-findMatchHighlightBackground: #ea5c0055;
   --vscode-editor-selectionHighlightBackground: #add6ff26;
   --vscode-editorWarning-foreground: #cca700;
+  --vscode-editorGutter-modifiedBackground: #1b81a8;
   --vscode-toolbar-hoverBackground: #5a5d5e50;
 
   --vscode-charts-blue: #4fc1ff;
@@ -97,6 +98,7 @@
   --vscode-editor-findMatchHighlightBackground: #ea5c0055;
   --vscode-editor-selectionHighlightBackground: #add6ff80;
   --vscode-editorWarning-foreground: #bf8803;
+  --vscode-editorGutter-modifiedBackground: #2090d3;
   --vscode-toolbar-hoverBackground: #b8b8b850;
 
   --vscode-charts-blue: #007acc;
@@ -141,6 +143,7 @@
   --vscode-editor-findMatchHighlightBackground: #ea5c0055;
   --vscode-editor-selectionHighlightBackground: #ffffff30;
   --vscode-editorWarning-foreground: #ffd700;
+  --vscode-editorGutter-modifiedBackground: #1b81a8;
   --vscode-toolbar-hoverBackground: #ffffff30;
 
   --vscode-charts-blue: #4fc1ff;

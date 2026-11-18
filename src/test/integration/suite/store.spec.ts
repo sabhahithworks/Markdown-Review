@@ -384,39 +384,107 @@ async function readSidecar(sidecar: vscode.Uri): Promise<ReviewFile> {
 }
 
 describe('baseline snapshots (PRD §7)', () => {
-  it('persists the rendered text and a timestamp without notifying', async () => {
+  it('persists the rendered text, a timestamp and the prompt order', async () => {
     const { store, sidecar } = await storeOn('baseline.md', DETECT_MARKDOWN);
     store.addComment(comment({ id: 'base0001' }));
+
+    store.snapshotBaseline('the rendered plain text', ['base0001'], () => '2026-08-04T10:00:00.000Z');
+    await store.flush();
+
+    const parsed = await readSidecar(sidecar);
+    assert.equal(parsed.baselineText, 'the rendered plain text');
+    assert.equal(parsed.baselineAt, '2026-08-04T10:00:00.000Z');
+    assert.deepEqual(parsed.promptOrder, ['base0001']);
+  });
+
+  it('snapshotBaseline notifies when promptOrder changes', async () => {
+    const { store } = await storeOn('baseline-notify.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'note0001' }));
 
     let notified = 0;
     const subscription = store.onDidChange(() => (notified += 1));
     try {
-      store.snapshotBaseline('the rendered plain text', () => '2026-08-04T10:00:00.000Z');
+      store.snapshotBaseline('text', ['note0001']);
+    } finally {
+      subscription.dispose();
+    }
+
+    assert.equal(notified, 1);
+    assert.deepEqual(store.getState().promptOrder, ['note0001']);
+  });
+
+  it('re-copy with same order notifies', async () => {
+    const { store } = await storeOn('baseline-recopy.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'same0001' }));
+    store.snapshotBaseline('text', ['same0001']);
+
+    let notified = 0;
+    const subscription = store.onDidChange(() => (notified += 1));
+    try {
+      store.snapshotBaseline('text', ['same0001']);
+    } finally {
+      subscription.dispose();
+    }
+
+    assert.equal(notified, 1);
+    assert.deepEqual(store.getState().promptOrder, ['same0001']);
+  });
+
+  it('second copy replaces promptOrder', async () => {
+    const { store, sidecar } = await storeOn('baseline-replace.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'repl0001' }));
+    store.addComment(comment({ id: 'repl0002' }));
+    store.snapshotBaseline('text', ['repl0001', 'repl0002']);
+
+    let notified = 0;
+    const subscription = store.onDidChange(() => (notified += 1));
+    try {
+      store.snapshotBaseline('text', ['repl0002']);
       await store.flush();
     } finally {
       subscription.dispose();
     }
 
-    const parsed = await readSidecar(sidecar);
-    assert.equal(parsed.baselineText, 'the rendered plain text');
-    assert.equal(parsed.baselineAt, '2026-08-04T10:00:00.000Z');
-    // Nothing renders the baseline, so a state round-trip for it would be pure waste.
-    assert.equal(notified, 0, 'snapshotBaseline must not fire onDidChange');
+    assert.equal(notified, 1);
+    assert.deepEqual((await readSidecar(sidecar)).promptOrder, ['repl0002']);
   });
 
-  it('skips a baseline larger than the cap and says so, rather than bloating the sidecar', async () => {
+  it('clears the baseline over the limit', async () => {
     const { store, sidecar, lines } = await storeOn('baseline-huge.md', DETECT_MARKDOWN);
     store.addComment(comment({ id: 'huge0001' }));
 
-    store.snapshotBaseline('x'.repeat(BASELINE_MAX_CHARS + 1));
+    store.snapshotBaseline('small', ['huge0001']);
+    store.snapshotBaseline('x'.repeat(BASELINE_MAX_CHARS + 1), ['huge0001']);
     await store.flush();
 
     const parsed = await readSidecar(sidecar);
     assert.equal(parsed.baselineText, undefined, 'an oversized baseline must not be stored');
+    assert.equal(parsed.baselineAt, undefined);
+    assert.deepEqual(parsed.promptOrder, ['huge0001']);
     assert.ok(
-      lines.some((line) => line.includes('over the') && line.includes('baseline limit')),
+      lines.some(
+        (line) =>
+          line.includes('over the') &&
+          line.includes('baseline limit') &&
+          line.includes('(the previous baseline was cleared)'),
+      ),
       `expected a skip explanation in the output channel, got: ${lines.join(' | ')}`,
     );
+  });
+
+  it('says nothing was cleared when an oversize first copy had no baseline', async () => {
+    const { store, sidecar, lines } = await storeOn('baseline-huge-first.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'hugf0001' }));
+
+    store.snapshotBaseline('x'.repeat(BASELINE_MAX_CHARS + 1), ['hugf0001']);
+    await store.flush();
+
+    const parsed = await readSidecar(sidecar);
+    assert.equal(parsed.baselineText, undefined);
+    assert.deepEqual(parsed.promptOrder, ['hugf0001']);
+    const skip = lines.filter((line) => line.includes('baseline limit'));
+    assert.equal(skip.length, 1, `expected one skip line, got: ${lines.join(' | ')}`);
+    assert.ok(!skip[0]?.includes('previous baseline'), `no baseline existed to clear: ${skip[0] ?? ''}`);
   });
 });
 
@@ -560,7 +628,7 @@ describe('bulk clears (PRD §6)', () => {
   it('clearAll empties the comments and drops the baseline, leaving the file alone', async () => {
     const { store, target, sidecar } = await storeOn('clear-all.md', DETECT_MARKDOWN);
     store.addComment(comment({ id: 'gone0001' }));
-    store.snapshotBaseline('the baseline text');
+    store.snapshotBaseline('the baseline text', ['gone0001']);
     await store.flush();
 
     const result = await store.clearAll();
@@ -608,7 +676,7 @@ describe('relink (PRD §11 — target renamed or deleted)', () => {
     const { store, target } = await storeOn('relink-from.md', DETECT_MARKDOWN);
     store.addComment(comment({ id: 'move0001', body: 'still relevant' }));
     store.addComment(comment({ id: 'move0002', body: 'also relevant' }));
-    store.snapshotBaseline('the baseline text');
+    store.snapshotBaseline('the baseline text', ['move0001', 'move0002']);
     await store.flush();
 
     const renamed = workspaceUri('relink-to.md');
@@ -640,6 +708,37 @@ describe('relink (PRD §11 — target renamed or deleted)', () => {
       await readText(workspaceUri(REVIEWS_DIR, 'relink-from.md.json')),
     ) as ReviewFile;
     assert.deepEqual(origin.comments, []);
+  });
+
+  it('relink maps promptOrder through renamed ids', async () => {
+    const { store, target } = await storeOn('relink-order-from.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'dup00001' }));
+    store.addComment(comment({ id: 'uniq0001' }));
+    store.snapshotBaseline('the baseline text', ['uniq0001', 'dup00001']);
+    await store.flush();
+
+    const renamed = workspaceUri('relink-order-to.md');
+    await writeText(renamed, DETECT_MARKDOWN);
+    const { store: destination } = await storeOn('relink-order-to.md', DETECT_MARKDOWN);
+    destination.addComment(comment({ id: 'dup00001' }));
+    await destination.flush();
+
+    const result = await ReviewStore.relink(
+      stubContext().context,
+      target,
+      renamed,
+      stubOutput([]),
+    );
+
+    assert.deepEqual(result, { ok: true, moved: 2 });
+    const saved = JSON.parse(
+      await readText(workspaceUri(REVIEWS_DIR, 'relink-order-to.md.json')),
+    ) as ReviewFile;
+    const ids = saved.comments.map((entry) => entry.id);
+    const reminted = ids[1];
+    assert.ok(reminted !== undefined && reminted !== 'dup00001');
+    assert.deepEqual(ids, ['dup00001', reminted, 'uniq0001']);
+    assert.deepEqual(saved.promptOrder, ['uniq0001', reminted]);
   });
 
   it('refuses to re-link a file onto itself', async () => {
