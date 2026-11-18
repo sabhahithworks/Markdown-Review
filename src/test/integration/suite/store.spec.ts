@@ -514,6 +514,31 @@ describe('applyReanchor', () => {
     assert.equal(addressed?.anchor?.exact, 'retries failed requests up to three times');
   });
 
+  it('a whole-document comment persists and survives a re-anchor', async () => {
+    const { store, target, sidecar, anchorOn } = await storeOn('reanchor-document.md', DETECT_MARKDOWN);
+    const unanchored = comment({ id: 'doc00001', body: 'overall note' });
+    delete unanchored.anchor;
+    store.addComment(unanchored);
+    store.addComment(
+      comment({ id: 'doc00002', anchor: anchorOn('retries failed requests up to three times') }),
+    );
+    await store.flush();
+
+    const edited = DETECT_MARKDOWN.replace(
+      'retries failed requests up to three times',
+      'retries failed requests up to five times',
+    );
+    await writeText(target, edited);
+    store.applyReanchor(renderPlainText(edited));
+    await store.flush();
+
+    const saved = (await readSidecar(sidecar)).comments.find((c) => c.id === 'doc00001');
+    assert.ok(saved);
+    assert.equal('anchor' in saved, false);
+    assert.equal(saved.status, 'open');
+    assert.equal((await readSidecar(sidecar)).comments.length, 2);
+  });
+
   it('orphans an anchor whose text is gone, and reports no change when nothing moved', async () => {
     const { store, sidecar, anchorOn } = await storeOn('reanchor-orphan.md', DETECT_MARKDOWN);
     store.addComment(

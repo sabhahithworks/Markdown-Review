@@ -131,6 +131,8 @@ export type WebviewMessage =
    * offset. `-1` means the mapping failed, and the host falls back to `hintLine`.
    */
   | { type: 'addComment'; selectedText: string; offset: number; hintLine: number; body: string }
+  /** A comment on the document as a whole: no selection, so no anchor. */
+  | { type: 'addDocumentComment'; body: string }
   | { type: 'editComment'; id: string; body: string }
   | { type: 'deleteComment'; id: string }
   /** Also the "Looks good" button on an addressed card — same host action, different label. */
@@ -197,6 +199,8 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
         isFiniteNumber(value['offset']) &&
         isFiniteNumber(value['hintLine'])
       );
+    case 'addDocumentComment':
+      return typeof value['body'] === 'string';
     case 'editComment':
       return typeof value['id'] === 'string' && typeof value['body'] === 'string';
     case 'deleteComment':

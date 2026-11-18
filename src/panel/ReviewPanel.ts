@@ -277,6 +277,9 @@ export class ReviewPanel {
           case 'addComment':
             void this.addComment(raw.selectedText, raw.offset, raw.hintLine, raw.body);
             break;
+          case 'addDocumentComment':
+            void this.addDocumentComment(raw.body);
+            break;
           case 'editComment':
             this.store.updateCommentBody(raw.id, raw.body.trim());
             break;
@@ -625,6 +628,23 @@ export class ReviewPanel {
       anchor: result.anchor,
     };
     this.store.addComment(comment);
+  }
+
+  /** Stores a comment with no anchor: it belongs to the document, not to a passage. */
+  private async addDocumentComment(body: string): Promise<void> {
+    const text = body.trim();
+    if (text.length === 0) return;
+
+    await this.store.ensureLoaded();
+    if (this.disposed) return;
+
+    this.store.addComment({
+      id: nanoid(8),
+      body: text,
+      author: authorName(this.target),
+      createdAt: new Date().toISOString(),
+      status: 'open',
+    });
   }
 
   /**

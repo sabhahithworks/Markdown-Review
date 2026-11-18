@@ -18,6 +18,7 @@ describe('isWebviewMessage', () => {
     { type: 'addComment', selectedText: 'hello', offset: 12, hintLine: 3, body: 'fix this' },
     // `-1` is the documented "webview could not map the selection" sentinel (Plan 03 §2).
     { type: 'addComment', selectedText: 'hello', offset: -1, hintLine: 3, body: '' },
+    { type: 'addDocumentComment', body: 'overall, tighten this' },
     { type: 'editComment', id: 'abc12345', body: 'reworded' },
     { type: 'deleteComment', id: 'abc12345' },
     { type: 'resolveComment', id: 'abc12345' },
@@ -95,6 +96,8 @@ describe('isWebviewMessage', () => {
       'addComment with a non-string selectedText',
       { type: 'addComment', selectedText: null, offset: 1, hintLine: 1, body: 'b' },
     ],
+    ['addDocumentComment with a non-string body', { type: 'addDocumentComment', body: 7 }],
+    ['addDocumentComment without a body', { type: 'addDocumentComment' }],
     ['editComment without a body', { type: 'editComment', id: 'a' }],
     ['editComment with a numeric id', { type: 'editComment', id: 7, body: 'b' }],
     ['deleteComment without an id', { type: 'deleteComment' }],
