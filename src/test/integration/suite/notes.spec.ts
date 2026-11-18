@@ -197,6 +197,28 @@ describe('agent notes', () => {
     assert.equal(await noteOf(store, b), undefined, 'the old note must not move to the new comment 1');
   });
 
+  it('a round-end read that keeps failing is tried three times and deletes nothing', async () => {
+    const { store, notes } = await notesStore('n-noread-empty.md');
+    await writeText(notes, 'Comment 1: never read.');
+    const internals = store as unknown as { readNotes: () => Promise<unknown> };
+    const original = internals.readNotes;
+    let calls = 0;
+    internals.readNotes = () => {
+      calls += 1;
+      return Promise.resolve({ kind: 'unreadable' });
+    };
+    try {
+      await store.endNotesRound();
+    } finally {
+      internals.readNotes = original;
+    }
+    // The first read and two retries (D-q4), then the stale path with nothing ingested this round.
+    assert.equal(calls, 3);
+    assert.equal(await exists(notes), true);
+    assert.equal((await stateOf(store)).agentNotes, undefined);
+    await vscode.workspace.fs.delete(notes);
+  });
+
   it('a read in flight does not land after the round ended', async () => {
     const { store, notes } = await notesStore('n-inflight.md');
     await writeText(notes, 'A general remark.');
@@ -274,6 +296,33 @@ describe('agent notes', () => {
     assert.equal(await readText(sidecar), garbage, 'the sidecar bytes must be unchanged');
     assert.equal(state.agentNotes, undefined);
     assert.equal((await store.ensureLoaded()).agentNotes, undefined);
+  });
+
+  it('agent notes are off until reload when the backup cannot be written', async () => {
+    const name = 'n-nobackup-off.md';
+    const target = workspaceUri(name);
+    await writeText(target, `# ${name}\n\nthe anchored sentence, with words on either side.\n`);
+    const sidecar = workspaceUri(REVIEWS_DIR, `${name}.json`);
+    await writeText(sidecar, '{ this is not json');
+    await vscode.workspace.fs.createDirectory(workspaceUri(REVIEWS_DIR, `${name}.json.bak`));
+    const notes = workspaceUri(REVIEWS_DIR, `${name}.notes.md`);
+    await writeText(notes, 'Comment 1: hello');
+
+    const lines: string[] = [];
+    const store = ReviewStore.for(stubContext().context, target, stubOutput(lines));
+    await store.ensureLoaded();
+    assert.ok(lines.some((line) => line.includes('agent notes are off until reload')));
+    // Copy prompt settles and ends the round: with notes off, the prompt keeps the old sentence,
+    // nothing is read and the notes file is not deleted.
+    assert.equal(store.notesPromptPath(), undefined);
+    store.addComment(comment('off1'));
+    store.snapshotBaseline('plain', ['off1']);
+    await store.settleNotes();
+    await store.endNotesRound();
+    assert.equal(await noteOf(store, 'off1'), undefined);
+    assert.equal((await stateOf(store)).agentNotes, undefined);
+    assert.equal(await exists(notes), true);
+    await store.flush();
   });
 
   it('ingests before the snapshot', async () => {

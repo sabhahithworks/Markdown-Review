@@ -112,7 +112,8 @@ export class ReviewStore {
     private readonly sidecar: vscode.Uri,
     private readonly output: vscode.OutputChannel,
     targetPath: string,
-    private readonly notes: vscode.Uri | undefined,
+    /** The notes file; set to undefined by `load()` on an unsafe path, which turns agent notes off (D-q3). */
+    private notes: vscode.Uri | undefined,
   ) {
     this.state = emptyReviewFile(targetPath);
   }
@@ -532,6 +533,7 @@ export class ReviewStore {
         this.watchNotes();
         await this.settleNotes();
       } else {
+        this.notes = undefined;
         this.output.appendLine(
           `[store] ${this.sidecar.fsPath}: could not be read, agent notes are off until reload — ${String(error)}`,
         );
@@ -553,6 +555,9 @@ export class ReviewStore {
       this.watchNotes();
       await this.settleNotes();
     } else {
+      // Off as for global storage (D20): no watcher, no read or delete at a prompt, and the prompt
+      // keeps the old sentence, so nothing reaches the notes file until a reload.
+      this.notes = undefined;
       this.output.appendLine(`[store] ${this.sidecar.fsPath}: agent notes are off until reload`);
     }
   }
