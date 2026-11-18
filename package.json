@@ -161,6 +161,7 @@
     "dompurify": "^3.4.13",
     "highlight.js": "^11.11.1",
     "markdown-it": "^15.0.0",
+    "markdown-it-footnote": "^4.0.0",
     "markdown-it-github-alerts": "^1.0.1",
     "markdown-it-task-lists": "^2.1.1",
     "nanoid": "^3.3.17"

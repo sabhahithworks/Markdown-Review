@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Footnotes: `[^1]` renders as a `[1]` link to the note at the end of the document; both can be commented on.
 - GitHub alerts (`> [!NOTE]`, Tip, Important, Warning, Caution) render as titled callouts.
 
 ## [0.1.0] — unreleased

@@ -1133,3 +1133,24 @@ body:not(.mr-narrow):not(.mr-no-cards) {
     transition: none;
   }
 }
+
+/* Footnotes: reference style, rendered at the end of the document. */
+.footnotes-sep {
+  display: none;
+}
+
+.footnotes {
+  margin-top: 2em;
+  padding-top: 0.5em;
+  border-top: 1px solid var(--vscode-panel-border);
+  font-size: 0.9em;
+}
+
+.footnotes ol {
+  padding-left: 1.5em;
+}
+
+.footnote-ref {
+  vertical-align: super;
+  font-size: 0.75em;
+}

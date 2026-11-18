@@ -23,3 +23,12 @@ A paragraph before the callouts.
   > [!NOTE]
   > A note inside a tight list item.
 - A second list item.
+
+## Footnotes
+
+A claim that needs a source[^src] and a second mention of the same source[^src], plus another note[^other].
+
+[^src]: The source, with *emphasis*.
+[^other]: A second note.
+
+The last paragraph comes after the footnote definitions.

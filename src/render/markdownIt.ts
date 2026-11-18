@@ -8,6 +8,7 @@
  */
 
 import MarkdownIt from 'markdown-it';
+import footnote from 'markdown-it-footnote';
 import githubAlerts from 'markdown-it-github-alerts';
 import taskLists from 'markdown-it-task-lists';
 
@@ -66,6 +67,11 @@ export function createMarkdownIt(): MarkdownIt.MarkdownIt {
       }
     }
   });
+
+  // `[^1]` references plus a footnote block at the end of the document. Inline footnotes
+  // (`^[text]`) stay literal.
+  md.use(footnote);
+  md.inline.ruler.disable('footnote_inline');
 
   return md;
 }

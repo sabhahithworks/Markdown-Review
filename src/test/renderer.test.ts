@@ -305,9 +305,13 @@ describe('R7 — data-line covers every block in anchor space', () => {
     const doc = renderPlainText(source);
     const rendered = new Set(dataLines(renderMarkdown(source).html));
 
+    // Footnote blocks deliberately carry no data-line (release-expansion D50); their definitions
+    // are single-line in these fixtures.
+    const sourceLines = source.split('\n');
     const missing = doc.blocks
       .map((block) => block.sourceLineStart)
-      .filter((line) => !rendered.has(line));
+      .filter((line) => !rendered.has(line))
+      .filter((line) => !/^\[\^[^\]]+\]:/.test(sourceLines[line] ?? ''));
 
     expect(missing).toEqual([]);
   });
@@ -533,5 +537,27 @@ describe('alerts (release-expansion D31)', () => {
     expect(html).toContain('>Tip</p>');
     expect(html).not.toMatch(/<p data-line="0"><\/p>/);
     expect(html.replace(/<[^>]*>/g, '').trim()).toBe('Tip');
+  });
+
+  describe('footnotes', () => {
+    const SOURCE = 'A[^1].\n\n[^1]: Note.\n\nLast.\n';
+
+    it('footnote reference links to its note', () => {
+      const html = renderMarkdown(SOURCE).html;
+      expect(html).toContain('href="#fn1"');
+      expect(html).toContain('id="fn1"');
+    });
+
+    it('no back arrow', () => {
+      expect(renderMarkdown(SOURCE).html).not.toContain('footnote-backref');
+    });
+
+    it('footnote blocks carry no data-line', () => {
+      const html = renderMarkdown(SOURCE).html;
+      const section = /<section class="footnotes"[\s\S]*<\/section>/.exec(html)?.[0] ?? '';
+      expect(section).not.toBe('');
+      expect(section).not.toContain('data-line');
+      expect(section).toMatch(/<p data-ap-start="\d+"/);
+    });
   });
 });

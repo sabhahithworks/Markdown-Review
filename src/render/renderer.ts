@@ -35,7 +35,7 @@
 import type MarkdownIt from 'markdown-it';
 import { splitFrontMatter } from './frontMatter.js';
 import { createMarkdownIt } from './markdownIt.js';
-import { walkSpans } from './plaintext.js';
+import { footnoteCaption, walkSpans } from './plaintext.js';
 
 /**
  * Maps a markdown image `src` to a webview-safe URI, or returns `null` to leave the original
@@ -109,10 +109,14 @@ export function createRenderMarkdownIt(): MarkdownIt.MarkdownIt {
 
   md.core.ruler.push('markdown_review_data_line', (state: MarkdownIt.StateCore): void => {
     const env = readEnv(state.env);
+    let inFootnotes = false;
 
     for (let i = 0; i < state.tokens.length; i++) {
       const token = state.tokens[i];
-      if (!token?.map) continue;
+      if (!token) continue;
+      if (token.type === 'footnote_block_open') inFootnotes = true;
+      else if (token.type === 'footnote_block_close') inFootnotes = false;
+      if (!token.map) continue;
       // Closing tokens carry no attributes of their own; `inline` tokens are unwrapped by
       // `renderInline`, so an attribute there would never reach the DOM.
       if (token.nesting === -1 || token.type === 'inline') continue;
@@ -122,7 +126,9 @@ export function createRenderMarkdownIt(): MarkdownIt.MarkdownIt {
       // every fenced block in the document. Indented `code_block` needs no adjustment: plaintext
       // anchors it at `map[0]`, on the token's own first line.
       const line = (token.type === 'fence' ? token.map[0] + 1 : token.map[0]) + env.lineOffset;
-      token.attrSet('data-line', String(line));
+      // Footnote blocks sit last in the document but their source lines are earlier; a `data-line`
+      // there would make the webview's scroll restore and line lookups stop at the wrong place.
+      if (!inFootnotes) token.attrSet('data-line', String(line));
 
       if (token.type === 'heading_open') {
         // markdown-it emits no heading ids, so in-document `#fragment` links would have nothing to
@@ -142,6 +148,12 @@ export function createRenderMarkdownIt(): MarkdownIt.MarkdownIt {
    * `<pre><code class="language-x">`. Highlighting itself happens webview-side, so the host stays
    * free of DOM-shaped concerns.
    */
+  md.renderer.rules.footnote_caption = (tokens, idx): string => {
+    const token = tokens[idx];
+    return token ? footnoteCaption(token) : '';
+  };
+  md.renderer.rules.footnote_anchor = (): string => '';
+
   md.renderer.rules.fence = (tokens, idx): string => {
     const token = tokens[idx];
     if (!token) return '';

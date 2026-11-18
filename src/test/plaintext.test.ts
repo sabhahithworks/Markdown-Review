@@ -276,3 +276,26 @@ describe('alerts (release-expansion D31)', () => {
     expect(renderPlainText('> [!NOTE]\n> > inner').text).toBe('inner');
   });
 });
+
+describe('footnotes (release-expansion D30)', () => {
+  it('footnote reference label is anchor text', () => {
+    expect(renderPlainText('Text[^1] more.\n\n[^1]: The note.\n').text).toBe('Text[1] more.\nThe note.');
+  });
+
+  it('footnote text sits at the end of anchor space', () => {
+    const text = renderPlainText('A[^1].\n\n[^1]: The note.\n\nLater paragraph.\n').text;
+    expect(text).toBe('A[1].\nLater paragraph.\nThe note.');
+  });
+
+  it('undefined reference stays literal', () => {
+    expect(renderPlainText('See [^nope].').text).toBe('See [^nope].');
+  });
+
+  it('inline footnote syntax is not parsed', () => {
+    expect(renderPlainText('A^[inline] b').text).toBe('A^[inline] b');
+  });
+
+  it('repeated reference', () => {
+    expect(renderPlainText('A[^1] B[^1].\n\n[^1]: N.\n').text).toBe('A[1] B[1:1].\nN.');
+  });
+});
