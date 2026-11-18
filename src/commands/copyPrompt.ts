@@ -56,18 +56,27 @@ export async function copyPrompt(
 
   const doc = renderPlainText(read.text);
 
+  // Before the re-anchor and the build: a notes file the agent wrote since the last prompt is
+  // attached by the previous prompt's order, which this copy is about to replace.
+  await store.settleNotes();
+
   // Bring statuses up to date first: with no pane open since the agent's last edit, the sidecar can
   // still say `open` for a comment whose text is gone, and asking the agent to revise a sentence
   // that no longer exists is worse than not asking at all.
   store.applyReanchor(doc);
 
-  const { prompt, count, order } = buildPrompt(store.getState(), doc);
+  const { prompt, count, order } = buildPrompt(store.getState(), doc, {
+    notesPath: store.notesPromptPath(),
+  });
   if (count === 0) {
     void vscode.window.showInformationMessage(noOpenCommentsMessage(review.targetPath));
     return;
   }
 
   await vscode.env.clipboard.writeText(prompt);
+  // After the write, so a clipboard failure leaves the notes file for the next attempt; before the
+  // snapshot, which replaces the prompt order the notes were matched against.
+  await store.endNotesRound();
   // PRD §7: the baseline is whatever the document said at the moment the prompt was copied — after
   // the write, so a clipboard failure does not leave a baseline for a prompt nobody received.
   store.snapshotBaseline(doc.text, order);

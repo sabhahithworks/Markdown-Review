@@ -93,15 +93,20 @@ describe('copy review prompt (PRD §7)', () => {
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   });
 
-  it('puts the PRD §7 prompt on the clipboard and snapshots the baseline', async () => {
+  it('puts the PRD §7 prompt with the notes sentence on the clipboard and snapshots the baseline', async () => {
     const { target, sidecar, read } = await seedReview('auth');
+    const oldSentence = 'If you disagree with a comment or need clarification, tell me instead of guessing.\n';
+    const newSentence =
+      "If you disagree with a comment or need clarification, write that in plain words in `.reviews/docs__auth.md.notes.md` instead of guessing, and mention the comment's number.\n";
+    const expected = AUTH_EXPECTED_PROMPT.replace(oldSentence, newSentence);
+    assert.notEqual(expected, AUTH_EXPECTED_PROMPT, 'the notes sentence replace must match');
     await vscode.env.clipboard.writeText('sentinel — must be overwritten');
 
     await vscode.commands.executeCommand('markdownReview.copyPrompt', target);
 
     await waitFor(
-      async () => (await vscode.env.clipboard.readText()) === AUTH_EXPECTED_PROMPT,
-      'the clipboard to hold the PRD §7 prompt',
+      async () => (await vscode.env.clipboard.readText()) === expected,
+      'the clipboard to hold the PRD §7 prompt with the notes sentence',
     );
 
     // The sidecar write is debounced behind the clipboard write, so the baseline lands second.

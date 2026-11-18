@@ -132,7 +132,7 @@
             "global"
           ],
           "default": "workspace",
-          "markdownDescription": "`workspace` writes to `.reviews/` (shareable via git). `global` keeps comments private to your machine."
+          "markdownDescription": "`workspace` writes to `.reviews/` (shareable via git). `global` keeps comments private to your machine. Agent notes need `workspace` storage."
         },
         "markdownReview.autoDetectResolution": {
           "type": "boolean",

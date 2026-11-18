@@ -25,6 +25,8 @@ describe('isWebviewMessage', () => {
     { type: 'showRewriteDiff' },
     { type: 'relinkTarget' },
     { type: 'copyPrompt' },
+    { type: 'dismissAgentNote' },
+    { type: 'dismissAgentNote', id: 'abc12345' },
     { type: 'clearAddressed' },
     { type: 'reopenComment', id: 'abc12345' },
     { type: 'reanchorComment', id: 'abc12345', selectedText: 'new text', offset: 42, hintLine: 7 },
@@ -100,12 +102,23 @@ describe('isWebviewMessage', () => {
     ['addDocumentComment without a body', { type: 'addDocumentComment' }],
     ['editComment without a body', { type: 'editComment', id: 'a' }],
     ['editComment with a numeric id', { type: 'editComment', id: 7, body: 'b' }],
+    ['dismissAgentNote with a numeric id', { type: 'dismissAgentNote', id: 7 }],
     ['deleteComment without an id', { type: 'deleteComment' }],
     ['resolveComment with a null id', { type: 'resolveComment', id: null }],
   ];
 
   it.each(invalid)('rejects %s', (_label, value) => {
     expect(isWebviewMessage(value)).toBe(false);
+  });
+
+  it('accepts dismissAgentNote with and without an id', () => {
+    expect(isWebviewMessage({ type: 'dismissAgentNote' })).toBe(true);
+    expect(isWebviewMessage({ type: 'dismissAgentNote', id: 'abc12345' })).toBe(true);
+  });
+
+  it('rejects a non-string id', () => {
+    expect(isWebviewMessage({ type: 'dismissAgentNote', id: 7 })).toBe(false);
+    expect(isWebviewMessage({ type: 'dismissAgentNote', id: null })).toBe(false);
   });
 
   it('narrows to the member type', () => {

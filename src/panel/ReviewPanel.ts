@@ -305,6 +305,9 @@ export class ReviewPanel {
           case 'reanchorComment':
             this.reanchor(raw.id, raw.selectedText, raw.offset, raw.hintLine);
             break;
+          case 'dismissAgentNote':
+            this.store.dismissAgentNote(raw.id);
+            break;
           case 'copyPrompt':
             void vscode.commands.executeCommand('markdownReview.copyPrompt', this.target);
             break;

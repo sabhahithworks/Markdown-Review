@@ -164,7 +164,9 @@ export type WebviewMessage =
   /** The rewrite banner's action: open baseline ↔ current as a diff (PRD §11). */
   | { type: 'showRewriteDiff' }
   /** "Locate file…" on the unreadable notice: point this review at a file that still exists. */
-  | { type: 'relinkTarget' };
+  | { type: 'relinkTarget' }
+  /** Dismisses one comment's agent note, or with no id the notes that name no comment. */
+  | { type: 'dismissAgentNote'; id?: string };
 
 /**
  * Serializer state, and what the webview writes via `setState`. `scrollLine` is a `data-line`
@@ -211,6 +213,8 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
         isFiniteNumber(value['offset']) &&
         isFiniteNumber(value['hintLine'])
       );
+    case 'dismissAgentNote':
+      return value['id'] === undefined || typeof value['id'] === 'string';
     case 'addDocumentComment':
       return typeof value['body'] === 'string';
     case 'editComment':
