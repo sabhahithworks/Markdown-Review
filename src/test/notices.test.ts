@@ -17,6 +17,8 @@ import {
   noOpenCommentsMessage,
   nothingToClearMessage,
   promptCopiedMessage,
+  promptSentMessage,
+  sendFallbackMessage,
   badgeText,
   badgeTooltip,
   statusBarText,
@@ -61,6 +63,25 @@ describe('promptCopiedMessage', () => {
 
   it('keeps the @-mention instruction, which is what makes the path actionable', () => {
     expect(promptCopiedMessage(2, 'docs/specs/auth.md')).toContain('@-mention docs/specs/auth.md');
+  });
+});
+
+describe('promptSentMessage', () => {
+  it('words chat and terminal, singular and plural', () => {
+    expect(promptSentMessage(3, 'chat')).toBe('3 comments placed in VS Code chat. Press Enter to send.');
+    expect(promptSentMessage(1, 'chat')).toBe('1 comment placed in VS Code chat. Press Enter to send.');
+    expect(promptSentMessage(1, 'terminal')).toBe(
+      '1 comment pasted into the terminal. Press Enter to send.',
+    );
+  });
+});
+
+describe('sendFallbackMessage', () => {
+  it('says the prompt was copied instead', () => {
+    expect(sendFallbackMessage('terminal')).toBe('No terminal is open. The prompt was copied instead.');
+    expect(sendFallbackMessage('chat')).toBe(
+      'VS Code chat is not available here. The prompt was copied instead.',
+    );
   });
 });
 

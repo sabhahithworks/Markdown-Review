@@ -126,6 +126,9 @@ export type HostMessage =
    */
   | { type: 'rewriteDetected'; orphaned: number };
 
+/** Where "Send to…" puts the review prompt. */
+export type SendTarget = 'chat' | 'terminal';
+
 /** webview -> extension */
 export type WebviewMessage =
   | { type: 'ready' }
@@ -159,6 +162,7 @@ export type WebviewMessage =
   | { type: 'reanchorComment'; id: string; selectedText: string; offset: number; hintLine: number }
   /** Header actions. The palette commands are the same code paths. */
   | { type: 'copyPrompt' }
+  | { type: 'sendPrompt'; target: SendTarget }
   | { type: 'clearAddressed' }
   | { type: 'clearAll' }
   /** The rewrite banner's action: open baseline ↔ current as a diff (PRD §11). */
@@ -213,6 +217,8 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
         isFiniteNumber(value['offset']) &&
         isFiniteNumber(value['hintLine'])
       );
+    case 'sendPrompt':
+      return value['target'] === 'chat' || value['target'] === 'terminal';
     case 'dismissAgentNote':
       return value['id'] === undefined || typeof value['id'] === 'string';
     case 'addDocumentComment':

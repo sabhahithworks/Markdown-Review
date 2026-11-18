@@ -111,6 +111,16 @@ describe('isWebviewMessage', () => {
     expect(isWebviewMessage(value)).toBe(false);
   });
 
+  it('accepts sendPrompt for chat and terminal', () => {
+    expect(isWebviewMessage({ type: 'sendPrompt', target: 'chat' })).toBe(true);
+    expect(isWebviewMessage({ type: 'sendPrompt', target: 'terminal' })).toBe(true);
+  });
+
+  it('rejects an unknown target', () => {
+    expect(isWebviewMessage({ type: 'sendPrompt', target: 'email' })).toBe(false);
+    expect(isWebviewMessage({ type: 'sendPrompt' })).toBe(false);
+  });
+
   it('accepts dismissAgentNote with and without an id', () => {
     expect(isWebviewMessage({ type: 'dismissAgentNote' })).toBe(true);
     expect(isWebviewMessage({ type: 'dismissAgentNote', id: 'abc12345' })).toBe(true);
