@@ -1256,7 +1256,7 @@ coverage-hash: 0300423e
 | P1 | app | H1 | listing polish | done | tag | exit 0; Tests 698 passed (698); 1 |
 | R1 | docs | P1 | README, changelog, runsheet | done | tag | 1 fix round; 4; 3; 2; 1; 0 |
 | F | app | R1 | final checks | done | tag | Tests 698 passed (698); SUMMARY shift=0 review=0 applied_lines=0 base=21985746 code_files=77 nosym=0 |
-| V1 | app | F | notes round-end read retry | todo | - | - |
+| V1 | app | F | notes round-end read retry | done | tag | Tests 698 passed (698) |
 | CI2 | infra | F | recorded green CI run | todo | - | - |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |

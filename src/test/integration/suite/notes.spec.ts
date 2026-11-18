@@ -175,6 +175,28 @@ describe('agent notes', () => {
     await vscode.workspace.fs.delete(notes);
   });
 
+  it('a round-end read that fails once is retried and ends the round normally', async () => {
+    const { store, notes, a, b } = await notesStore('n-retry.md');
+    await writeText(notes, 'Comment 1: kept as is.\n\nA general remark.');
+    const internals = store as unknown as { readNotes: () => Promise<unknown> };
+    const original = internals.readNotes;
+    let calls = 0;
+    internals.readNotes = () => {
+      calls += 1;
+      return calls === 1 ? Promise.resolve({ kind: 'unreadable' }) : original.call(store);
+    };
+    try {
+      await store.endNotesRound();
+    } finally {
+      internals.readNotes = original;
+    }
+    assert.equal(await exists(notes), false);
+    assert.equal(await noteOf(store, a), 'Comment 1: kept as is.');
+    store.snapshotBaseline('plain', [b, a]);
+    await store.settleNotes();
+    assert.equal(await noteOf(store, b), undefined, 'the old note must not move to the new comment 1');
+  });
+
   it('a read in flight does not land after the round ended', async () => {
     const { store, notes } = await notesStore('n-inflight.md');
     await writeText(notes, 'A general remark.');

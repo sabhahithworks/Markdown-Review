@@ -50,6 +50,10 @@ const WRITE_DEBOUNCE_MS = 250;
  */
 const IDLE_DISPOSE_MS = 5 * 60_000;
 
+/** Extra reads of the notes file at round end when a read fails, and the wait before each. */
+const NOTES_ROUND_END_RETRIES = 2;
+const NOTES_RETRY_MS = 100;
+
 /** Shown once per machine, not once per file — the point is made the first time (PRD §11). */
 const LOOSE_FILE_WARNING_KEY = 'markdownReview.looseFileWarningShown';
 
@@ -774,11 +778,17 @@ export class ReviewStore {
    * deleted, or not read (so not deleted), still holds this round's words, so they are kept out of
    * the next round's reads: read again, they would attach by the next prompt's numbers and repeat
    * the carried notes. For an unreadable file the words last ingested stand in for its text.
+   * A read that fails is retried up to `NOTES_ROUND_END_RETRIES` times, `NOTES_RETRY_MS` apart,
+   * before that stale path is taken (D-q4).
    */
   endNotesRound(): Promise<void> {
     return this.queueNotes(async () => {
       if (this.notes === undefined) return;
-      const read = await this.readNotes();
+      let read = await this.readNotes();
+      for (let retry = 0; read.kind === 'unreadable' && retry < NOTES_ROUND_END_RETRIES; retry++) {
+        await new Promise<void>((resolve) => setTimeout(resolve, NOTES_RETRY_MS));
+        read = await this.readNotes();
+      }
       let stale: string | undefined;
       if (read.kind === 'text') {
         this.ingestAgentNotes(read.text);
