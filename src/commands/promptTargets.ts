@@ -11,6 +11,8 @@ export interface PromptIo {
   toChat(prompt: string): Promise<boolean>;
   toTerminal(): Promise<boolean>;
   notify(message: string): void;
+  /** A failure the user has to act on: nothing was copied or sent. */
+  error(message: string): void;
 }
 
 const CHAT_OPEN_COMMAND = 'workbench.action.chat.open';
@@ -35,5 +37,9 @@ export const defaultIo: PromptIo = {
 
   notify(message: string): void {
     void vscode.window.showInformationMessage(message);
+  },
+
+  error(message: string): void {
+    void vscode.window.showErrorMessage(message);
   },
 };

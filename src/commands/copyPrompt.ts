@@ -40,7 +40,7 @@ export async function deliverPrompt(
 ): Promise<void> {
   const resolved = resolveTarget(arg);
   if (!resolved.ok) {
-    io.notify(resolved.detail);
+    io.error(resolved.detail);
     return;
   }
   const { target } = resolved;
@@ -66,7 +66,7 @@ export async function deliverPrompt(
     // unreadable file. Say so and stop; nothing has been copied and no baseline was taken.
     const detail = read.reason === 'too-large' ? `${String(read.sizeBytes)} bytes` : read.detail;
     output.appendLine(`[copyPrompt] cannot read ${target.fsPath}: ${detail}`);
-    io.notify(`Markdown Review could not read ${review.targetPath}. Your comments have not been changed.`);
+    io.error(`Markdown Review could not read ${review.targetPath}. Your comments have not been changed.`);
     return;
   }
 

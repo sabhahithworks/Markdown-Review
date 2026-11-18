@@ -21,6 +21,7 @@ interface Recorder extends PromptIo {
   readonly chatPrompts: string[];
   toTerminalCalls: number;
   readonly messages: string[];
+  readonly errors: string[];
 }
 
 function recorder(chat: () => Promise<boolean>, terminal: () => Promise<boolean>): Recorder {
@@ -28,6 +29,7 @@ function recorder(chat: () => Promise<boolean>, terminal: () => Promise<boolean>
     chatPrompts: [],
     toTerminalCalls: 0,
     messages: [],
+    errors: [],
     toChat(prompt: string): Promise<boolean> {
       rec.chatPrompts.push(prompt);
       return chat();
@@ -38,6 +40,9 @@ function recorder(chat: () => Promise<boolean>, terminal: () => Promise<boolean>
     },
     notify(message: string): void {
       rec.messages.push(message);
+    },
+    error(message: string): void {
+      rec.errors.push(message);
     },
   };
   return rec;
@@ -140,6 +145,24 @@ describe('send review prompt (release-expansion S2)', () => {
     assert.equal(io.chatPrompts.length, 0);
     assert.equal(io.toTerminalCalls, 0);
     assert.equal(io.messages.length, 2);
+  });
+
+  it('an unreadable target or a bad argument is reported as an error', async () => {
+    const { target } = await seed('send-gone');
+    await vscode.workspace.fs.delete(target);
+    const io = recorder(() => Promise.resolve(true), () => Promise.resolve(true));
+
+    await deliver(target, 'chat', io);
+    await deliverPrompt(stubContext().context, stubOutput([]), 42, 'terminal', io);
+
+    assert.equal(io.errors.length, 2, io.errors.join(' | '));
+    assert.equal(
+      io.errors[0],
+      'Markdown Review could not read docs/send-gone.md. Your comments have not been changed.',
+    );
+    assert.deepEqual(io.messages, []);
+    assert.equal(io.chatPrompts.length, 0);
+    assert.equal(io.toTerminalCalls, 0);
   });
 
   it('terminal target with no terminal falls back', async () => {
