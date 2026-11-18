@@ -771,8 +771,9 @@ export class ReviewStore {
   /**
    * Ends a round: reads the file once more against the old `promptOrder`, deletes it only when that
    * read is what was stored, and moves the unattached notes into `carried`. A file that could not be
-   * deleted still holds this round's words, so they are kept out of the next round's reads: read
-   * again, they would attach by the next prompt's numbers and repeat the carried notes.
+   * deleted, or not read (so not deleted), still holds this round's words, so they are kept out of
+   * the next round's reads: read again, they would attach by the next prompt's numbers and repeat
+   * the carried notes. For an unreadable file the words last ingested stand in for its text.
    */
   endNotesRound(): Promise<void> {
     return this.queueNotes(async () => {
@@ -784,6 +785,8 @@ export class ReviewStore {
         if (read.text === (this.state.agentNotes?.raw ?? '') && !(await this.deleteNotes())) {
           stale = read.text;
         }
+      } else if (read.kind === 'unreadable' && (this.state.agentNotes?.raw ?? '') !== '') {
+        stale = this.state.agentNotes?.raw;
       }
       const current = this.state.agentNotes;
       if (!current) return;

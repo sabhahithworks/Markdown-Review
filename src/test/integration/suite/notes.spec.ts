@@ -133,6 +133,9 @@ describe('agent notes', () => {
     } finally {
       await chmod(reviews, 0o755);
     }
+    if (process.platform !== 'win32') {
+      assert.equal(await exists(notes), true, 'the delete must have failed, or this test checks nothing');
+    }
     store.snapshotBaseline('plain', [b, a]);
     await store.settleNotes();
     assert.equal(await noteOf(store, a), 'Comment 1: kept as is.');
@@ -147,6 +150,29 @@ describe('agent notes', () => {
       assert.equal((await stateOf(store)).agentNotes?.unattached, 'A general remark.');
       await vscode.workspace.fs.delete(notes);
     }
+  });
+
+  it('a notes file that could not be read at round end is not read again by the next numbering', async () => {
+    const { store, notes, a, b } = await notesStore('n-noread.md');
+    await writeText(notes, 'Comment 1: kept as is.\n\nA general remark.');
+    await store.settleNotes();
+    // The read at round end fails for a moment (EBUSY, EACCES while the agent holds the file), so
+    // nothing is deleted and the file still holds this round's words.
+    const internals = store as unknown as { readNotes: () => Promise<unknown> };
+    const original = internals.readNotes;
+    internals.readNotes = () => Promise.resolve({ kind: 'unreadable' });
+    try {
+      await store.endNotesRound();
+    } finally {
+      internals.readNotes = original;
+    }
+    assert.equal(await exists(notes), true);
+    store.snapshotBaseline('plain', [b, a]);
+    await store.settleNotes();
+    assert.equal(await noteOf(store, a), 'Comment 1: kept as is.');
+    assert.equal(await noteOf(store, b), undefined, 'the old note must not move to the new comment 1');
+    assert.equal((await stateOf(store)).agentNotes?.unattached, 'A general remark.');
+    await vscode.workspace.fs.delete(notes);
   });
 
   it('a read in flight does not land after the round ended', async () => {
