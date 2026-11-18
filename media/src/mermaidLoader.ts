@@ -25,6 +25,18 @@ function siblingUrl(scriptUrl: string): string | undefined {
   }
 }
 
+/**
+ * The global the Mermaid script sets, or undefined before it has run. Until then a browser exposes
+ * any element with `id="mermaid"` (a `## Mermaid` heading's slug) as `window.mermaid`, so the
+ * value must look like the API rather than merely exist.
+ */
+function mermaidGlobal(): MermaidApi | undefined {
+  const value = (globalThis as { mermaid?: Partial<MermaidApi> }).mermaid;
+  return typeof value?.initialize === 'function' && typeof value.render === 'function'
+    ? (value as MermaidApi)
+    : undefined;
+}
+
 export function createMermaidLoader(
   scriptUrl: string | undefined,
   nonce: string | undefined,
@@ -36,7 +48,7 @@ export function createMermaidLoader(
     if (pending) return pending;
 
     // A script that outlived the timeout may still have run since: use it rather than load it again.
-    const loaded = (globalThis as { mermaid?: MermaidApi }).mermaid;
+    const loaded = mermaidGlobal();
     if (loaded) {
       pending = Promise.resolve(loaded);
       return pending;
@@ -57,7 +69,7 @@ export function createMermaidLoader(
       };
       const onLoad = (): void => {
         settle();
-        const api = (globalThis as { mermaid?: MermaidApi }).mermaid;
+        const api = mermaidGlobal();
         if (api) resolve(api);
         else reject(new Error(LOAD_FAILED));
       };

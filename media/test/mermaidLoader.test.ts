@@ -86,6 +86,27 @@ describe('createMermaidLoader', () => {
     await expect(second).resolves.toBe(api);
   });
 
+  it('a heading with id "mermaid" is not taken for the loaded script', async () => {
+    // A browser exposes an element with an id as a window property, so a `## Mermaid` heading
+    // (slug `mermaid`) is `window.mermaid` until the real script runs and shadows it.
+    const heading = document.createElement('h2');
+    heading.id = 'mermaid';
+    (globalThis as { mermaid?: unknown }).mermaid = heading;
+    const promise = createMermaidLoader(SCRIPT_URL, 'n1')();
+    expect(scripts()).toHaveLength(1);
+    const api = stub();
+    (globalThis as { mermaid?: MermaidApi }).mermaid = api;
+    scripts()[0]!.dispatchEvent(new Event('load'));
+    await expect(promise).resolves.toBe(api);
+  });
+
+  it('rejects when the global after load is not the Mermaid API', async () => {
+    (globalThis as { mermaid?: unknown }).mermaid = document.createElement('h2');
+    const promise = createMermaidLoader(SCRIPT_URL, 'n1')();
+    scripts()[0]!.dispatchEvent(new Event('load'));
+    await expect(promise).rejects.toThrow(FAILED);
+  });
+
   it('retries after a failure', async () => {
     const load = createMermaidLoader(SCRIPT_URL, 'n1');
     const first = load();

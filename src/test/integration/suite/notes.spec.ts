@@ -325,6 +325,28 @@ describe('agent notes', () => {
     await store.flush();
   });
 
+  it('agent notes are off until reload when the sidecar exists but cannot be read', async () => {
+    const name = 'n-noread-off.md';
+    const target = workspaceUri(name);
+    await writeText(target, `# ${name}\n\nthe anchored sentence, with words on either side.\n`);
+    // A directory where the sidecar should be: the read fails, and not with FileNotFound.
+    await vscode.workspace.fs.createDirectory(workspaceUri(REVIEWS_DIR, `${name}.json`));
+    const notes = workspaceUri(REVIEWS_DIR, `${name}.notes.md`);
+    await writeText(notes, 'Comment 1: hello');
+
+    const lines: string[] = [];
+    const store = ReviewStore.for(stubContext().context, target, stubOutput(lines));
+    await store.ensureLoaded();
+    assert.ok(lines.some((line) => line.includes('could not be read, agent notes are off until reload')));
+    assert.equal(store.notesPromptPath(), undefined);
+    await store.settleNotes();
+    await store.endNotesRound();
+    assert.equal((await stateOf(store)).agentNotes, undefined);
+    assert.equal(await exists(notes), true);
+    await vscode.workspace.fs.delete(notes);
+    await vscode.workspace.fs.delete(workspaceUri(REVIEWS_DIR, `${name}.json`), { recursive: true });
+  });
+
   it('ingests before the snapshot', async () => {
     const name = 'n-prompt';
     const markdown = '# Notes\n\nthe anchored sentence, with words on either side.\n';

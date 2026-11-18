@@ -268,6 +268,36 @@ describe('initMermaid', () => {
     expect(wrapper.getAttribute('data-view')).toBe('diagram');
   });
 
+  it('a second theme change wins over a first one still rendering', async () => {
+    vi.useFakeTimers();
+    const pending: Array<(svg: string) => void> = [];
+    let calls = 0;
+    document.documentElement.style.setProperty('--vscode-editor-background', '#ffffff');
+    const { root, view } = setup(fence(SOURCE), () => {
+      calls += 1;
+      return calls === 1
+        ? Promise.resolve({ svg: '<svg class="old"></svg>' })
+        : new Promise((resolve) => pending.push((svg) => resolve({ svg })));
+    });
+    view.refresh();
+    await vi.advanceTimersByTimeAsync(0);
+    const wrapper = wrapperOf(root);
+    document.documentElement.style.setProperty('--vscode-editor-background', '#1e1e1e');
+    await vi.advanceTimersByTimeAsync(MERMAID_RETHEME_MS + 10);
+    document.documentElement.style.setProperty('--vscode-editor-background', '#000000');
+    await vi.advanceTimersByTimeAsync(MERMAID_RETHEME_MS + 10);
+    expect(pending).toHaveLength(2);
+    // The newer run finishes first, then the older one: the older result must not land.
+    at(pending, 1)('<svg class="second"></svg>');
+    await vi.advanceTimersByTimeAsync(0);
+    at(pending, 0)('<svg class="first"></svg>');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wrappers(root)).toEqual([wrapper]);
+    expect(wrapper.querySelector('svg.second')).not.toBeNull();
+    expect(wrapper.querySelector('svg.first')).toBeNull();
+    expect(wrapper.getAttribute('data-view')).toBe('diagram');
+  });
+
   it('switch is keyboard operable', async () => {
     const { root, view } = setup(fence(SOURCE));
     view.refresh();
