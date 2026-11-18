@@ -92,6 +92,17 @@ export default tseslint.config(
     },
   },
   {
+    // Test fixtures run as plain CommonJS under Node, outside the bundle.
+    files: ['src/test/integration/fixtures/**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: { require: 'readonly', process: 'readonly' },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
     files: ['src/test/**/*.ts'],
     rules: {
       // Perf tests report their measurements; that is the whole point of running them.
