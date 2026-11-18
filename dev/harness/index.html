@@ -156,10 +156,20 @@
       };
     }
 
+    /** The `setContent` for a scenario: its own document when it carries one, else the kitchen sink. */
+    function contentOf(key) {
+      const scenario = fixture.scenarios[key];
+      return {
+        type: 'setContent',
+        html: scenario.html ?? fixture.html,
+        frontMatterHtml: scenario.frontMatterHtml ?? fixture.frontMatterHtml,
+      };
+    }
+
     function loadScenario(key) {
       currentKey = key;
       const scenario = fixture.scenarios[key];
-      post({ type: 'setContent', html: fixture.html, frontMatterHtml: fixture.frontMatterHtml });
+      post(contentOf(key));
       post(reviewStateOf(key));
       // Only the host can detect a rewrite — it needs the state from *before* the re-anchor pass —
       // so the scenario declares the outcome and the page plays the host's part.
@@ -202,6 +212,76 @@
      */
     function nothingLocatable() {
       return Object.values(fixture.scenarios[currentKey].located).every((position) => !position);
+    }
+
+    // ---- rich-block helpers ---------------------------------------------------------------------
+
+    const isRich = () => currentKey === 'rich' || currentKey === 'rich-clean';
+    const MERMAID_ERROR_PREFIX = 'Mermaid could not render this diagram:';
+
+    /** True once every diagram is either drawn or has said why not; waits out the theme re-render too. */
+    async function diagramsSettled(timeoutMs = 20000) {
+      await wait(300);
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const wrappers = [...document.querySelectorAll('#content .mr-mermaid')];
+        const done = wrappers.length > 0 && wrappers.every((wrapper) =>
+          !wrapper.querySelector('.mr-mermaid-switch').hidden ||
+          (wrapper.querySelector('.mr-mermaid-status').textContent || '').startsWith(MERMAID_ERROR_PREFIX));
+        if (done) {
+          await wait(100);
+          return true;
+        }
+        await wait(50);
+      }
+      return false;
+    }
+
+    /** Puts every drawn diagram back in Diagram view. */
+    function showDiagrams() {
+      for (const wrapper of document.querySelectorAll('#content .mr-mermaid')) {
+        const switchEl = wrapper.querySelector('.mr-mermaid-switch');
+        if (!switchEl.hidden && wrapper.getAttribute('data-view') !== 'diagram') switchEl.querySelector('button').click();
+      }
+    }
+
+    /** The wrapper in front of the first Mermaid block, the flowchart. */
+    function flowchartWrapper() {
+      const pre = [...document.querySelectorAll('#content pre')].find((el) => el.querySelector('code.language-mermaid'));
+      const wrapper = pre && pre.previousElementSibling;
+      return wrapper && wrapper.classList.contains('mr-mermaid') ? wrapper : null;
+    }
+
+    /** The first opaque background at or above `el`, as a computed `rgb()` string. */
+    function effectiveBackground(el) {
+      for (let node = el; node; node = node.parentElement) {
+        const colour = getComputedStyle(node).backgroundColor;
+        if (colour !== 'rgba(0, 0, 0, 0)' && colour !== 'transparent') return colour;
+      }
+      return getComputedStyle(document.body).backgroundColor;
+    }
+
+    /**
+     * A block's text as anchor space has it, derived here from the DOM alone: whitespace collapsed
+     * and trimmed outside a `pre`, one trailing newline dropped inside one, `data-no-anchor`
+     * subtrees and nested blocks skipped, an image contributing its alt text and a `br` a space.
+     */
+    function anchorTextOf(block) {
+      const verbatim = block.tagName === 'PRE';
+      let text = '';
+      const walk = (node) => {
+        for (const child of node.childNodes) {
+          if (child.nodeType === Node.TEXT_NODE) { text += child.nodeValue; continue; }
+          if (child.nodeType !== Node.ELEMENT_NODE) continue;
+          if (child.hasAttribute('data-no-anchor') || child.hasAttribute('data-ap-start')) continue;
+          if (child.tagName === 'IMG') { text += child.getAttribute('alt') || ''; continue; }
+          if (child.tagName === 'BR') { text += ' '; continue; }
+          walk(child);
+        }
+      };
+      walk(block);
+      if (verbatim) return text.endsWith('\n') ? text.slice(0, -1) : text;
+      return text.replace(/\s+/g, ' ').trim();
     }
 
     const checks = {
@@ -457,6 +537,7 @@
 
       'the header does not swallow content'() {
         const header = document.getElementById('header');
+        if (fixture.scenarios[currentKey].review.comments.length === 0) return skip('a review with no comments has no header');
         if (header.hidden) return fail('the header is hidden despite comments existing');
         if (getComputedStyle(header).position !== 'sticky') return fail('the header is not sticky');
 
@@ -770,6 +851,191 @@
         } catch (error) {
           return fail(`threw: ${String(error && error.message || error)}`);
         }
+      },
+
+      // ---- rich blocks: alerts, footnotes and Mermaid (release-expansion M6) ----------------------
+
+      async 'mermaid diagrams render'() {
+        if (!isRich()) return skip('needs a rich scenario');
+        if (!(await diagramsSettled())) return fail('the diagrams never finished rendering');
+        showDiagrams();
+        const wrappers = [...document.querySelectorAll('#content .mr-mermaid')];
+        const valid = wrappers.filter((wrapper) => !wrapper.querySelector('.mr-mermaid-switch').hidden);
+        if (valid.length !== 3) return fail(`${valid.length} renderable diagram(s), expected 3 of ${wrappers.length}`);
+        for (const wrapper of valid) {
+          if (wrapper.getAttribute('data-view') !== 'diagram') return fail(`a valid diagram is in ${wrapper.getAttribute('data-view')} view`);
+          const svg = wrapper.querySelector('svg');
+          if (!svg) return fail('a valid diagram holds no svg');
+          const box = svg.getBoundingClientRect();
+          if (box.width <= 0 || box.height <= 0) return fail(`an svg has a ${box.width}x${box.height} box`);
+        }
+        return pass(`${valid.length} diagrams in Diagram view, each with a laid-out svg`);
+      },
+
+      async 'invalid diagram shows its reason'() {
+        if (!isRich()) return skip('needs a rich scenario');
+        if (!(await diagramsSettled())) return fail('the diagrams never finished rendering');
+        const bad = [...document.querySelectorAll('#content .mr-mermaid')].filter((wrapper) => wrapper.querySelector('.mr-mermaid-switch').hidden);
+        if (bad.length !== 1) return fail(`${bad.length} diagram(s) failed, expected exactly 1`);
+        const wrapper = bad[0];
+        if (wrapper.getAttribute('data-view') !== 'source') return fail(`the invalid diagram is in ${wrapper.getAttribute('data-view')} view`);
+        const status = wrapper.querySelector('.mr-mermaid-status');
+        if (status.hidden || !(status.textContent || '').startsWith(MERMAID_ERROR_PREFIX)) return fail(`status reads ${JSON.stringify(status.textContent)}`);
+        const pre = wrapper.nextElementSibling;
+        if (!pre || pre.tagName !== 'PRE' || pre.getBoundingClientRect().height <= 0) return fail('the source is not shown under the reason');
+        return pass(status.textContent);
+      },
+
+      async 'diagram text is readable'() {
+        if (!isRich()) return skip('needs a rich scenario');
+        if (!(await diagramsSettled())) return fail('the diagrams never finished rendering');
+        showDiagrams();
+        const valid = [...document.querySelectorAll('#content .mr-mermaid')].filter((wrapper) => !wrapper.querySelector('.mr-mermaid-switch').hidden);
+        const background = effectiveBackground(valid[0]);
+        let labels = 0;
+        for (const wrapper of valid) {
+          for (const text of wrapper.querySelectorAll('svg text')) {
+            if (!(text.textContent || '').trim()) continue;
+            labels++;
+            const fill = getComputedStyle(text).fill;
+            if (fill === background) return fail(`label "${text.textContent.trim()}" is filled ${fill}, the diagram background`);
+          }
+        }
+        if (labels === 0) return fail('no diagram label to measure');
+        return pass(`${labels} label(s), none filled ${background}`);
+      },
+
+      'alerts are titled'() {
+        if (!isRich()) return skip('needs a rich scenario');
+        const titles = [...document.querySelectorAll('#content .mr-alert-title')].map((el) => (el.textContent || '').trim());
+        const expected = ['Note', 'Tip', 'Important', 'Read this first', 'Caution', 'Note'];
+        return JSON.stringify(titles) === JSON.stringify(expected)
+          ? pass(titles.join(', '))
+          : fail(`titles are ${JSON.stringify(titles)}, expected ${JSON.stringify(expected)}`);
+      },
+
+      async 'block offsets agree with the host'() {
+        if (!isRich()) return skip('needs a rich scenario');
+        if (!(await diagramsSettled())) return fail('the diagrams never finished rendering');
+        const plain = fixture.scenarios[currentKey].plainText;
+        const blocks = [...document.querySelectorAll('#content [data-ap-start]')];
+        if (blocks.length === 0) return fail('no blocks');
+        for (const el of blocks) {
+          const start = Number(el.dataset.apStart);
+          const end = Number(el.dataset.apEnd);
+          const mine = anchorTextOf(el);
+          if (mine !== plain.slice(start, end)) {
+            return fail(`<${el.tagName.toLowerCase()}> @${start}-${end}: ${JSON.stringify(mine.slice(0, 60))} != ${JSON.stringify(plain.slice(start, end).slice(0, 60))}`);
+          }
+        }
+        const kinds = new Set(blocks.map((el) => el.tagName.toLowerCase()));
+        return pass(`${blocks.length} block(s) (${[...kinds].join(', ')}) agree with the host`);
+      },
+
+      async 'a diagram comment sits beside its diagram'() {
+        if (currentKey !== 'rich') return skip('other scenario');
+        if (document.body.classList.contains('mr-narrow')) return skip('needs full width');
+        if (!(await diagramsSettled())) return fail('the diagrams never finished rendering');
+        showDiagrams();
+        await wait(150);
+        const wrapper = flowchartWrapper();
+        if (!wrapper) return fail('no flowchart wrapper');
+        const card = visibleCards().find((element) => element.textContent.includes('Should the yes branch loop back?'));
+        if (!card) return fail('no card for the flowchart comment');
+        const box = wrapper.getBoundingClientRect();
+        const top = card.getBoundingClientRect().top;
+        if (top < box.top - 1 || top > box.bottom + 1) return fail(`card top ${top.toFixed(1)} is outside the diagram's ${box.top.toFixed(1)}-${box.bottom.toFixed(1)}`);
+        const marker = wrapper.querySelector('.mr-mermaid-marker');
+        if (!marker || marker.hidden) return fail('the diagram shows no marker');
+        if ((marker.textContent || '').trim() !== '1 comment in source') return fail(`marker reads ${JSON.stringify(marker.textContent)}`);
+        return pass(`card top ${top.toFixed(1)} inside ${box.top.toFixed(1)}-${box.bottom.toFixed(1)}, marker "${marker.textContent}"`);
+      },
+
+      async 'a changed diagram has a change bar'() {
+        if (currentKey !== 'rich') return skip('other scenario');
+        if (!(await diagramsSettled())) return fail('the diagrams never finished rendering');
+        showDiagrams();
+        await wait(150);
+        const wrapper = flowchartWrapper();
+        if (!wrapper || wrapper.getAttribute('data-view') !== 'diagram') return fail('the flowchart is not in Diagram view');
+        const box = wrapper.getBoundingClientRect();
+        const bars = [...document.querySelectorAll('#highlight-overlay .mr-change-bar')].map((bar) => bar.getBoundingClientRect());
+        if (bars.length !== 1) return fail(`${bars.length} change bar(s), expected 1`);
+        const bar = bars[0];
+        if (!(bar.top < box.bottom && box.top < bar.bottom && bar.width > 0)) {
+          return fail(`bar ${bar.top.toFixed(1)}-${bar.bottom.toFixed(1)} does not overlap the diagram ${box.top.toFixed(1)}-${box.bottom.toFixed(1)}`);
+        }
+        return pass(`bar ${bar.top.toFixed(1)}-${bar.bottom.toFixed(1)} overlaps the diagram ${box.top.toFixed(1)}-${box.bottom.toFixed(1)}`);
+      },
+
+      async 'scroll position holds while diagrams render'() {
+        if (!isRich()) return skip('needs a rich scenario');
+        if (!(await diagramsSettled())) return fail('the diagrams never finished rendering');
+        const candidates = [...document.querySelectorAll('#content p[data-ap-start][data-line]')];
+        let last = null;
+        for (let i = candidates.length - 1; i >= 0; i--) {
+          candidates[i].scrollIntoView({ block: 'start' });
+          await wait(200);
+          if (Math.abs(candidates[i].getBoundingClientRect().top) <= 1) {
+            last = candidates[i];
+            break;
+          }
+        }
+        if (!last) return fail('no paragraph can be scrolled to the top of the viewport');
+        const line = last.getAttribute('data-line');
+        const before = last.getBoundingClientRect().top;
+        const start = Number(last.dataset.apStart);
+        post(contentOf(currentKey));
+        post(reviewStateOf(currentKey));
+        await wait(50);
+        if (!(await diagramsSettled())) return fail('the diagrams never finished rendering after the re-render');
+        await wait(150);
+        const again = [...document.querySelectorAll('#content p[data-ap-start]')].find((el) => Number(el.dataset.apStart) === start);
+        if (!again) return fail('the paragraph is gone after the re-render');
+        const after = again.getBoundingClientRect().top;
+        window.scrollTo({ top: 0 });
+        return Math.abs(after - before) <= 4
+          ? pass(`paragraph at line ${line}: top ${before.toFixed(1)} -> ${after.toFixed(1)}`)
+          : fail(`paragraph at line ${line} moved: top ${before.toFixed(1)} -> ${after.toFixed(1)}`);
+      },
+
+      async 'footnote text is anchorable'() {
+        if (currentKey !== 'rich') return skip('other scenario');
+        const mark = document.querySelector('#highlight-overlay .mr-highlight[data-comment-id="rich0002"]');
+        return mark ? pass('the footnote comment has a highlight') : fail('no highlight for the footnote comment');
+      },
+
+      async 'clicking that card shows the source'() {
+        if (currentKey !== 'rich') return skip('other scenario');
+        if (document.body.classList.contains('mr-narrow')) return skip('needs full width');
+        if (!(await diagramsSettled())) return fail('the diagrams never finished rendering');
+        showDiagrams();
+        await wait(150);
+        const wrapper = flowchartWrapper();
+        const card = visibleCards().find((element) => element.textContent.includes('Should the yes branch loop back?'));
+        if (!wrapper || !card) return fail('no flowchart wrapper or card');
+        card.click();
+        await wait(250);
+        if (wrapper.getAttribute('data-view') !== 'source') return fail(`the block is in ${wrapper.getAttribute('data-view')} view after the click`);
+        const mark = document.querySelector('#highlight-overlay .mr-highlight[data-comment-id="rich0003"]');
+        return mark ? pass('Source view, comment highlighted') : fail('Source view, but the comment has no highlight');
+      },
+
+      async 'the view survives a re-render'() {
+        if (!isRich()) return skip('needs a rich scenario');
+        if (!(await diagramsSettled())) return fail('the diagrams never finished rendering');
+        const before = flowchartWrapper();
+        if (!before) return fail('no flowchart wrapper');
+        before.querySelectorAll('.mr-mermaid-switch button')[1].click();
+        if (before.getAttribute('data-view') !== 'source') return fail('the Source button did not switch the view');
+        post(contentOf(currentKey));
+        post(reviewStateOf(currentKey));
+        await wait(50);
+        if (!(await diagramsSettled())) return fail('the diagrams never finished rendering after the re-render');
+        const after = flowchartWrapper();
+        const view = after && after.getAttribute('data-view');
+        showDiagrams();
+        return view === 'source' ? pass('still in Source view') : fail(`the view is ${view} after the re-render`);
       },
 
       'no CSP violations'() {

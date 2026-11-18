@@ -113,8 +113,27 @@ function baselineSource(source) {
   return text;
 }
 
-function review(comments) {
-  return { version: 1, targetPath: 'docs/fixtures/kitchen-sink.md', comments };
+function review(comments, targetPath = 'docs/fixtures/kitchen-sink.md') {
+  return { version: 1, targetPath, comments };
+}
+
+/** The passages of `docs/fixtures/rich-blocks.md` the `rich` scenario comments on. */
+const RICH_PASSAGES = {
+  alert: 'Notes carry extra context for the reader.',
+  footnote: 'The source, with emphasis.',
+  flowchart: 'B -->|yes| C[Done]',
+};
+
+/** The rich-blocks document as it stood when the prompt was copied: one flowchart line rewound. */
+const RICH_BASELINE_EDITS = [['B -->|no| A', 'B -->|no| C']];
+
+function richBaselineSource(source) {
+  let text = source;
+  for (const [current, previous] of RICH_BASELINE_EDITS) {
+    if (text.split(current).length !== 2) throw new Error(`rich baseline edit does not apply exactly once: ${JSON.stringify(current)}`);
+    text = text.replace(current, previous);
+  }
+  return text;
 }
 
 async function main() {
@@ -126,6 +145,26 @@ async function main() {
   const locate = host.createLocator(doc);
 
   const comment = (id, passage, overrides) => makeComment(host, doc, id, passage, overrides);
+
+  const richSource = await fs.readFile(path.join(root, 'docs/fixtures/rich-blocks.md'), 'utf8');
+  const richRendered = host.renderMarkdown(richSource, {});
+  const richDoc = host.renderPlainText(richSource);
+  const richLocate = host.createLocator(richDoc);
+  const richTarget = 'docs/fixtures/rich-blocks.md';
+  const richComment = (id, passage, overrides) => makeComment(host, richDoc, id, passage, overrides);
+  const richDocument = {
+    html: richRendered.html,
+    frontMatterHtml: richRendered.frontMatterHtml ?? '',
+    plainText: richDoc.text,
+    targetPath: richTarget,
+  };
+  const locatedFor = (comments) => Object.fromEntries(comments.map((item) => [item.id, richLocate(item.anchor)]));
+
+  const richComments = [
+    richComment('rich0001', RICH_PASSAGES.alert, { body: 'Is this note still true?' }),
+    richComment('rich0002', RICH_PASSAGES.footnote, { body: 'Cite the page number.' }),
+    richComment('rich0003', RICH_PASSAGES.flowchart, { body: 'Should the yes branch loop back?' }),
+  ];
 
   const scenarios = {
     basic: {
@@ -343,8 +382,36 @@ async function main() {
     },
   };
 
+  scenarios.rich = {
+    ...richDocument,
+    label: 'Rich blocks',
+    description:
+      'Alerts, footnotes and Mermaid diagrams (release-expansion): comments on an alert body, a footnote and a line of the flowchart source, and a baseline whose flowchart source differs so the diagram carries a change bar.',
+    review: {
+      ...review(richComments, richTarget),
+      baselineAt: '2026-08-01T09:00:00.000Z',
+    },
+    located: locatedFor(richComments),
+    changes: (() => {
+      const baseline = host.renderPlainText(richBaselineSource(richSource)).text;
+      const state = host.changeStateOf(baseline, richDoc, host.changedRanges(baseline, richDoc.text));
+      if (state.state !== 'changed' || state.blocks.length === 0) {
+        throw new Error(`the rich scenario produced ${JSON.stringify(state)}, expected changed blocks`);
+      }
+      return state;
+    })(),
+  };
+  scenarios['rich-clean'] = {
+    ...richDocument,
+    label: 'Rich blocks, no comments',
+    description: 'The same rich-blocks document with no comments and no baseline.',
+    review: review([], richTarget),
+    located: {},
+  };
+
   // `located` is computed the same way `ReviewPanel.postReviewState` computes it, per scenario.
   for (const scenario of Object.values(scenarios)) {
+    if (scenario.located) continue;
     scenario.located = {};
     for (const item of scenario.review.comments) {
       scenario.located[item.id] = locate(item.anchor);
