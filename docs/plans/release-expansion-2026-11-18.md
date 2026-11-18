@@ -1205,7 +1205,7 @@ coverage-hash: 0300423e
 | M1 | app | A2 | Mermaid file, size cap, guard | done | tag | leeway: eslint.config.mjs (The round-1 fix needed this edit: 'media/mermaid.min.js' is added to the ignores list next to 'media/webview.js' because that generated file was breaking the npm run… |
 | M2 | app | M1 | lazy loader, CSP probe in the harness | done | tag | Tests 8 passed (8); Tests 603 passed (603); ALL CHECKS PASSED |
 | M3 | app | M2 | diagram module | done | tag | 1 fix round; Tests 16 passed (16); Tests 619 passed (619) |
-| M4 | app | M3 | diagrams in the pane, scroll, hint | todo | - | - |
+| M4 | app | M3 | diagrams in the pane, scroll, hint | done | tag | 1 fix round; Tests 17 passed (17); Tests 620 passed (620) |
 | M5 | app | M4 | comments on diagram source | todo | - | - |
 | M6 | app | M5 | harness rich-blocks scenarios | todo | - | - |
 | W1 | app | M6 | optional anchor in the model | todo | - | - |

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Footnotes: `[^1]` renders as a `[1]` link to the note at the end of the document; both can be commented on.
 - GitHub alerts (`> [!NOTE]`, Tip, Important, Warning, Caution) render as titled callouts.
+- Mermaid diagrams: a `mermaid` code block shows as a diagram with a Diagram/Source switch; an invalid diagram stays in Source view with Mermaid's message.
 
 ## [0.1.0] — unreleased
 

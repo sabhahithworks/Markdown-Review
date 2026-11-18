@@ -32,3 +32,36 @@ A claim that needs a source[^src] and a second mention of the same source[^src],
 [^other]: A second note.
 
 The last paragraph comes after the footnote definitions.
+
+## Diagrams
+
+A valid flowchart:
+
+```mermaid
+graph TD
+  A[Start] --> B{Decision}
+  B -->|yes| C[Done]
+  B -->|no| A
+```
+
+A valid sequence diagram:
+
+```mermaid
+sequenceDiagram
+  Reviewer->>Agent: Prompt
+  Agent-->>Reviewer: Edited file
+```
+
+An invalid diagram:
+
+```mermaid
+graph TD
+  A --> -->
+```
+
+- A list item with a diagram:
+
+  ```mermaid
+  graph LR
+    X --> Y
+  ```

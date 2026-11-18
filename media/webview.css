@@ -202,6 +202,57 @@ pre {
   background-color: var(--vscode-textCodeBlock-background);
 }
 
+/* ---------- Mermaid diagrams ---------- */
+
+.mr-mermaid {
+  margin: 0 0 var(--mr-code-pad);
+}
+
+.mr-mermaid-switch {
+  display: inline-flex;
+  margin-bottom: 4px;
+}
+
+.mr-mermaid-switch[hidden] {
+  display: none;
+}
+
+.mr-mermaid-switch button {
+  padding: 2px 10px;
+  border: 1px solid var(--vscode-panel-border);
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  font-family: inherit;
+  font-size: 0.85em;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.mr-mermaid-switch button[aria-pressed='true'] {
+  border-width: 2px;
+  border-color: var(--vscode-focusBorder);
+  font-weight: 700;
+}
+
+.mr-mermaid-status {
+  margin: 0 0 4px;
+  font-size: 0.9em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.mr-mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mr-mermaid[data-view='diagram'] + pre {
+  display: none;
+}
+
+.mr-mermaid[data-view='source'] .mr-mermaid-diagram {
+  display: none;
+}
+
 pre > code {
   display: block;
   padding: 0;

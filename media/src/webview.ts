@@ -37,6 +37,7 @@ import type { CommentsView } from './comments.js';
 import { initComments } from './comments.js';
 import type { HeaderView } from './header.js';
 import { FILTERABLE, SHOW_CHANGES_MESSAGE, initHeader } from './header.js';
+import { initMermaid } from './mermaid.js';
 import { createMermaidLoader } from './mermaidLoader.js';
 import type { OrphansView } from './orphans.js';
 import { initOrphans } from './orphans.js';
@@ -100,6 +101,9 @@ let comments: CommentsView | undefined;
 let header: HeaderView | undefined;
 let orphans: OrphansView | undefined;
 let selection: SelectionController | undefined;
+
+/** Set by `setContent` to the line it restored; `onLayout` restores it again until the user acts. */
+let pinnedLine: number | undefined;
 
 let targetPath = '';
 /** A `data-line` value, not a pixel offset, so it survives a re-render that changes layout. */
@@ -187,6 +191,22 @@ const SANITIZE_OPTIONS = {
   ADD_ATTR: ['data-line', 'data-no-anchor', 'data-ap-start', 'data-ap-end'],
 };
 
+const MERMAID_SANITIZE_OPTIONS = { USE_PROFILES: { svg: true, svgFilters: true } };
+
+const mermaid = initMermaid({
+  root: contentRoot,
+  load: loadMermaid,
+  sanitize: (svg) => DOMPurify.sanitize(svg, MERMAID_SANITIZE_OPTIONS),
+  onLayout: () => {
+    if (pinnedLine !== undefined) {
+      scrollLine = pinnedLine;
+      restoreScroll(pinnedLine);
+    }
+    rebuildLineIndex();
+    comments?.reposition();
+  },
+});
+
 function setContent(html: string, frontMatterHtml: string | undefined): void {
   hideNotice();
 
@@ -198,10 +218,12 @@ function setContent(html: string, frontMatterHtml: string | undefined): void {
     : '';
 
   highlightAll();
+  mermaid.refresh();
   // After highlighting, not before: highlight.js replaces the text nodes inside every `<pre>`, and
   // a map built against the old ones would point at detached nodes.
   resetBlockMaps();
-  restoreScroll();
+  pinnedLine = scrollLine;
+  restoreScroll(scrollLine);
   // After `restoreScroll`, so the measured tops describe where the content actually settled.
   rebuildLineIndex();
   comments?.reposition();
@@ -367,6 +389,8 @@ function rebuildLineIndex(): void {
   for (const element of contentRoot.querySelectorAll('[data-line]')) {
     const line = Number(element.getAttribute('data-line'));
     if (!Number.isFinite(line)) continue;
+    // A hidden diagram source has no layout box; its zero rectangle would break the ascending order.
+    if (element.getClientRects().length === 0) continue;
     next.push({ bottom: element.getBoundingClientRect().bottom + window.scrollY, line });
   }
   lineIndex = next;
@@ -399,16 +423,27 @@ function currentScrollLine(): number | undefined {
   return found;
 }
 
-function restoreScroll(): void {
-  if (scrollLine === undefined) return;
+function restoreScroll(target: number | undefined): void {
+  if (target === undefined) return;
 
   let best: Element | undefined;
   for (const element of contentRoot.querySelectorAll('[data-line]')) {
     const line = Number(element.getAttribute('data-line'));
-    if (Number.isFinite(line) && line <= scrollLine) best = element;
-    else break;
+    if (!Number.isFinite(line)) continue;
+    if (line > target) break;
+    if (element.getClientRects().length > 0) best = element;
   }
   best?.scrollIntoView({ block: 'start' });
+}
+
+for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+  window.addEventListener(
+    type,
+    () => {
+      pinnedLine = undefined;
+    },
+    { passive: true, capture: true },
+  );
 }
 
 window.addEventListener(

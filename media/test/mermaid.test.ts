@@ -3,6 +3,7 @@
  * wrapper, the views, the reason lines and when `render` is called again.
  */
 
+import DOMPurify from 'dompurify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { blockText, resetBlockMaps } from '../src/anchorSpace.js';
 import { MERMAID_RETHEME_MS, initMermaid, toHex, type MermaidApi } from '../src/mermaid.js';
@@ -261,5 +262,27 @@ describe('toHex', () => {
     expect(toHex('rgb(1, 2, 3)')).toBe('#010203');
     expect(toHex('rgba(1,2,3,.5)')).toBe('#01020380');
     expect(toHex('transparent')).toBeUndefined();
+  });
+});
+
+describe('diagram sanitizing', () => {
+  it('script in a label is removed', async () => {
+    document.body.innerHTML = `<div id="root">${fence(SOURCE)}</div>`;
+    const root = document.getElementById('root') as HTMLElement;
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg"><g onclick="alert(1)"><text>Label</text></g><script>alert(1)</script></svg>';
+    const api = { initialize: vi.fn(), render: vi.fn(async () => ({ svg })) };
+    const view = initMermaid({
+      root,
+      load: async () => api,
+      sanitize: (s) => DOMPurify.sanitize(s, { USE_PROFILES: { svg: true, svgFilters: true } }),
+      onLayout: vi.fn(),
+    });
+    view.refresh();
+    await flush();
+    const diagram = wrapperOf(root).querySelector('.mr-mermaid-diagram') as HTMLElement;
+    expect(diagram.querySelector('text')?.textContent).toBe('Label');
+    expect(diagram.querySelector('script')).toBeNull();
+    expect(diagram.innerHTML).not.toContain('onclick');
   });
 });

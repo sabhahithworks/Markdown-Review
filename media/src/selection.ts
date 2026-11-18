@@ -74,7 +74,7 @@ interface Captured {
  * that was too short or landed in front matter simply produced no button, which is
  * indistinguishable from the feature being broken.
  */
-type Rejection = 'too-short' | 'front-matter' | undefined;
+type Rejection = 'too-short' | 'front-matter' | 'diagram' | undefined;
 
 type CaptureResult = { ok: true; value: Captured } | { ok: false; reason: Rejection };
 
@@ -229,10 +229,12 @@ function capture(range: Range, root: HTMLElement, warn: (message: string) => voi
   }
   const noAnchor = elementOf(range.startContainer)?.closest('[data-no-anchor]');
   if (noAnchor) {
-    // Only front matter carries the value `true` and its hint; any other value is rejected silently.
+    // Front matter carries `true` and a diagram carries `diagram`, each with its own hint; any
+    // other value is rejected silently.
+    const kind = noAnchor.getAttribute('data-no-anchor');
     return {
       ok: false,
-      reason: noAnchor.getAttribute('data-no-anchor') === 'true' ? 'front-matter' : undefined,
+      reason: kind === 'true' ? 'front-matter' : kind === 'diagram' ? 'diagram' : undefined,
     };
   }
 
@@ -343,6 +345,7 @@ function showButton(button: HTMLElement, rect: DOMRect): void {
 const REJECTION_TEXT: Record<Exclude<Rejection, undefined>, string> = {
   'too-short': `Select at least ${String(MIN_ANCHOR_LENGTH)} characters to comment`,
   'front-matter': 'Front matter cannot be commented on',
+  diagram: 'Switch to Source to comment on this diagram',
 };
 
 /** Transient, non-interactive, and never focus-stealing: the user is mid-drag. */

@@ -293,6 +293,11 @@ Do not consider this module done until all of these pass:
 - GitHub alerts render as titled callouts; the marker and title are not anchor text
 - Footnotes: reference style, rendered at the end, no back arrow
 - Fenced code with syntax highlighting (`highlight.js`, lazy-load languages)
+- `mermaid` fences render as diagrams, loaded on demand, with a Diagram/Source switch; a reviewer
+  comments by switching to Source and selecting text. An invalid diagram stays in Source view with
+  one line giving Mermaid's message, and a view choice survives a re-render. Selecting text on a
+  rendered diagram shows the hint "Switch to Source to comment on this diagram". The diagram SVG is
+  sanitized with DOMPurify before injection
 - Every block-level token gets `data-line="<start>"` from `token.map`
 - Sanitize the final HTML with DOMPurify before injection
 - Front matter (`---` at file start) rendered as a collapsed metadata block, excluded from anchor
