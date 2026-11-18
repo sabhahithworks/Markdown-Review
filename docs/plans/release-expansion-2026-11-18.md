@@ -1195,7 +1195,7 @@ coverage-hash: 0300423e
 
 | phase | lane | depends on | scope | state | commits | note |
 |---|---|---|---|---|---|---|
-| 0 | docs | - | branch, plan copy | todo | - | - |
+| 0 | docs | - | branch, plan copy | done | 760d3c7 | - |
 | CI1 | infra | 0 | workflow, issue templates, security policy | todo | - | - |
 | B1 | app | CI1 | no-anchor subtrees skipped | todo | - | - |
 | A1 | app | B1 | GitHub alerts | todo | - | - |
