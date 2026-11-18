@@ -31,6 +31,7 @@ import type {
   PanelState,
   WebviewMessage,
 } from '../../src/panel/messages.js';
+import { isDocumentComment } from '../../src/panel/messages.js';
 import { resetBlockMaps } from './anchorSpace.js';
 import { applyChangeMarks } from './changes.js';
 import type { CommentsView } from './comments.js';
@@ -586,11 +587,21 @@ function applyReviewState(message: Extract<HostMessage, { type: 'reviewState' }>
   header?.setState(message.review, changes, marked);
   if (documentGone) {
     orphans?.setState([], {});
-    comments?.setState({ ...message.review, comments: [] }, {}, []);
+    comments?.setState(
+      { ...message.review, comments: message.review.comments.filter(isDocumentComment) },
+      {},
+      [],
+      false,
+    );
     return;
   }
   orphans?.setState(message.review.comments, message.located, message.sectionChanged);
-  comments?.setState(message.review, message.located, message.sectionChanged);
+  comments?.setState(
+    message.review,
+    message.located,
+    message.sectionChanged,
+    changes?.state === 'changed',
+  );
 }
 
 window.addEventListener('message', (event: MessageEvent<unknown>) => {

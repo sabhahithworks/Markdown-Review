@@ -365,3 +365,62 @@ describe('change bars in the overlay pass (CV2)', () => {
     expect(overlay.querySelectorAll('.mr-change-bar')).toHaveLength(0);
   });
 });
+
+describe('whole-document card', () => {
+  function docComment(overrides: Partial<Comment> = {}): Comment {
+    const full = comment({ id: 'doc', body: 'Overall tone', ...overrides });
+    delete full.anchor;
+    return full;
+  }
+  const prompted = (comments: Comment[]): ReviewSummary => ({
+    ...review(comments),
+    promptOrder: comments.map((c) => c.id),
+  });
+
+  it('whole-document card is first and labelled', () => {
+    const { view, gutter } = harness();
+    view.setState(review([comment(), docComment()]), { c1: AT.certain! }, []);
+
+    const first = gutter.querySelector('.mr-card');
+    expect(first?.getAttribute('data-comment-id')).toBe('doc');
+    expect(first?.textContent).toContain('Whole document');
+  });
+
+  it('card still shows with no located anchors and no hint', () => {
+    const { view, gutter } = harness();
+    view.setState(prompted([docComment()]), {}, [], false);
+
+    const card = gutter.querySelector('.mr-card');
+    expect(card?.textContent).toContain('Whole document');
+    expect(card?.textContent).not.toContain('Document changed since the prompt');
+  });
+
+  it('hint shows after the document changed', () => {
+    const { view, gutter } = harness();
+    const text = 'Document changed since the prompt';
+
+    view.setState(prompted([docComment()]), {}, [], true);
+    expect(gutter.querySelector('.mr-card')?.textContent).toContain(text);
+
+    view.setState(review([docComment()]), {}, [], true);
+    expect(gutter.querySelector('.mr-card')?.textContent).not.toContain(text);
+
+    view.setState(prompted([docComment()]), {}, [], false);
+    expect(gutter.querySelector('.mr-card')?.textContent).not.toContain(text);
+  });
+
+  it('resolved whole-document comment has no hint', () => {
+    const { view, gutter } = harness();
+    view.setState(prompted([docComment({ status: 'resolved' })]), {}, [], true);
+    expect(gutter.textContent).not.toContain('Document changed since the prompt');
+  });
+
+  it('narrow pane shows a marker at the top', () => {
+    const { view, markerLayer } = harness();
+    const root = document.getElementById('content') as HTMLElement;
+    Object.defineProperty(root, 'clientWidth', { configurable: true, value: 300 });
+    vi.stubGlobal('innerWidth', 300);
+    view.setState(review([docComment()]), {}, []);
+    expect(markerLayer.querySelectorAll('.mr-marker')).toHaveLength(1);
+  });
+});

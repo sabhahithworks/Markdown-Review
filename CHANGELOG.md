@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Whole-document comments: comment on the document as a whole, without selecting text; the card sits first, labelled "Whole document", and notes when the file has changed since the prompt.
 - Footnotes: `[^1]` renders as a `[1]` link to the note at the end of the document; both can be commented on.
 - GitHub alerts (`> [!NOTE]`, Tip, Important, Warning, Caution) render as titled callouts.
 - Mermaid diagrams: a `mermaid` code block shows as a diagram with a Diagram/Source switch; an invalid diagram stays in Source view with Mermaid's message.

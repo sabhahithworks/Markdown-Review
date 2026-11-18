@@ -47,6 +47,7 @@ export interface CommentsView {
     review: ReviewSummary,
     located: Record<string, Located | null>,
     sectionChanged: readonly string[],
+    documentChanged?: boolean,
   ): void;
   setFilter(statuses: readonly CommentStatus[]): void;
   reposition(): void;
@@ -105,6 +106,7 @@ export function initComments(options: CommentsOptions): CommentsView {
    */
   let sectionChanged = new Set<string>();
   let promptNumbers = new Map<string, number>();
+  let documentChanged = false;
   /** Statuses currently shown. Everything, until the header says otherwise. */
   let filter: CommentStatus[] = [...FILTERABLE];
   /** Card element per comment id, for the positioning pass. */
@@ -149,8 +151,10 @@ export function initComments(options: CommentsOptions): CommentsView {
     review: ReviewSummary,
     next: Record<string, Located | null>,
     nextSectionChanged: readonly string[],
+    nextDocumentChanged = false,
   ): void {
     located = next;
+    documentChanged = nextDocumentChanged;
     sectionChanged = new Set(nextSectionChanged);
     // The gutter takes only what it can place. `orphans.ts` takes the rest.
     comments = review.comments.filter((comment) => !belongsInOrphans(comment, next));
@@ -174,13 +178,21 @@ export function initComments(options: CommentsOptions): CommentsView {
 
     // Document order, so stacking never reorders the conversation. Comments whose anchor is gone
     // sort last — they have no position to sort by.
-    const ordered = [...live].sort((a, b) => anchorStart(a) - anchorStart(b));
+    // Whole-document comments come first, oldest first; the sort is stable for the rest.
+    const ordered = [...live].sort((a, b) => {
+      const aDoc = isDocumentComment(a);
+      const bDoc = isDocumentComment(b);
+      if (aDoc && bDoc) return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
+      if (aDoc !== bDoc) return aDoc ? -1 : 1;
+      return anchorStart(a) - anchorStart(b);
+    });
 
     for (const comment of ordered) {
       const position = located[comment.id];
       const promptNumber = promptNumbers.get(comment.id);
       const card = buildCard(comment, options, () => toggleExpanded(comment.id), {
         sectionChanged: sectionChanged.has(comment.id),
+        ...(isDocumentComment(comment) ? { wholeDocument: true, documentChanged } : {}),
         uncertain: position !== null && position !== undefined && position.confidence < UNCERTAIN_BELOW,
         ...(promptNumber !== undefined ? { promptNumber } : {}),
       });
@@ -264,6 +276,23 @@ export function initComments(options: CommentsOptions): CommentsView {
       // Filtered out, or orphaned and therefore living in `#orphans` instead. Either way there is
       // no card to place and no highlight to draw.
       if (!card) continue;
+
+      if (isDocumentComment(comment)) {
+        if (narrow) {
+          const rootRect = options.root.getBoundingClientRect();
+          options.markerLayer.append(
+            buildMarker(
+              comment,
+              new DOMRect(rootRect.left, rootRect.top, 0, 0),
+              markerOrigin,
+              () => toggleExpanded(comment.id),
+              expanded === comment.id,
+            ),
+          );
+        }
+        placed.push({ card, top: 0 });
+        continue;
+      }
 
       const position = located[comment.id];
       if (!position) continue;
@@ -457,6 +486,10 @@ interface CardSignals {
   uncertain: boolean;
   /** One-based position in the last copied prompt, when the comment was part of it. */
   promptNumber?: number;
+  /** The comment is about the whole document and has no anchor. */
+  wholeDocument?: boolean;
+  /** The review's change state is `changed`; only meaningful with `wholeDocument`. */
+  documentChanged?: boolean;
 }
 
 /** What a card announces itself as. `open` is the unmarked case and says nothing extra. */
@@ -492,6 +525,7 @@ function buildCard(
   const labelParts = [`Comment by ${comment.author}`, statusLabel(comment.status)];
   if (signals.uncertain) labelParts.push('position uncertain');
   if (signals.sectionChanged) labelParts.push('surrounding text changed');
+  if (signals.wholeDocument) labelParts.push('whole document');
   if (signals.promptNumber !== undefined) {
     labelParts.push(`item ${String(signals.promptNumber)} in the last copied prompt`);
   }
@@ -517,6 +551,7 @@ function buildCard(
   }
   header.append(author, time);
 
+  if (signals.wholeDocument) header.append(badge('Whole document'));
   if (comment.status === 'addressed') header.append(badge('addressed'));
   // PRD §5's required wording, as text rather than as a dashed underline nobody can read (H17).
   if (signals.uncertain) {
@@ -543,6 +578,15 @@ function buildCard(
   // not truncate into a diff honestly, and the pane is already showing the section a few inches to
   // the left — pointing at it beats paraphrasing it badly (D17).
   if (signals.sectionChanged) card.append(sectionNote());
+
+  if (
+    signals.wholeDocument &&
+    signals.documentChanged &&
+    comment.status === 'open' &&
+    signals.promptNumber !== undefined
+  ) {
+    card.append(cardNote('Document changed since the prompt'));
+  }
 
   card.append(buildMenu(comment, options, card, body, signals));
   card.addEventListener('click', onToggle);
@@ -592,9 +636,13 @@ function buildDiff(comment: Comment): HTMLElement | undefined {
  * "The text around this" is accurate at either scope and costs nothing on the wire.
  */
 export function sectionNote(): HTMLElement {
+  return cardNote('The text around this changed since you copied the prompt');
+}
+
+function cardNote(text: string): HTMLElement {
   const note = document.createElement('p');
   note.className = 'mr-card-note';
-  note.textContent = 'The text around this changed since you copied the prompt';
+  note.textContent = text;
   return note;
 }
 

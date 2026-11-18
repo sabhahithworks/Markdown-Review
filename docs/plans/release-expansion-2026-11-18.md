@@ -598,6 +598,7 @@ CHANGE:
 MIRROR: `media/src/comments.ts:583` (`sectionNote`) and `:590` (`badge`).
 INVARIANTS: L-state-not-by-colour-alone; L-innerhtml-sanitized-only; L-uncertain-position-shown (unaffected: these cards have no position); L-never-auto-delete-comment; L-webview-imports-messages-only.
 DECIDED: D15, D18, D40. Expected decision: where the resolved group sits when only whole-document cards exist. Default: below them, as after any last card.
+- **Amended during run (2026-11-19):** owner answer to the earlier question → npm run lint:css fails on media/webview.css:243 because M5's .mr-mermaid-marker uses --vscode-foreground, which no preset in dev/harness/themes.css defines. W5 changes that one line to `color: var(--vscode-editor-foreground);` (already used in the stylesheet and defined in all three presets) and does not edit dev/harness/themes.css. Then rerun W5's acceptance, including npm run lint:css (D-q2). [owner answer]
 OUT OF SCOPE: the harness (H1); the prompt. Importers checked and not edited in this phase unless the compiler or a failing test names them: `comments.test.ts`, `changes.ts`, `orphans.ts`, `header.test.ts`.
 ACCEPTANCE: `npx vitest run --project webview media/test/cards.test.ts`, then `npm run check`, `node esbuild.mjs` and `npm run lint:css`. New tests:
 - `whole-document card is first and labelled`: with one anchored and one whole-document comment, the first card holds the text `Whole document`.
@@ -1215,7 +1216,7 @@ coverage-hash: 0300423e
 | W2 | app | W1 | document comments in the prompt | done | tag | Tests 37 passed (37); Tests 635 passed (635) |
 | W3 | app | W2 | host message and store | done | tag | Tests 71 passed (71); Tests 638 passed (638) |
 | W4 | app | W3 | composer and buttons | done | tag | Tests 26 passed (26); Tests 645 passed (645) |
-| W5 | app | W4 | whole-document card | todo | - | - |
+| W5 | app | W4 | whole-document card | done | tag | 1 fix round; Tests 25 passed (25); Tests 650 passed (650) |
 | N1 | app | W5 | notes model and parsing | todo | - | - |
 | N2 | app | N1 | prompt sentence, rule amendments | todo | - | - |
 | N3 | app | N2 | store: ingest, dismiss, rounds | todo | - | - |
