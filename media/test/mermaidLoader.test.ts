@@ -71,6 +71,21 @@ describe('createMermaidLoader', () => {
     await assertion;
   });
 
+  it('a script that finishes after the timeout is used by the next call', async () => {
+    vi.useFakeTimers();
+    const load = createMermaidLoader(SCRIPT_URL, 'n1');
+    const first = load();
+    const assertion = expect(first).rejects.toThrow(FAILED);
+    await vi.advanceTimersByTimeAsync(MERMAID_LOAD_TIMEOUT_MS);
+    await assertion;
+    // The slow script still runs and sets the global; the next call must not load a second copy.
+    const api = stub();
+    (globalThis as { mermaid?: MermaidApi }).mermaid = api;
+    const second = load();
+    expect(scripts()).toHaveLength(1);
+    await expect(second).resolves.toBe(api);
+  });
+
   it('retries after a failure', async () => {
     const load = createMermaidLoader(SCRIPT_URL, 'n1');
     const first = load();

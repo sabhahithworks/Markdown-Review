@@ -238,6 +238,36 @@ describe('initMermaid', () => {
     expect(api.render.mock.calls.length).toBe(calls + 1);
   });
 
+  it('a theme change keeps the shown diagram until the new one is ready', async () => {
+    vi.useFakeTimers();
+    const pending: Array<(svg: string) => void> = [];
+    let calls = 0;
+    document.documentElement.style.setProperty('--vscode-editor-background', '#ffffff');
+    const { root, view } = setup(fence(SOURCE), () => {
+      calls += 1;
+      return calls === 1
+        ? Promise.resolve({ svg: '<svg class="old"></svg>' })
+        : new Promise((resolve) => pending.push((svg) => resolve({ svg })));
+    });
+    view.refresh();
+    await vi.advanceTimersByTimeAsync(0);
+    const wrapper = wrapperOf(root);
+    expect(wrapper.getAttribute('data-view')).toBe('diagram');
+    document.documentElement.style.setProperty('--vscode-editor-background', '#1e1e1e');
+    await vi.advanceTimersByTimeAsync(MERMAID_RETHEME_MS + 10);
+    expect(pending).toHaveLength(1);
+    // While the re-render is pending the same wrapper still shows the old diagram, so the source
+    // block does not reappear and the content above the reading position keeps its height.
+    expect(wrappers(root)).toEqual([wrapper]);
+    expect(wrapper.getAttribute('data-view')).toBe('diagram');
+    expect(wrapper.querySelector('svg.old')).not.toBeNull();
+    at(pending, 0)('<svg class="new"></svg>');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wrapper.querySelector('svg.old')).toBeNull();
+    expect(wrapper.querySelector('svg.new')).not.toBeNull();
+    expect(wrapper.getAttribute('data-view')).toBe('diagram');
+  });
+
   it('switch is keyboard operable', async () => {
     const { root, view } = setup(fence(SOURCE));
     view.refresh();

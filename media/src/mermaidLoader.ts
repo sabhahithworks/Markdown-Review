@@ -35,6 +35,13 @@ export function createMermaidLoader(
   return () => {
     if (pending) return pending;
 
+    // A script that outlived the timeout may still have run since: use it rather than load it again.
+    const loaded = (globalThis as { mermaid?: MermaidApi }).mermaid;
+    if (loaded) {
+      pending = Promise.resolve(loaded);
+      return pending;
+    }
+
     const attempt = new Promise<MermaidApi>((resolve, reject) => {
       const src = scriptUrl ? siblingUrl(scriptUrl) : undefined;
       if (!src) {

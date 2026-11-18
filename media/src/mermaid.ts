@@ -290,6 +290,20 @@ export function initMermaid(options: MermaidOptions): MermaidView {
     void run(list, mine);
   }
 
+  /**
+   * A theme change re-renders the blocks in place: each shown diagram stays until its new one is
+   * ready, so the source does not reappear and the reading position holds (D29, D50).
+   */
+  function retheme(): void {
+    const list = [...blocks.values()];
+    if (list.length === 0 || list.some((block) => !block.wrapper.isConnected)) {
+      refresh();
+      return;
+    }
+    generation += 1;
+    void run(list, generation);
+  }
+
   function showSource(pre: HTMLElement): void {
     const block = blocks.get(pre);
     if (block) choose(block, 'source');
@@ -342,7 +356,7 @@ export function initMermaid(options: MermaidOptions): MermaidView {
       const next = JSON.stringify(readThemeVariables());
       if (next !== lastTheme) {
         lastTheme = next;
-        refresh();
+        retheme();
       }
     }, MERMAID_RETHEME_MS);
   });
