@@ -1196,7 +1196,7 @@ coverage-hash: 0300423e
 | phase | lane | depends on | scope | state | commits | note |
 |---|---|---|---|---|---|---|
 | 0 | docs | - | branch, plan copy | done | 760d3c7 | - |
-| CI1 | infra | 0 | workflow, issue templates, security policy | todo | - | - |
+| CI1 | infra | 0 | workflow, issue templates, security policy | done | tag | (no output) exit 0; (no output) exit 0; glob matched 3 files; 1; 0 (grep exits 1 on a zero count; criterion is that it prints 0); 0 (grep exits 1 on a zero count; criterion is that it prints 0) |
 | B1 | app | CI1 | no-anchor subtrees skipped | todo | - | - |
 | A1 | app | B1 | GitHub alerts | todo | - | - |
 | A2 | app | A1 | footnotes | todo | - | - |

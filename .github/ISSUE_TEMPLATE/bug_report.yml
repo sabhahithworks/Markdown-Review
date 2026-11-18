@@ -1,0 +1,75 @@
+name: Bug report
+description: Something in Markdown Review does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. If it is a security vulnerability, please do not
+        open a public issue: use the private vulnerability reporting link instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, including any error message or notification text.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest set of steps that shows the problem. A short Markdown file that triggers it helps a lot.
+      placeholder: |
+        1. Open a Markdown file
+        2. Run "Markdown Review: Open Review Pane"
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: extension-version
+    attributes:
+      label: Extension version
+      description: Shown in the Extensions view next to the extension's name.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: vscode-version
+    attributes:
+      label: VS Code version
+      description: From Help > About (or Code > About Visual Studio Code on macOS).
+      placeholder: 1.95.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: AI agent used
+      description: Which agent edited the file after you copied the review prompt, if any (for example Claude Code, Copilot, Cursor, or none).
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, the relevant part of the `.reviews/` sidecar file, or other context.
+    validations:
+      required: false
