@@ -49,6 +49,7 @@ async function loadHostModules() {
     export { renderPlainText } from '${posix(path.join(root, 'src/render/plaintext.ts'))}';
     export { createAnchor } from '${posix(path.join(root, 'src/anchor/create.ts'))}';
     export { createLocator } from '${posix(path.join(root, 'src/anchor/locate.ts'))}';
+    export { buildCsp } from '${posix(path.join(root, 'src/panel/csp.ts'))}';
     export { changeStateOf, changedRanges } from '${posix(path.join(root, 'src/detect/changedRanges.ts'))}';
   `;
 
@@ -360,6 +361,8 @@ async function main() {
     // is the whole contract between `anchorSpace.ts` and `plaintext.ts`, and nothing else in the
     // harness is in a position to check it.
     plainText: doc.text,
+    // The pane's real CSP string, so the harness page's meta tag can be held to it.
+    expectedCsp: host.buildCsp("'self'", 'harness'),
     scenarios,
   };
 

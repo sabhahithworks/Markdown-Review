@@ -10,14 +10,15 @@
     This page runs the real `media/webview.js` in a real browser, driven by real messages, over
     markup produced by the real host renderer (see generate.mjs).
 
-    The body below reproduces `ReviewPanel.getHtmlForWebview` element for element. It deliberately
-    does NOT reproduce the CSP: a webview's CSP is enforced by VS Code, and nothing here can stand
-    in for that — the CSP check stays on the manual F5 list.
+    The body below reproduces `ReviewPanel.getHtmlForWebview` element for element. It also
+    carries a meta CSP equal to the host's `buildCsp("'self'", 'harness')`; VS Code still enforces
+    the real one, so the manual F5 list keeps its own CSP check.
 
     Serve it, do not open it as a file://:
         python3 -m http.server 8901
         http://localhost:8901/dev/harness/
   -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; script-src 'nonce-harness'; style-src 'self' 'unsafe-inline'; font-src 'self';">
   <link rel="stylesheet" href="themes.css">
   <link rel="stylesheet" href="../../media/webview.css">
   <style>
@@ -94,8 +95,8 @@
     <pre id="mr-log"></pre>
   </div>
 
-  <script src="fixture.js"></script>
-  <script>
+  <script nonce="harness" src="fixture.js"></script>
+  <script nonce="harness">
     // ---- the vscode API the webview expects, before the bundle that calls it ------------------
     window.__POSTED__ = [];
     let state = null;
@@ -106,11 +107,15 @@
     });
 
     window.__ERRORS__ = [];
+    window.__CSP_VIOLATIONS__ = [];
+    document.addEventListener('securitypolicyviolation', (event) => {
+      window.__CSP_VIOLATIONS__.push(`${event.violatedDirective} ${event.blockedURI}`);
+    });
     window.addEventListener('error', (event) => window.__ERRORS__.push(event.message));
     window.addEventListener('unhandledrejection', (event) => window.__ERRORS__.push(String(event.reason)));
   </script>
-  <script src="../../media/webview.js"></script>
-  <script>
+  <script nonce="harness" src="../../media/webview.js"></script>
+  <script nonce="harness">
   (() => {
     const fixture = window.__FIXTURE__;
     const log = document.getElementById('mr-log');
@@ -720,19 +725,71 @@
         return pass(`${order.length} card(s) numbered in prompt order, ${cards.length - order.length} unnumbered`);
       },
 
+      'the harness CSP equals buildCsp'() {
+        const meta = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+        const actual = meta ? meta.getAttribute('content') : null;
+        return actual === fixture.expectedCsp
+          ? pass('meta content matches the host string')
+          : fail(`meta ${JSON.stringify(actual)} != ${JSON.stringify(fixture.expectedCsp)}`);
+      },
+
+      async 'mermaid renders under the pane\'s CSP'() {
+        try {
+          if (!window.mermaid) {
+            await new Promise((resolve, reject) => {
+              const script = document.createElement('script');
+              script.nonce = 'harness';
+              script.src = '../../media/mermaid.min.js';
+              script.addEventListener('load', resolve);
+              script.addEventListener('error', () => reject(new Error('the Mermaid script did not load')));
+              document.head.append(script);
+            });
+          }
+          window.mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: 'strict',
+            suppressErrorRendering: true,
+            theme: 'base',
+            htmlLabels: false,
+            flowchart: { htmlLabels: false },
+          });
+          const cases = [
+            ['flowchart', 'graph TD\n  A[Alpha step] --> B[Beta step]', 'Alpha step'],
+            ['sequence', 'sequenceDiagram\n  Alice->>Bob: Hello Bob', 'Hello Bob'],
+          ];
+          const seen = [];
+          for (const [kind, text, label] of cases) {
+            const { svg } = await window.mermaid.render(`mr-harness-${kind}`, text);
+            if (/foreignObject/i.test(svg)) return fail(`${kind} SVG contains foreignObject`);
+            const parsed = new DOMParser().parseFromString(svg, 'image/svg+xml');
+            const labels = [...parsed.querySelectorAll('text')].map((node) => node.textContent);
+            if (!labels.some((value) => value.includes(label))) return fail(`${kind} SVG has no <text> holding "${label}"`);
+            seen.push(kind);
+          }
+          return pass(`${seen.join(' and ')} rendered, labels in <text>, no foreignObject`);
+        } catch (error) {
+          return fail(`threw: ${String(error && error.message || error)}`);
+        }
+      },
+
+      'no CSP violations'() {
+        const list = window.__CSP_VIOLATIONS__;
+        return list.length === 0 ? pass('none recorded') : fail(list.join(' | '));
+      },
+
       'no uncaught errors'() {
         return window.__ERRORS__.length === 0 ? pass('clean') : fail(window.__ERRORS__.join(' | '));
       },
     };
 
-    function runChecks() {
+    async function runChecks() {
       log.replaceChildren();
       write(`— ${fixture.scenarios[currentKey].label} @ ${window.innerWidth}×${window.innerHeight}, theme ${document.documentElement.dataset.theme || 'dark'}`);
       let failed = 0;
       for (const [name, check] of Object.entries(checks)) {
         let result;
         try {
-          result = check();
+          result = await check();
         } catch (error) {
           result = fail(`threw: ${String(error && error.stack || error)}`);
         }
@@ -749,7 +806,7 @@
     // the webview, so both are drivable here — which is the difference between an item a human has
     // to remember to check and one a machine does.
     //
-    // Async, unlike `checks`, because `selection.ts` debounces `selectionchange` by 150 ms. Results
+    // Async because `selection.ts` debounces `selectionchange` by 150 ms. Results
     // go to the same log.
 
     const SELECTION_SETTLE_MS = 260;

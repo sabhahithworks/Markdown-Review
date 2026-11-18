@@ -340,6 +340,7 @@ CHANGE:
 MIRROR: `media/test/changes.test.ts:1-40`; `dev/harness/index.html:502-520`.
 INVARIANTS: L-webview-security (the script carries the page nonce; no `eval`; the CSP is untouched); L-bundle-size (the `mermaidAPI` ban from M1 must stay green); L-webview-imports-messages-only; L-no-network; L-harness-shell-in-step (the shell elements are untouched; the `no uncaught errors` check must still pass); L-extend-harnesses.
 DECIDED: D11, D21, D28, D46. Expected decisions: whether a failed load is retried (default: yes, on the next call); a CSP violation that comes from the harness's own tooling is fixed in the harness, and one that comes from Mermaid needing `'unsafe-eval'` stops the phase with `BRIEF GAP` (U3).
+- **Amended during run (2026-11-18):** owner answer to the earlier question → The run-phase executor ran harness scenario 'basic' in Chrome on M2's edits: ALL CHECKS PASSED, 14 PASS / 0 FAIL, including 'the harness CSP equals buildCsp', 'mermaid renders under the pane's CSP: flowchart and sequence rendered, labels in <text>, no foreignObject', 'no CSP violations: none recorded' and 'no uncaught errors: clean'. The result lines are recorded in the M2 notes file. The browser acceptance step is satisfied; review M2 again and commit it (D-q1). [owner answer]
 OUT OF SCOPE: rendering in the pane (M3, M4); the pane's shell (`ReviewPanel.getHtmlForWebview`) is not changed. Importers checked and not edited in this phase unless the compiler or a failing test names them: `eslint.config.mjs`, `header.test.ts`, `comments.ts`.
 ACCEPTANCE: `npx vitest run --project webview media/test/mermaidLoader.test.ts`, then `npm run check`, `node esbuild.mjs`, `npm run lint:bundles` and `node dev/harness/generate.mjs`. Serve the repo root (for example `npx --yes http-server -p 8080 .`) and open `http://localhost:8080/dev/harness/`; run scenario `basic`; it reports `ALL CHECKS PASSED`. The run-phase executor drives this with the Chrome tools, reading page text, and records the result lines in the tracker note. New unit tests:
 - `resolves with the global after load`.
@@ -1202,7 +1203,7 @@ coverage-hash: 0300423e
 | A1 | app | B1 | GitHub alerts | done | tag | leeway: src/types/markdown-it-github-alerts.d.ts (The plugin ships ESM-only types (dist/index.d.mts with type: module), which the node16/CJS extension tsconfig cannot import (TS1479). This ambient… |
 | A2 | app | A1 | footnotes | done | tag | 1 fix round; Tests 121 passed (121); Tests 594 passed (594) |
 | M1 | app | A2 | Mermaid file, size cap, guard | done | tag | leeway: eslint.config.mjs (The round-1 fix needed this edit: 'media/mermaid.min.js' is added to the ignores list next to 'media/webview.js' because that generated file was breaking the npm run… |
-| M2 | app | M1 | lazy loader, CSP probe in the harness | todo | - | - |
+| M2 | app | M1 | lazy loader, CSP probe in the harness | done | tag | Tests 8 passed (8); Tests 603 passed (603); ALL CHECKS PASSED |
 | M3 | app | M2 | diagram module | todo | - | - |
 | M4 | app | M3 | diagrams in the pane, scroll, hint | todo | - | - |
 | M5 | app | M4 | comments on diagram source | todo | - | - |

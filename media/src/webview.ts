@@ -37,6 +37,7 @@ import type { CommentsView } from './comments.js';
 import { initComments } from './comments.js';
 import type { HeaderView } from './header.js';
 import { FILTERABLE, SHOW_CHANGES_MESSAGE, initHeader } from './header.js';
+import { createMermaidLoader } from './mermaidLoader.js';
 import type { OrphansView } from './orphans.js';
 import { initOrphans } from './orphans.js';
 import type { SelectionController } from './selection.js';
@@ -53,6 +54,10 @@ declare function acquireVsCodeApi(): {
 };
 
 const vscode = acquireVsCodeApi();
+
+/** The bundle's own `<script>`, which gives the Mermaid file's folder and the page nonce. */
+const SELF = document.currentScript instanceof HTMLScriptElement ? document.currentScript : null;
+export const loadMermaid = createMermaidLoader(SELF?.src, SELF?.nonce);
 
 /**
  * A curated set rather than `highlight.js/lib/common`: unknown languages fall back to plain `<code>`
