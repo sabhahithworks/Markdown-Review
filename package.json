@@ -12,6 +12,7 @@
     "url": "https://github.com/sabhahithworks/Markdown-Review"
   },
   "categories": [
+    "AI",
     "Other"
   ],
   "keywords": [
@@ -19,7 +20,16 @@
     "review",
     "comments",
     "ai",
-    "agent"
+    "agent",
+    "annotations",
+    "feedback",
+    "mermaid",
+    "spec",
+    "prd",
+    "copilot",
+    "claude",
+    "cursor",
+    "codex"
   ],
   "engines": {
     "vscode": "^1.90.0",

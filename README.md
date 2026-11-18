@@ -1,5 +1,7 @@
 # Markdown Review
 
+[![CI](https://github.com/sabhahithworks/Markdown-Review/actions/workflows/ci.yml/badge.svg)](https://github.com/sabhahithworks/Markdown-Review/actions/workflows/ci.yml)
+
 **Comment on any Markdown file like a Google Doc. Copy one prompt into any agent: no MCP server,
 no setup. Your file is never modified with markers, and the pane shows which comments were addressed
 and what the agent changed.**
