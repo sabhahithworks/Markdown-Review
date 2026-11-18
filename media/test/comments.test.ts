@@ -116,6 +116,7 @@ describe('fallback placement and reveal', () => {
       onDelete: () => undefined,
       onResolve: () => undefined,
       onReopen: () => undefined,
+      onDismissNote: () => undefined,
       announce: () => undefined,
       ...extra,
     });

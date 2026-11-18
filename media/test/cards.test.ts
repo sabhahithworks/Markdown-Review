@@ -87,6 +87,7 @@ function harness() {
     deleted: [] as string[],
     resolved: [] as string[],
     reopened: [] as string[],
+    dismissed: [] as string[],
     edited: [] as Array<[string, string]>,
     announced: [] as string[],
   };
@@ -101,6 +102,7 @@ function harness() {
     onDelete: (id) => calls.deleted.push(id),
     onResolve: (id) => calls.resolved.push(id),
     onReopen: (id) => calls.reopened.push(id),
+    onDismissNote: (id) => calls.dismissed.push(id),
   });
 
   return { view, gutter, overlay, markerLayer, orphansRoot, calls };
@@ -279,6 +281,7 @@ describe('orphan section (H0, H22, H23)', () => {
       onDelete: (id) => calls.deleted.push(id),
       onReanchor: () => undefined,
       onCancelReanchor: () => undefined,
+      onDismissNote: () => undefined,
     });
     return { view, root, calls };
   }
@@ -343,6 +346,7 @@ describe('the gutter and the orphan section partition the comments', () => {
       onDelete: () => undefined,
       onReanchor: () => undefined,
       onCancelReanchor: () => undefined,
+      onDismissNote: () => undefined,
     });
     orphans.setState([comment()], { c1: null });
     expect(root.querySelectorAll('.mr-orphan')).toHaveLength(1);
@@ -422,5 +426,63 @@ describe('whole-document card', () => {
     vi.stubGlobal('innerWidth', 300);
     view.setState(review([docComment()]), {}, []);
     expect(markerLayer.querySelectorAll('.mr-marker')).toHaveLength(1);
+  });
+});
+
+describe('agent note on a card', () => {
+  const note = { text: 'This is already covered in section 2.', receivedAt: '2026-11-18T10:00:00Z' };
+
+  it('card shows the agent note with its label', () => {
+    const { view, gutter } = harness();
+    view.setState(review([comment({ agentNote: note })]), { c1: AT.certain! }, []);
+    const block = gutter.querySelector('.mr-agent-note') as HTMLElement;
+    expect(block.querySelector('.mr-agent-note-label')?.textContent).toBe('Agent note');
+    expect(block.textContent).toContain('already covered in section 2');
+  });
+
+  it('note text is not parsed as markup', () => {
+    const { view, gutter } = harness();
+    const text = '<img src=x onerror=alert(1)> **bold**';
+    view.setState(
+      review([comment({ agentNote: { ...note, text } })]),
+      { c1: AT.certain! },
+      [],
+    );
+    const el = gutter.querySelector('.mr-agent-note-text') as HTMLElement;
+    expect(el.textContent).toBe(text);
+    expect(el.children).toHaveLength(0);
+  });
+
+  it('Dismiss on a note calls onDismissNote with the id', () => {
+    const { view, gutter, calls } = harness();
+    view.setState(review([comment({ agentNote: note })]), { c1: AT.certain! }, []);
+    const button = gutter.querySelector('.mr-agent-note button') as HTMLButtonElement;
+    expect(button.getAttribute('aria-label')).toBe("Dismiss the agent's note");
+    button.click();
+    expect(calls.dismissed).toEqual(['c1']);
+  });
+
+  it('card without a note has no note block', () => {
+    const { view, gutter } = harness();
+    view.setState(review([comment()]), { c1: AT.certain! }, []);
+    expect(gutter.querySelector('.mr-agent-note')).toBeNull();
+  });
+
+  it('an orphaned comment still shows its note', () => {
+    document.body.innerHTML = '<section id="orphans"></section>';
+    const root = document.getElementById('orphans') as HTMLElement;
+    const dismissed: string[] = [];
+    const view = initOrphans({
+      root,
+      announce: () => undefined,
+      onDelete: () => undefined,
+      onReanchor: () => undefined,
+      onCancelReanchor: () => undefined,
+      onDismissNote: (id) => dismissed.push(id),
+    });
+    view.setState([comment({ status: 'orphaned', agentNote: note })], { c1: null });
+    expect(root.querySelector('.mr-agent-note')?.textContent).toContain('already covered');
+    (root.querySelector('.mr-agent-note button') as HTMLButtonElement).click();
+    expect(dismissed).toEqual(['c1']);
   });
 });

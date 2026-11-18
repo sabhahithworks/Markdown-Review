@@ -978,6 +978,28 @@ body:not(.mr-narrow):not(.mr-no-cards) {
   text-decoration: none;
 }
 
+/* ---------- The agent's note on a card ---------- */
+
+/* A left border plus the "Agent note" label: the block is identified by text, not by colour. */
+.mr-agent-note {
+  margin-top: 6px;
+  padding-left: 8px;
+  border-left: 3px solid var(--vscode-textBlockQuote-border);
+  overflow-wrap: anywhere;
+}
+
+.mr-agent-note-label {
+  margin: 0;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+}
+
+.mr-agent-note-text {
+  margin: 2px 0 4px;
+  white-space: pre-wrap;
+}
+
 /* ---------- The section-change note (D17) ---------- */
 
 /*

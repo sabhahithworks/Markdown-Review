@@ -8,7 +8,7 @@
  * ranges that cross element boundaries for free.
  */
 
-import type { Comment, CommentStatus, Located, ReviewSummary } from '../../src/panel/messages.js';
+import type { AgentNote, Comment, CommentStatus, Located, ReviewSummary } from '../../src/panel/messages.js';
 import { UNCERTAIN_BELOW, isDocumentComment, truncateQuote } from '../../src/panel/messages.js';
 import { domRangeFor } from './anchorSpace.js';
 import { buildChangeBar, changeBarRects } from './changes.js';
@@ -34,6 +34,8 @@ export interface CommentsOptions {
   onResolve(id: string): void;
   /** The user rejects an `addressed` inference (PRD §8). */
   onReopen(id: string): void;
+  /** The user dismisses the agent's note on a card. */
+  onDismissNote(id: string): void;
   /** Speaks a sentence through the pane's live region (H18). */
   announce(message: string): void;
   /** A rectangle to place a card from when its range has no layout rects of its own. */
@@ -574,6 +576,10 @@ function buildCard(
   const diff = buildDiff(comment);
   if (diff) card.append(diff);
 
+  if (comment.agentNote) {
+    card.append(buildAgentNote(comment.agentNote, () => options.onDismissNote(comment.id)));
+  }
+
   // Deliberately a sentence rather than a before/after. The region is a whole section, which does
   // not truncate into a diff honestly, and the pane is already showing the section a few inches to
   // the left — pointing at it beats paraphrasing it badly (D17).
@@ -600,6 +606,33 @@ function buildCard(
     onToggle();
   });
   return card;
+}
+
+/** The agent's pushback on a comment: a labelled block with the note as text and a Dismiss button. */
+export function buildAgentNote(note: AgentNote, onDismiss: () => void): HTMLElement {
+  const block = document.createElement('div');
+  block.className = 'mr-agent-note';
+
+  const label = document.createElement('p');
+  label.className = 'mr-agent-note-label';
+  label.textContent = 'Agent note';
+
+  const text = document.createElement('p');
+  text.className = 'mr-agent-note-text';
+  text.textContent = note.text;
+
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.className = 'mr-card-action';
+  dismiss.textContent = 'Dismiss';
+  dismiss.setAttribute('aria-label', "Dismiss the agent's note");
+  dismiss.addEventListener('click', (event) => {
+    event.stopPropagation();
+    onDismiss();
+  });
+
+  block.append(label, text, dismiss);
+  return block;
 }
 
 function buildDiff(comment: Comment): HTMLElement | undefined {

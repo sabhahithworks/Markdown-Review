@@ -289,6 +289,9 @@ function startCommenting(author: string): CommentsView {
     },
     onReanchor: (id) => selection?.armReanchor(id),
     onCancelReanchor: () => selection?.disarm(),
+    onDismissNote: (id) => {
+      vscode.postMessage({ type: 'dismissAgentNote', id });
+    },
   });
 
   header = initHeader({
@@ -346,6 +349,9 @@ function startCommenting(author: string): CommentsView {
     },
     onReopen: (id) => {
       vscode.postMessage({ type: 'reopenComment', id });
+    },
+    onDismissNote: (id) => {
+      vscode.postMessage({ type: 'dismissAgentNote', id });
     },
   });
 }

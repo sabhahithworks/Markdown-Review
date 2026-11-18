@@ -12,7 +12,7 @@
 
 import type { Comment, CommentStatus, Located } from '../../src/panel/messages.js';
 import { isDocumentComment, truncateQuote } from '../../src/panel/messages.js';
-import { belongsInOrphans } from './comments.js';
+import { belongsInOrphans, buildAgentNote } from './comments.js';
 import { FILTERABLE } from './header.js';
 
 /** Long enough to recognise a sentence, short enough not to dominate the section. */
@@ -24,6 +24,8 @@ export interface OrphansOptions {
   /** Arms re-anchor mode. The new selection arrives later, through the selection controller. */
   onReanchor(id: string): void;
   onCancelReanchor(): void;
+  /** The user dismisses the agent's note on an orphan. */
+  onDismissNote(id: string): void;
   /** Speaks a sentence through the pane's live region (H18). */
   announce(message: string): void;
 }
@@ -133,6 +135,10 @@ export function initOrphans(options: OrphansOptions): OrphansView {
       note.textContent =
         'The text around this changed since you copied the prompt — it may have been addressed rather than lost.';
       row.append(note);
+    }
+
+    if (comment.agentNote) {
+      row.append(buildAgentNote(comment.agentNote, () => options.onDismissNote(comment.id)));
     }
 
     row.append(buildActions(comment));
