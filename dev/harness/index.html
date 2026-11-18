@@ -1039,6 +1039,45 @@
         return view === 'source' ? pass('still in Source view') : fail(`the view is ${view} after the re-render`);
       },
 
+      async 'the rewrite banner dismisses and stays dismissed'() {
+        if (currentKey !== 'rewrite') return skip('other scenario');
+        try {
+          const notice = document.getElementById('notice');
+          if (notice.hidden) return fail('no banner to dismiss');
+          const dismiss = [...notice.querySelectorAll('button')].find((b) => /dismiss/i.test(b.textContent || ''));
+          if (!dismiss) return fail('the banner has no Dismiss action');
+          dismiss.click();
+          if (!notice.hidden) return fail('the banner is still visible after Dismiss');
+          post(reviewStateOf(currentKey));
+          await wait(100);
+          if (!notice.hidden) return fail('the banner came back when the same reviewState was posted again');
+          return pass('hidden after Dismiss and after a repeated reviewState');
+        } finally {
+          loadScenario(currentKey);
+          await wait(100);
+        }
+      },
+
+      async 'an unreadable target leaves only Locate file'() {
+        if (currentKey !== 'orphans') return skip('other scenario');
+        post({ type: 'targetUnreadable', reason: 'harness' });
+        await wait(100);
+        try {
+          const orphans = document.getElementById('orphans');
+          if (!orphans.hidden) return fail('the orphan section is still visible');
+          const cards = document.querySelectorAll('#gutter .mr-card').length;
+          if (cards !== 0) return fail(`${cards} card(s) still in the gutter`);
+          const notice = document.getElementById('notice');
+          if (notice.hidden) return fail('no unreadable notice');
+          const locate = [...notice.querySelectorAll('button')].find((b) => (b.textContent || '').includes('Locate file'));
+          if (!locate) return fail('the notice has no Locate file button');
+          return pass('orphans hidden, gutter empty, Locate file offered');
+        } finally {
+          loadScenario(currentKey);
+          await wait(100);
+        }
+      },
+
       'no CSP violations'() {
         const list = window.__CSP_VIOLATIONS__;
         return list.length === 0 ? pass('none recorded') : fail(list.join(' | '));

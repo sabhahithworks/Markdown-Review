@@ -1230,7 +1230,7 @@ coverage-hash: 0300423e
 | S2 | app | S1 | commands and delivery | done | tag | Tests 692 passed (692); media/mermaid.min.js 5408.0 KB (SUMMARY=none); 87 passed, 0 failed (SUMMARY=none); 0 |
 | S3 | app | S2 | Send menu | done | tag | Tests 25 passed (25); Tests 697 passed (697); media/mermaid.min.js 5408.0 KB; theme variables: 41 used, all defined and overridden in every preset; typecheck=0 (three tsconfig projects clean)… |
 | S4 | app | S3 | terminal paste proof | done | tag | leeway: eslint.config.mjs (The round-1 lint fix needs this. It adds a config block for src/test/integration/fixtures/**/*.cjs (CommonJS sourceType, require/process globals, no-require-imports off)… |
-| T1 | app | S4 | Dismiss and unreadable coverage | todo | - | - |
+| T1 | app | S4 | Dismiss and unreadable coverage | done | tag | 1 fix round; Tests 14 passed (14); rich-clean; Tests 698 passed (698) |
 | H1 | app | T1 | harness for new cards and menu | todo | - | - |
 | P1 | app | H1 | listing polish | todo | - | - |
 | R1 | docs | P1 | README, changelog, runsheet | todo | - | - |

@@ -611,6 +611,8 @@ is what the "one observation" caveat below asked for before moving anything.
 **Fix verified 2026-08-05.** B4 passed on its third attempt at being reached, with the right button
 clicked this time and no orphan card visible under the notice. Closed.
 
+Covered 2026-11: harness checks and `rewrite.test.ts` (release-expansion T1).
+
 ### Found by the A2 step 5 reload run
 
 **D23 — the `ready` latch is cleared by a visibility flip that did not tear the context down, and

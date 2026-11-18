@@ -40,6 +40,14 @@ describe('detectRewrite', () => {
     expect(detectRewrite(before, after)).toEqual({ rewritten: true, orphaned: 2 });
   });
 
+  it('does not fire again once every comment is already orphaned', () => {
+    const first = review({ a: 'open', b: 'open' });
+    const after = review({ a: 'orphaned', b: 'orphaned' });
+
+    expect(detectRewrite(first, after)).toEqual({ rewritten: true, orphaned: 2 });
+    expect(detectRewrite(after, after)).toEqual({ rewritten: false, orphaned: 0 });
+  });
+
   it('counts an addressed comment as a candidate — it was located too', () => {
     const before = review({ a: 'open', b: 'addressed', c: 'open' });
     const after = review({ a: 'orphaned', b: 'orphaned', c: 'orphaned' });
