@@ -1211,7 +1211,7 @@ coverage-hash: 0300423e
 | M5 | app | M4 | comments on diagram source | done | tag | Tests 39 passed (39); Tests 627 passed (627) |
 | M6 | app | M5 | harness rich-blocks scenarios | done | tag | gap answered; 1 fix round; rich-clean; Tests 627 passed (627); media/mermaid.min.js 5408.0 KB |
 | W1 | app | M6 | optional anchor in the model | done | tag | leeway: src/test/perf.test.ts (npm run typecheck reports line 205 once Comment.anchor is optional. W1 DECIDED (plan :500) says to fix every site typecheck reports by skipping whole-document… |
-| W2 | app | W1 | document comments in the prompt | todo | - | - |
+| W2 | app | W1 | document comments in the prompt | done | tag | Tests 37 passed (37); Tests 635 passed (635) |
 | W3 | app | W2 | host message and store | todo | - | - |
 | W4 | app | W3 | composer and buttons | todo | - | - |
 | W5 | app | W4 | whole-document card | todo | - | - |

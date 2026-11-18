@@ -16,6 +16,7 @@ import type { Locator } from '../anchor/locate.js';
 import { createLocator } from '../anchor/locate.js';
 import { truncateQuote } from '../anchor/text.js';
 import type { Comment, Located, PlainTextDoc, ReviewFile } from '../anchor/types.js';
+import { isDocumentComment } from '../anchor/types.js';
 import type { Scope } from '../detect/scope.js';
 import { enclosingHeading, scopeOf } from '../detect/scope.js';
 import { blockAt, collapse, offsetToSourceLine } from '../render/plaintext.js';
@@ -50,13 +51,15 @@ export function buildPrompt(
   // Open only. `addressed` would ask the agent to redo work it already did; `orphaned` would quote
   // text that is no longer in the document, sending it hunting for something that cannot be found;
   // `resolved` is terminal (PRD §4).
-  const open = review.comments.filter(
-    (comment) => comment.status === 'open' && comment.anchor !== undefined,
-  );
+  const open = review.comments.filter((comment) => comment.status === 'open');
   if (open.length === 0) return { prompt: '', count: 0, order: [] };
 
+  // Whole-document comments have no position, so they lead, ordered by creation time then id.
+  const documentComments = open.filter(isDocumentComment).sort(byCreation);
   const locate = options.locate ?? createLocator(doc);
-  const entries: Entry[] = open.map((comment) => ({ comment, found: comment.anchor ? locate(comment.anchor) : null }));
+  const entries: Entry[] = open
+    .filter((comment) => !isDocumentComment(comment))
+    .map((comment) => ({ comment, found: comment.anchor ? locate(comment.anchor) : null }));
   entries.sort(byDocumentOrder);
 
   const header =
@@ -65,17 +68,22 @@ export function buildPrompt(
     `Edit the file directly. Don't add annotations, comments, or replies — just make the changes.\n` +
     `If you disagree with a comment or need clarification, tell me instead of guessing.\n`;
 
-  const items = entries.map(
-    (entry, index) =>
-      `${String(index + 1)}. ${describeAnchor(entry, doc)}\n${quoteBody(entry.comment.body)}\n`,
-  );
+  const items = [
+    ...documentComments.map(
+      (comment, index) => `${String(index + 1)}. On the document as a whole:\n${quoteBody(comment.body)}\n`,
+    ),
+    ...entries.map(
+      (entry, index) =>
+        `${String(documentComments.length + index + 1)}. ${describeAnchor(entry, doc)}\n${quoteBody(entry.comment.body)}\n`,
+    ),
+  ];
 
   // Every part already ends in a newline, so joining with one more produces the blank separator
   // lines PRD §7 shows — and leaves exactly one trailing newline at the end.
   return {
     prompt: [header, ...items].join('\n'),
-    count: entries.length,
-    order: entries.map((entry) => entry.comment.id),
+    count: items.length,
+    order: [...documentComments, ...entries.map((entry) => entry.comment)].map((comment) => comment.id),
   };
 }
 
@@ -90,10 +98,15 @@ function byDocumentOrder(a: Entry, b: Entry): number {
   const offsetDelta = anchorStart(a) - anchorStart(b);
   if (offsetDelta !== 0) return offsetDelta;
 
-  const timeDelta = createdAt(a.comment) - createdAt(b.comment);
+  return byCreation(a.comment, b.comment);
+}
+
+/** Creation time, then id. */
+function byCreation(a: Comment, b: Comment): number {
+  const timeDelta = createdAt(a) - createdAt(b);
   if (timeDelta !== 0) return timeDelta;
 
-  return a.comment.id < b.comment.id ? -1 : a.comment.id > b.comment.id ? 1 : 0;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 /** Unlocatable sorts last: it is the one entry whose position in the document is unknown. */

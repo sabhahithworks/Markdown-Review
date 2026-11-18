@@ -127,7 +127,7 @@ interface Comment {
   author: string;              // from config, defaults to os.userInfo().username
   createdAt: string;           // ISO
   status: 'open' | 'addressed' | 'orphaned' | 'resolved';
-  anchor: Anchor;
+  anchor?: Anchor;             // absent on a whole-document comment
   /** Set when status flips to 'addressed'. Shown as before/after in the UI. */
   resolution?: {
     previousText: string;
@@ -149,6 +149,9 @@ interface Anchor {
   hintOffset: number;          // char offset into the normalized plain text at creation
 }
 ```
+
+A comment with no `anchor` is a whole-document comment: it is about the document as a whole, not a
+passage. It is never located, re-anchored or orphaned, and its status changes only by the user's hand.
 
 **Status semantics:**
 
@@ -367,6 +370,9 @@ If you disagree with a comment or need clarification, tell me instead of guessin
 ```
 
 Rules:
+- **Whole-document comments.** An open comment with no anchor is listed first, ordered by creation
+  time then id, as `N. On the document as a whole:` followed by the body quoted as above. Anchored
+  comments follow in document order, and the numbering runs through both groups.
 - Truncate quoted anchor text over 100 chars with a middle ellipsis
 - When an anchor covers an entire heading block, use the "On the section" phrasing
 - **Repeated quotes (D1).** When the quoted text occurs more than once in the document (exact,
