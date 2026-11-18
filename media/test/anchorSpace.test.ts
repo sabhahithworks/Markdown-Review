@@ -121,6 +121,29 @@ describe('the three known divergences of a naive textContent walk', () => {
   });
 });
 
+describe('data-no-anchor inside a block', () => {
+  function mountList(): HTMLElement {
+    document.body.innerHTML =
+      '<main id="content"><ul><li data-ap-start="0" data-ap-end="4">item' +
+      '<div><p data-no-anchor="title">Note</p><p data-ap-start="5" data-ap-end="9">Body</p></div>' +
+      '</li></ul></main>';
+    const li = document.querySelector('li');
+    if (!li) throw new Error('missing li');
+    return li;
+  }
+
+  it('no-anchor subtree inside a block is skipped', () => {
+    expect(blockText(mountList())).toBe('item');
+  });
+
+  it('a nested block beside a no-anchor subtree keeps its own text', () => {
+    mountList();
+    const nested = document.querySelector('p[data-ap-start]');
+    if (!(nested instanceof HTMLElement)) throw new Error('missing nested p');
+    expect(blockText(nested)).toBe('Body');
+  });
+});
+
 describe('offsetAt', () => {
   it('maps a position inside a paragraph to its anchor-space offset', () => {
     const source = '# Title\n\nThe quick brown fox.\n';

@@ -227,8 +227,13 @@ function capture(range: Range, root: HTMLElement, warn: (message: string) => voi
   if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) {
     return { ok: false, reason: undefined };
   }
-  if (elementOf(range.startContainer)?.closest('[data-no-anchor]')) {
-    return { ok: false, reason: 'front-matter' };
+  const noAnchor = elementOf(range.startContainer)?.closest('[data-no-anchor]');
+  if (noAnchor) {
+    // Only front matter carries the value `true` and its hint; any other value is rejected silently.
+    return {
+      ok: false,
+      reason: noAnchor.getAttribute('data-no-anchor') === 'true' ? 'front-matter' : undefined,
+    };
   }
 
   const block = blockOf(range.startContainer);
