@@ -89,6 +89,8 @@ export class ReviewStore {
 
   /** Non-zero while a write-then-rename is on the wire; `rereadExternal` must not run then (H4). */
   private writesPending = 0;
+  /** The tail of the notes reads, which `queueNotes` runs one at a time. */
+  private notesQueue: Promise<void> = Promise.resolve();
 
   /** Open panels holding this store, and the pending idle-disposal timer when that reaches zero. */
   private holders = 0;
@@ -758,49 +760,79 @@ export class ReviewStore {
   }
 
   /** Reads the notes file when it exists and ingests it. */
-  async settleNotes(): Promise<void> {
-    if (this.disposed || this.notes === undefined) return;
-    const text = await this.readNotes();
-    if (text !== undefined) this.ingestAgentNotes(text);
+  settleNotes(): Promise<void> {
+    return this.queueNotes(async () => {
+      if (this.disposed || this.notes === undefined) return;
+      const read = await this.readNotes();
+      if (read.kind === 'text') this.ingestAgentNotes(read.text);
+    });
   }
 
   /**
    * Ends a round: reads the file once more against the old `promptOrder`, deletes it only when that
-   * read is what was stored, and moves the unattached notes into `carried`.
+   * read is what was stored, and moves the unattached notes into `carried`. A file that could not be
+   * deleted still holds this round's words, so they are kept out of the next round's reads: read
+   * again, they would attach by the next prompt's numbers and repeat the carried notes.
    */
-  async endNotesRound(): Promise<void> {
-    if (this.notes === undefined) return;
-    const text = await this.readNotes();
-    if (text !== undefined) {
-      this.ingestAgentNotes(text);
-      if (text === (this.state.agentNotes?.raw ?? '')) {
-        try {
-          await vscode.workspace.fs.delete(this.notes);
-        } catch (error) {
-          if (!isNotFound(error)) {
-            this.output.appendLine(`[store] could not delete ${this.notes.fsPath}: ${String(error)}`);
-          }
+  endNotesRound(): Promise<void> {
+    return this.queueNotes(async () => {
+      if (this.notes === undefined) return;
+      const read = await this.readNotes();
+      let stale: string | undefined;
+      if (read.kind === 'text') {
+        this.ingestAgentNotes(read.text);
+        if (read.text === (this.state.agentNotes?.raw ?? '') && !(await this.deleteNotes())) {
+          stale = read.text;
         }
       }
-    }
-    const current = this.state.agentNotes;
-    if (!current) return;
-    this.commit({
-      ...this.state,
-      agentNotes: { ...current, carried: current.unattached, raw: '', dismissed: [] },
+      const current = this.state.agentNotes;
+      if (!current) return;
+      this.commit({
+        ...this.state,
+        agentNotes: {
+          ...current,
+          carried: current.unattached,
+          raw: stale ?? '',
+          dismissed: stale === undefined ? [] : allChunks(stale),
+        },
+      });
     });
   }
 
-  /** The notes file's text, or undefined when it is missing (silent) or unreadable (logged with its path). */
-  private async readNotes(): Promise<string | undefined> {
-    if (this.notes === undefined) return undefined;
+  /**
+   * Runs notes reads one after another, so a read still in flight (a watcher-driven settle, a second
+   * Send) cannot land after a round has ended and ingest the old words a second time.
+   */
+  private queueNotes(task: () => Promise<void>): Promise<void> {
+    const run = this.notesQueue.then(task);
+    this.notesQueue = run.catch((error: unknown) => {
+      this.output.appendLine(`[store] agent notes for ${this.sidecar.fsPath} failed: ${String(error)}`);
+    });
+    return run;
+  }
+
+  /** The notes file's text; missing is silent, unreadable is logged with its path. */
+  private async readNotes(): Promise<NotesRead> {
+    if (this.notes === undefined) return { kind: 'missing' };
     try {
-      return new TextDecoder().decode(await vscode.workspace.fs.readFile(this.notes));
+      return { kind: 'text', text: new TextDecoder().decode(await vscode.workspace.fs.readFile(this.notes)) };
     } catch (error) {
-      if (!isNotFound(error)) {
-        this.output.appendLine(`[store] could not read ${this.notes.fsPath}: ${String(error)}`);
-      }
-      return undefined;
+      if (isNotFound(error)) return { kind: 'missing' };
+      this.output.appendLine(`[store] could not read ${this.notes.fsPath}: ${String(error)}`);
+      return { kind: 'unreadable' };
+    }
+  }
+
+  /** Deletes the notes file; true when it is gone, false (logged with its path) when it is still there. */
+  private async deleteNotes(): Promise<boolean> {
+    if (this.notes === undefined) return true;
+    try {
+      await vscode.workspace.fs.delete(this.notes);
+      return true;
+    } catch (error) {
+      if (isNotFound(error)) return true;
+      this.output.appendLine(`[store] could not delete ${this.notes.fsPath}: ${String(error)}`);
+      return false;
     }
   }
 
@@ -902,6 +934,14 @@ function resolveSidecar(
     notes: undefined,
   };
 }
+
+/** Every chunk of a notes text: with no comment to attach to, each one comes back unattached. */
+function allChunks(text: string): string[] {
+  return splitAgentNotes(text, 0).unattached;
+}
+
+/** What reading the notes file found. */
+type NotesRead = { kind: 'text'; text: string } | { kind: 'missing' } | { kind: 'unreadable' };
 
 function isNotFound(error: unknown): boolean {
   return error instanceof vscode.FileSystemError && error.code === 'FileNotFound';

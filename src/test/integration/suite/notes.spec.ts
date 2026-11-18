@@ -3,6 +3,8 @@
  */
 
 import * as assert from 'node:assert/strict';
+import { chmod } from 'node:fs/promises';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Comment, ReviewFile } from '../../../anchor/types.js';
 import { ReviewStore } from '../../../store/ReviewStore.js';
@@ -19,7 +21,7 @@ import {
 } from './context.js';
 import { createAnchor } from '../../../anchor/create.js';
 import { renderPlainText } from '../../../render/plaintext.js';
-import { describe, it, waitFor } from './harness.js';
+import { delay, describe, it, waitFor } from './harness.js';
 
 function comment(id: string): Comment {
   return {
@@ -115,6 +117,54 @@ describe('agent notes', () => {
     await writeText(notes, 'Comment 1: late');
     await store.endNotesRound();
     assert.equal(await noteOf(store, a), 'Comment 1: late');
+    assert.equal(await exists(notes), false);
+  });
+
+  it('a notes file that could not be deleted is not read again by the next numbering', async () => {
+    const { store, notes, a, b } = await notesStore('n-nodelete.md');
+    await writeText(notes, 'Comment 1: kept as is.\n\nA general remark.');
+    // A folder the process cannot write makes the delete fail while the file stays readable. On
+    // Windows the mode bits do not stop it, the delete succeeds, and the assertions below still hold.
+    const reviews = path.dirname(notes.fsPath);
+    await store.flush();
+    await chmod(reviews, 0o555);
+    try {
+      await store.endNotesRound();
+    } finally {
+      await chmod(reviews, 0o755);
+    }
+    store.snapshotBaseline('plain', [b, a]);
+    await store.settleNotes();
+    assert.equal(await noteOf(store, a), 'Comment 1: kept as is.');
+    assert.equal(await noteOf(store, b), undefined, 'the old note must not move to the new comment 1');
+    assert.equal((await stateOf(store)).agentNotes?.unattached, 'A general remark.');
+    // The agent appends to the file it could not have emptied: only the new words are read.
+    if (await exists(notes)) {
+      await writeText(notes, 'Comment 1: kept as is.\n\nA general remark.\n\nComment 1: a new answer.');
+      await store.settleNotes();
+      assert.equal(await noteOf(store, b), 'Comment 1: a new answer.');
+      assert.equal(await noteOf(store, a), 'Comment 1: kept as is.');
+      assert.equal((await stateOf(store)).agentNotes?.unattached, 'A general remark.');
+      await vscode.workspace.fs.delete(notes);
+    }
+  });
+
+  it('a read in flight does not land after the round ended', async () => {
+    const { store, notes } = await notesStore('n-inflight.md');
+    await writeText(notes, 'A general remark.');
+    // Holds the first read back until the round has ended, as a watcher-driven read can be.
+    const internals = store as unknown as { readNotes: () => Promise<unknown> };
+    const original = internals.readNotes.bind(store);
+    let calls = 0;
+    internals.readNotes = async () => {
+      calls += 1;
+      const first = calls === 1;
+      const result = await original();
+      if (first) await delay(300);
+      return result;
+    };
+    await Promise.all([store.settleNotes(), store.endNotesRound()]);
+    assert.equal((await stateOf(store)).agentNotes?.unattached, 'A general remark.');
     assert.equal(await exists(notes), false);
   });
 
