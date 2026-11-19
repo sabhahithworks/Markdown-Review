@@ -108,6 +108,7 @@ Planner decisions:
 - **D-q7** (V-4, auto-decided 2026-11-19) E31 (multi-root notes path) stays without a test, because the integration harness is single-root. `resolveSidecar` uses one folder for both the sidecar and the notes file, so it is correct by construction.
 - **D-q8** (V-17, owner 2026-11-19) When a sidecar exists but `load()` cannot read it (any error other than not-found), or `quarantine()` cannot write the backup, the store is read-only for the session. Every commit that would persist is refused: state is unchanged, nothing is emitted, and nothing is written. One warning per store says comments cannot be saved until the comments file is fixed and the window is reloaded, and that nothing on disk was changed. In-memory-only edits and saving to another path were rejected. This closes L-corrupt-sidecar-backup for user edits, a gap older than this branch (V2).
 - **D-q9** (V-13, owner 2026-11-19) Accepted residual, refining D47/E20: `agentNotes.dismissed` is one list shared by every comment, so dismissing a chunk that names several comments hides it from all of them. The stored `ReviewFile` shape from N1 is unchanged.
+- **D-q10** (V-24, owner 2026-11-19) Fixed in this branch, before 0.1.0 ships (V3). `watchSidecar` and `createChangeWatcher` treat the file name as a glob, the same defect V-18 fixed in `watchNotes`. Every file watcher on one exact file now uses one pure helper: glob characters become `?` in the pattern, and the handler keeps only events whose basename equals the watched name folded per `registryKey`.
 
 Rejected (discussion): shipping 0.1.0 now and deferring Mermaid; a "not rendered" label only.
 
@@ -1072,6 +1073,27 @@ Depends on: V1.
 Entry check: `grep -c "read-only for this session" src/store/ReviewStore.ts` prints 0.
 Done: tests pass, committed, tracker row updated.
 
+### V3: Watchers match file names with glob characters (lane: app)
+
+GOAL: For a document whose name holds `[ ] { } * ? !` (e.g. `spec [draft].md`), a hand edit of its comments file is picked up while the pane is open, and an agent's write to the document on disk triggers change detection, as they already do for plain names.
+READ FIRST: `src/store/ReviewStore.ts:680-696` (`watchSidecar`) and `:882-904` (`watchNotes`, the V-18/V-22 fix to factor out); `src/detect/changeWatcher.ts:30-85` (`createChangeWatcher`: one watcher with change, create and delete handlers); `src/store/registryKey.ts:13-15`; `src/test/integration/suite/store.spec.ts:204-232` (the external-edit test to mirror); `src/test/integration/suite/detection.spec.ts:53-60` (`seedReview` builds `docs/<name>.md`) and `:186-217` (the direct-write test to mirror).
+CHANGE:
+- `src/store/fileNamePattern.ts`: new, with no `vscode` import. Export `globSafeName(name: string): string`, which replaces each of `[ ] { } * ? !` with `?`, and `isSameFileName(a: string, b: string, platform: NodeJS.Platform = process.platform): boolean`, which compares the two names after `registryKey(…, platform)` folding.
+- `src/store/ReviewStore.ts`: `watchNotes` uses the two helpers instead of its inline regex and comparison, with the same behaviour. `watchSidecar` builds its `RelativePattern` with `globSafeName(basename)`, and its `reread` handler takes the event's `uri` and returns unless `isSameFileName(path.basename(uri.fsPath), basename)`. Move the explanatory comment from `watchNotes` onto `fileNamePattern.ts`.
+- `src/detect/changeWatcher.ts`: the `RelativePattern` uses `globSafeName(path.basename(target.fsPath))`. The `onDidChange`, `onDidCreate` and `onDidDelete` handlers each take the event `uri` and return early unless `isSameFileName(path.basename(uri.fsPath), path.basename(target.fsPath))`. Behaviour for matching events is unchanged.
+- `src/test/fileNamePattern.test.ts`: new vitest (node project). `globSafeName('spec [draft] {x}*?!.md')` is `'spec ?draft? ?x????.md'`. A plain name is unchanged. `isSameFileName('A.md','a.md','darwin')` and `…'win32'` are true, `…'linux'` is false, and `isSameFileName('a.md','b.md','darwin')` is false.
+- `src/test/integration/suite/store.spec.ts`: in `external edits`, add `adopts an external rewrite of a sidecar whose name holds glob characters`, which mirrors :205 with `freshStore('external [draft] {x}.md')`.
+- `src/test/integration/suite/detection.spec.ts`: in `change detection (PRD §8)`, add `detects a direct write to disk for a target whose name holds glob characters`, which mirrors :186 with `seedReview('detect [draft]')` and waits for the same three statuses, with ids built from that name. If `seedReview`'s comment ids or sidecar name can't take the brackets, pass a separate id prefix as an optional third parameter (default: the name). Change no existing call.
+MIRROR: `src/store/ReviewStore.ts:882-904` (the pattern and the filter); `src/test/registryKey.test.ts` (a pure node suite).
+INVARIANTS: L-no-network; L-corrupt-sidecar-backup (the read-only state from V2 is untouched); the H4 echo guard in `rereadExternal` and H13 coalescing in `changeWatcher` are unchanged; Windows path separators: use `path.basename(uri.fsPath)` on both sides.
+DECIDED: D-q10. `?` substitution plus an exact folded name check, the same approach as V-18 and V-22. No escaping scheme for `RelativePattern`.
+OUT OF SCOPE: other watchers (`src/status/`, the explorer badges) unless the compiler or a failing test names them; any change to `registryKey`. Importers checked and not edited unless the compiler or a failing test names them: `src/panel/ReviewPanel.ts`, `src/extension.ts`, `src/commands/copyPrompt.ts`, `src/commands/clearComments.ts`, `src/detect/baselineDocuments.ts`, `src/status/reviewIndex.ts`, `src/store/sidecarPath.ts`, `src/test/integration/suite/index.ts`, `src/test/integration/suite/notes.spec.ts`, `src/test/integration/suite/activation.spec.ts`, `eslint.config.mjs`.
+ACCEPTANCE: `npx vitest run --project node src/test/fileNamePattern.test.ts`, then `npm run check`, `node esbuild.mjs --integration` and `npm run test:integration`. All report 0 failed, and the two new integration tests pass. The two existing glob-name notes tests in `notes.spec.ts` must still pass. The integration suite has shown intermittent 20 s timeouts under load: when a timeout hits a test this phase did not touch, rerun the suite once before treating it as a failure.
+FAILURE PATHS: an event for another file that matches the `?` pattern (e.g. `spec xdraftx.md`) is ignored by the name check; a delete of the watched file still reaches `onDeleted`.
+Depends on: V2.
+Entry check: `ls src/store/fileNamePattern.ts 2>/dev/null | wc -l` prints 0.
+Done: tests pass, committed, tracker row updated.
+
 ## Lanes and the contract
 
 There is one lane (`app`, repo root; runner `npm (run )?(test|check)` / `npx vitest`), plus `docs` for 0, R1 and two owner rows, and `infra` for CI1 and CI2. There is no contract phase (D24): `messages.ts` is compiled into both bundles and type-checked by `npm run typecheck`, so drift fails the build. Shared files touched in several phases are all on the one sequential chain:
@@ -1281,6 +1303,7 @@ coverage-hash: 0300423e
 | F | app | R1 | final checks | done | tag | Tests 698 passed (698); SUMMARY shift=0 review=0 applied_lines=0 base=21985746 code_files=77 nosym=0 |
 | V1 | app | F | notes round-end read retry | done | tag | Tests 698 passed (698) |
 | V2 | app | V1 | read-only store after an unsafe load | done | tag | 1 fix round; Tests 703 passed (703) |
+| V3 | app | V2 | watchers match glob-character names | todo | - | - |
 | CI2 | infra | F | recorded green CI run | todo | - | - |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |
