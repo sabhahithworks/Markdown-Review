@@ -109,6 +109,7 @@ Planner decisions:
 - **D-q8** (V-17, owner 2026-11-19) When a sidecar exists but `load()` cannot read it (any error other than not-found), or `quarantine()` cannot write the backup, the store is read-only for the session. Every commit that would persist is refused: state is unchanged, nothing is emitted, and nothing is written. One warning per store says comments cannot be saved until the comments file is fixed and the window is reloaded, and that nothing on disk was changed. In-memory-only edits and saving to another path were rejected. This closes L-corrupt-sidecar-backup for user edits, a gap older than this branch (V2).
 - **D-q9** (V-13, owner 2026-11-19) Accepted residual, refining D47/E20: `agentNotes.dismissed` is one list shared by every comment, so dismissing a chunk that names several comments hides it from all of them. The stored `ReviewFile` shape from N1 is unchanged.
 - **D-q10** (V-24, owner 2026-11-19) Fixed in this branch, before 0.1.0 ships (V3). `watchSidecar` and `createChangeWatcher` treat the file name as a glob, the same defect V-18 fixed in `watchNotes`. Every file watcher on one exact file now uses one pure helper: glob characters become `?` in the pattern, and the handler keeps only events whose basename equals the watched name folded per `registryKey`.
+- **D-q11** (V-31, auto-decided 2026-11-19 under the owner's standing "take the best option" rule) `npm run test:integration` builds the extension bundle first, `node esbuild.mjs && node esbuild.mjs --integration && node dist-test/run.js`, so no integration test can pass on a stale `dist/extension.js`. Because the script now rebuilds `dist/` from source every time, a cache keyed on source files stays correct, and the engine's run-tests cache key is not changed here. The older direct-write test in `detection.spec.ts` gets the same two-step shape V-30 gave the V3 test (V4).
 
 Rejected (discussion): shipping 0.1.0 now and deferring Mermaid; a "not rendered" label only.
 
@@ -1094,6 +1095,23 @@ Depends on: V2.
 Entry check: `ls src/store/fileNamePattern.ts 2>/dev/null | wc -l` prints 0.
 Done: tests pass, committed, tracker row updated.
 
+### V4: The integration suite builds the extension it tests (lane: app)
+
+GOAL: `npm run test:integration` always runs against an extension bundle freshly built from the current source, and the original direct-write detection test really exercises the file watcher.
+READ FIRST: `package.json:166-176` (the `test:integration`, `build` and `check` scripts); `.github/workflows/` (both jobs run `npm run test:integration`; check that the build order there still holds); `src/test/integration/suite/detection.spec.ts:186-241` (the one-step test at :186 and the two-step V-30 test at :218 to mirror).
+CHANGE:
+- `package.json`: `"test:integration": "node esbuild.mjs && node esbuild.mjs --integration && node dist-test/run.js"`. No other script changes.
+- `src/test/integration/suite/detection.spec.ts`: `infers addressed, orphaned and open from a direct write to disk` gets the two-step shape of :218-241. After `markdownReview.open`, write a first edit (`AUTH_MARKDOWN.replace('up to three times', 'up to five times')`) and wait until `detect-disk-1` is `addressed`, with the label `the first render to have run`. Then write `AGENT_EDITED` and keep the existing `waitFor` and every existing assertion after it unchanged. Update the comment to say why there are two steps.
+MIRROR: `src/test/integration/suite/detection.spec.ts:218-241`.
+INVARIANTS: L-no-network; L-extend-harnesses (the harness is extended, not rebuilt); CI workflows are not edited unless the build order there breaks; no new dependencies.
+DECIDED: D-q11. Build inside the npm script, not in `dist-test/run.js`; the engine's run-tests cache key is not changed in this repo.
+OUT OF SCOPE: other integration tests; the CI workflow files (unless the new script order breaks them); `esbuild.mjs`. Importers checked and not edited unless a failing test names them: `src/test/integration/suite/index.ts`, `src/test/integration/suite/store.spec.ts`, `src/test/integration/suite/notes.spec.ts`.
+ACCEPTANCE: `npm run check`, then `npm run test:integration`, which reports 0 failed and prints the esbuild output for `dist/extension.js` before the suite starts. Revert check: with `src/detect/changeWatcher.ts`'s `onDidChange` handler body made a no-op locally (never committed), the rewritten `infers addressed, orphaned and open from a direct write to disk` fails; restore it. The integration suite has shown intermittent 20 s timeouts under load: when a timeout hits a test this phase did not touch, rerun once before treating it as a failure.
+FAILURE PATHS: the esbuild step fails → the script stops before any test runs, with esbuild's error.
+Depends on: V3.
+Entry check: `grep -c 'node esbuild.mjs && node esbuild.mjs --integration' package.json` prints 0.
+Done: tests pass, committed, tracker row updated.
+
 ## Lanes and the contract
 
 There is one lane (`app`, repo root; runner `npm (run )?(test|check)` / `npx vitest`), plus `docs` for 0, R1 and two owner rows, and `infra` for CI1 and CI2. There is no contract phase (D24): `messages.ts` is compiled into both bundles and type-checked by `npm run typecheck`, so drift fails the build. Shared files touched in several phases are all on the one sequential chain:
@@ -1304,6 +1322,7 @@ coverage-hash: 0300423e
 | V1 | app | F | notes round-end read retry | done | tag | Tests 698 passed (698) |
 | V2 | app | V1 | read-only store after an unsafe load | done | tag | 1 fix round; Tests 703 passed (703) |
 | V3 | app | V2 | watchers match glob-character names | done | tag | Tests 4 passed (4); Tests 707 passed (707) |
+| V4 | app | V3 | integration suite builds the extension | todo | - | - |
 | CI2 | infra | F | recorded green CI run | todo | - | - |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |
