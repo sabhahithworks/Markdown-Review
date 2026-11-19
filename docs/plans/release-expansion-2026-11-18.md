@@ -1106,6 +1106,7 @@ CHANGE:
 MIRROR: `src/test/integration/suite/detection.spec.ts:218-241`.
 INVARIANTS: L-no-network; L-extend-harnesses (the harness is extended, not rebuilt); CI workflows are not edited unless the build order there breaks; no new dependencies.
 DECIDED: D-q11. Build inside the npm script, not in `dist-test/run.js`; the engine's run-tests cache key is not changed in this repo.
+- **Amended during run (2026-11-19):** owner answer to the earlier question → The ACCEPTANCE revert check was run in the owner session on V4's exact edits. src/detect/changeWatcher.ts had both onDidChange and onDidCreate handler bodies made no-ops, covering the reviewer's concern that writeFile may arrive as a create. npm run test:integration gave 108 passed, 2 failed, and the two failures were exactly 'infers addressed, orphaned and open from a direct write to disk' and 'detects a direct write to disk for a target whose name holds glob characters'. changeWatcher.ts was then restored byte for byte, and git status shows only V4's two files. The revert check is satisfied; review V4 again and commit it (D-q12). [owner answer]
 OUT OF SCOPE: other integration tests; the CI workflow files (unless the new script order breaks them); `esbuild.mjs`. Importers checked and not edited unless a failing test names them: `src/test/integration/suite/index.ts`, `src/test/integration/suite/store.spec.ts`, `src/test/integration/suite/notes.spec.ts`.
 ACCEPTANCE: `npm run check`, then `npm run test:integration`, which reports 0 failed and prints the esbuild output for `dist/extension.js` before the suite starts. Revert check: with `src/detect/changeWatcher.ts`'s `onDidChange` handler body made a no-op locally (never committed), the rewritten `infers addressed, orphaned and open from a direct write to disk` fails; restore it. The integration suite has shown intermittent 20 s timeouts under load: when a timeout hits a test this phase did not touch, rerun once before treating it as a failure.
 FAILURE PATHS: the esbuild step fails → the script stops before any test runs, with esbuild's error.
@@ -1323,7 +1324,7 @@ coverage-hash: 0300423e
 | V1 | app | F | notes round-end read retry | done | tag | Tests 698 passed (698) |
 | V2 | app | V1 | read-only store after an unsafe load | done | tag | 1 fix round; Tests 703 passed (703) |
 | V3 | app | V2 | watchers match glob-character names | done | tag | Tests 4 passed (4); Tests 707 passed (707) |
-| V4 | app | V3 | integration suite builds the extension | todo | - | - |
+| V4 | app | V3 | integration suite builds the extension | done | tag | Tests 707 passed (707) |
 | CI2 | infra | F | recorded green CI run | todo | - | - |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |

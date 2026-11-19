@@ -187,8 +187,16 @@ describe('change detection (PRD §8)', () => {
     const { target, read } = await seedReview('detect-disk');
     await vscode.commands.executeCommand('markdownReview.open', target);
 
-    // No editor is open on this file, so only the FileSystemWatcher can see this — which is the
-    // whole reason PRD §8 requires a second source.
+    // A first edit, seen by whichever pass comes first: written straight after the open, it is
+    // picked up by the pane's first render, so on its own it would pass with the watcher broken.
+    await writeText(target, AUTH_MARKDOWN.replace('up to three times', 'up to five times'));
+    await waitFor(
+      async () => (await statuses(read))['detect-disk-1'] === 'addressed',
+      'the first render to have run',
+    );
+
+    // The pane has rendered, and no editor is open on this file, so only the FileSystemWatcher can
+    // see this second edit — which is the whole reason PRD §8 requires a second source.
     await writeText(target, AGENT_EDITED);
 
     await waitFor(async () => {

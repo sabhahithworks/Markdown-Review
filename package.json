@@ -165,7 +165,7 @@
     "package": "npx --yes @vscode/vsce package",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "node esbuild.mjs --integration && node dist-test/run.js",
+    "test:integration": "node esbuild.mjs && node esbuild.mjs --integration && node dist-test/run.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit && tsc -p tsconfig.webview-test.json --noEmit",
     "lint": "eslint .",
     "lint:css": "node scripts/check-css-colors.mjs && node scripts/check-theme-vars.mjs",
