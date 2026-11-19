@@ -231,6 +231,35 @@ describe('external edits (the sidecar is a hand-editable file)', () => {
     }
   });
 
+  it('adopts an external rewrite of a sidecar whose name holds glob characters', async () => {
+    const { store, sidecar } = await freshStore('external [draft] {x}.md');
+
+    store.addComment(comment({ id: 'ext00001' }));
+    await store.flush();
+
+    const handEdited = JSON.stringify(
+      {
+        version: 1,
+        targetPath: 'external [draft] {x}.md',
+        comments: [comment({ id: 'ext00001', body: 'edited by hand in the JSON' })],
+      },
+      null,
+      2,
+    );
+
+    let latest: ReviewFile | undefined;
+    const subscription = store.onDidChange((state) => (latest = state));
+    try {
+      await writeText(sidecar, `${handEdited}\n`);
+      await waitFor(
+        () => latest?.comments[0]?.body === 'edited by hand in the JSON',
+        'the store to pick up an external edit',
+      );
+    } finally {
+      subscription.dispose();
+    }
+  });
+
   it('keeps in-memory state and writes no .bak when an external edit is mid-keystroke', async () => {
     // Plan 03 §9: quarantine applies to the *initial* read. Backing up on every transiently-invalid
     // save would litter .bak files while someone is typing in the JSON.

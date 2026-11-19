@@ -215,6 +215,24 @@ describe('change detection (PRD §8)', () => {
     );
   });
 
+  it('detects a direct write to disk for a target whose name holds glob characters', async () => {
+    const { target, read } = await seedReview('detect [draft]');
+    await vscode.commands.executeCommand('markdownReview.open', target);
+
+    // No editor is open on this file, so only the FileSystemWatcher can see this — which is the
+    // whole reason PRD §8 requires a second source.
+    await writeText(target, AGENT_EDITED);
+
+    await waitFor(async () => {
+      const byId = await statuses(read);
+      return (
+        byId['detect [draft]-1'] === 'addressed' &&
+        byId['detect [draft]-2'] === 'orphaned' &&
+        byId['detect [draft]-3'] === 'open'
+      );
+    }, 'the agent edit to be detected for a glob-character name');
+  });
+
   it('leaves a heading comment open when only its section body changed (D17)', async () => {
     // The case the first real-agent run found. Comment 3 is anchored on `## Error handling`, so
     // rewriting the prose *under* it — exactly what the comment asked for — leaves `anchor.exact`

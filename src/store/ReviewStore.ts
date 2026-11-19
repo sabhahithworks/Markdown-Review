@@ -22,6 +22,7 @@ import {
   parseReviewFile,
   serializeReviewFile,
 } from './reviewFile.js';
+import { globSafeName, isSameFileName } from './fileNamePattern.js';
 import { registryKey } from './registryKey.js';
 import { joinChunks, splitAgentNotes, splitChunks } from '../detect/agentNotes.js';
 import { CHANGE_DEBOUNCE_MS } from '../detect/changeWatcher.js';
@@ -683,15 +684,19 @@ export class ReviewStore {
    * promises the file is editable, which is only true if the UI notices.
    */
   private watchSidecar(): void {
+    const sidecarName = path.basename(this.sidecar.fsPath);
     const watcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(
         vscode.Uri.file(path.dirname(this.sidecar.fsPath)),
-        path.basename(this.sidecar.fsPath),
+        globSafeName(sidecarName),
       ),
     );
     this.disposables.push(watcher);
 
-    const reread = (): void => void this.rereadExternal();
+    const reread = (uri: vscode.Uri): void => {
+      if (!isSameFileName(path.basename(uri.fsPath), sidecarName)) return;
+      void this.rereadExternal();
+    };
     watcher.onDidChange(reread, null, this.disposables);
     watcher.onDidCreate(reread, null, this.disposables);
   }
@@ -882,20 +887,16 @@ export class ReviewStore {
   private watchNotes(): void {
     if (this.notes === undefined) return;
     const name = path.basename(this.notes.fsPath);
-    // The name is a glob pattern here: a target named `spec [draft].md` would read `[draft]` as a
-    // character class and never match itself. Each glob character becomes `?`, and the handler
-    // keeps only this name, folded as `registryKey` folds it: on macOS and Windows the watcher
-    // matches without case and reports the casing on disk, which an older notes file may differ in.
     const watcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(
         vscode.Uri.file(path.dirname(this.notes.fsPath)),
-        name.replace(/[[\]{}*?!]/g, '?'),
+        globSafeName(name),
       ),
     );
     const coalescer = createCoalescer(CHANGE_DEBOUNCE_MS, () => void this.settleNotes());
     this.disposables.push(watcher, coalescer);
     const schedule = (uri: vscode.Uri): void => {
-      if (registryKey(path.basename(uri.fsPath)) === registryKey(name)) coalescer.schedule();
+      if (isSameFileName(path.basename(uri.fsPath), name)) coalescer.schedule();
     };
     watcher.onDidChange(schedule, null, this.disposables);
     watcher.onDidCreate(schedule, null, this.disposables);

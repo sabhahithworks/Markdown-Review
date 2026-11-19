@@ -16,6 +16,7 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { globSafeName, isSameFileName } from '../store/fileNamePattern.js';
 import { createCoalescer } from './coalesce.js';
 
 /** PRD §8 specifies 400 ms. */
@@ -49,28 +50,34 @@ export function createChangeWatcher(options: ChangeWatcherOptions): vscode.Dispo
 
   // Same construction the sidecar watcher uses, and for the same reason: a bare glob is resolved
   // against the workspace folders, which silently never matches a loose file opened outside one.
+  const targetName = path.basename(target.fsPath);
+  const isTarget = (uri: vscode.Uri): boolean =>
+    isSameFileName(path.basename(uri.fsPath), targetName);
   const watcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(
       vscode.Uri.file(path.dirname(target.fsPath)),
-      path.basename(target.fsPath),
+      globSafeName(targetName),
     ),
   );
   disposables.push(watcher);
 
-  disposables.push(watcher.onDidChange(() => coalescer.schedule()));
+  disposables.push(watcher.onDidChange((uri) => {
+    if (isTarget(uri)) coalescer.schedule();
+  }));
 
   disposables.push(
     // The file came back with content we have not seen; re-read on the usual schedule. Only the
     // coalescer (H13): a second, immediate callback here made delete-then-write — git checkout,
     // some agents' save strategy — cost an un-debounced full refresh *plus* the coalesced one,
     // defeating the debounce on exactly the path agents use.
-    watcher.onDidCreate(() => {
-      coalescer.schedule();
+    watcher.onDidCreate((uri) => {
+      if (isTarget(uri)) coalescer.schedule();
     }),
   );
 
   disposables.push(
-    watcher.onDidDelete(() => {
+    watcher.onDidDelete((uri) => {
+      if (!isTarget(uri)) return;
       // Nothing to re-anchor against, and a queued refresh would only report the same failure late.
       coalescer.cancel();
       onDeleted?.();
