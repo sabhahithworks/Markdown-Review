@@ -550,12 +550,7 @@ export class ReviewStore {
         this.watchNotes();
         await this.settleNotes();
       } else {
-        this.notes = undefined;
-        this.writable = false;
-        this.output.appendLine(`[store] ${this.sidecar.fsPath}: read-only for this session`);
-        this.output.appendLine(
-          `[store] ${this.sidecar.fsPath}: could not be read, agent notes are off until reload — ${String(error)}`,
-        );
+        this.readOnlyForSession(`could not be read, agent notes are off until reload — ${String(error)}`);
       }
       return;
     }
@@ -576,11 +571,16 @@ export class ReviewStore {
     } else {
       // Off as for global storage (D20): no watcher, no read or delete at a prompt, and the prompt
       // keeps the old sentence, so nothing reaches the notes file until a reload.
-      this.notes = undefined;
-      this.writable = false;
-      this.output.appendLine(`[store] ${this.sidecar.fsPath}: read-only for this session`);
-      this.output.appendLine(`[store] ${this.sidecar.fsPath}: agent notes are off until reload`);
+      this.readOnlyForSession('agent notes are off until reload');
     }
+  }
+
+  /** After an unsafe load: agent notes off and edits refused until a reload (D-q3, D-q8). */
+  private readOnlyForSession(notesLine: string): void {
+    this.notes = undefined;
+    this.writable = false;
+    this.output.appendLine(`[store] ${this.sidecar.fsPath}: read-only for this session`);
+    this.output.appendLine(`[store] ${this.sidecar.fsPath}: ${notesLine}`);
   }
 
   /**
@@ -736,15 +736,17 @@ export class ReviewStore {
     }
 
     const carried = previous?.carried ?? '';
+    const unattached = joinChunks([...(carried.length > 0 ? [carried] : []), ...orphanChunks]);
     this.commit({
       ...this.state,
       comments,
       agentNotes: {
         raw,
         carried,
-        unattached: joinChunks([...(carried.length > 0 ? [carried] : []), ...orphanChunks]),
+        unattached,
         cut: split.cut,
-        receivedAt,
+        // As for a comment's note: unchanged words keep their time, so the pane does not announce them again.
+        receivedAt: previous?.unattached === unattached ? previous.receivedAt : receivedAt,
         dismissed: [...dismissed],
       },
     });
@@ -879,15 +881,21 @@ export class ReviewStore {
 
   private watchNotes(): void {
     if (this.notes === undefined) return;
+    const name = path.basename(this.notes.fsPath);
+    // The name is a glob pattern here: a target named `spec [draft].md` would read `[draft]` as a
+    // character class and never match itself. Each glob character becomes `?`, and the handler
+    // keeps only the exact name.
     const watcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(
         vscode.Uri.file(path.dirname(this.notes.fsPath)),
-        path.basename(this.notes.fsPath),
+        name.replace(/[[\]{}*?!]/g, '?'),
       ),
     );
     const coalescer = createCoalescer(CHANGE_DEBOUNCE_MS, () => void this.settleNotes());
     this.disposables.push(watcher, coalescer);
-    const schedule = (): void => coalescer.schedule();
+    const schedule = (uri: vscode.Uri): void => {
+      if (path.basename(uri.fsPath) === name) coalescer.schedule();
+    };
     watcher.onDidChange(schedule, null, this.disposables);
     watcher.onDidCreate(schedule, null, this.disposables);
   }

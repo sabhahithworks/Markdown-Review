@@ -204,6 +204,12 @@ it reports itself.
 
 ### Fixed
 
+- **A comments file that could not be read or backed up could be overwritten.** When the file in
+  `.reviews` exists but cannot be read, or is corrupt and its `.json.bak` backup cannot be written,
+  the review is now read-only for the session: a new comment is refused with one warning that says
+  nothing on disk was changed and that you should fix or move the file and reload the window.
+  Before, the next comment you added was saved over the file you could not read.
+
 - **Reloading the window left the review pane permanently blank.** The tab came back, the contents
   never did, and the only way out was to close the pane and open it again. The extension wakes up
   when you run one of its commands — but restoring a pane after a reload isn't something you run, so

@@ -67,6 +67,24 @@ describe('agent notes', () => {
     await waitFor(async () => (await noteOf(store, a)) === chunk, 'the note to attach');
   });
 
+  it('ingests a notes file whose name holds glob characters', async () => {
+    const { store, notes, a } = await notesStore('n-glob [draft] {x}.md');
+    const chunk = 'Comment 1: kept, the brackets are part of the name.';
+    await writeText(notes, chunk);
+    await waitFor(async () => (await noteOf(store, a)) === chunk, 'the note to attach');
+  });
+
+  it('the unattached notes keep their time when their text is unchanged', async () => {
+    const { store } = await notesStore('n-unattached-time.md');
+    store.ingestAgentNotes('A general remark.', () => '2026-01-01T00:00:00.000Z');
+    store.ingestAgentNotes('A general remark.\n', () => '2026-01-02T00:00:00.000Z');
+    const notes = (await stateOf(store)).agentNotes;
+    assert.equal(notes?.unattached, 'A general remark.');
+    assert.equal(notes?.receivedAt, '2026-01-01T00:00:00.000Z');
+    store.ingestAgentNotes('A general remark.\n\nAnother one.', () => '2026-01-03T00:00:00.000Z');
+    assert.equal((await stateOf(store)).agentNotes?.receivedAt, '2026-01-03T00:00:00.000Z');
+  });
+
   it('blank notes file is ignored', async () => {
     const { store, a } = await notesStore('n-blank.md');
     store.ingestAgentNotes('Comment 1: first');
