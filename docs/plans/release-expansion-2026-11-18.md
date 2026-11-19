@@ -106,6 +106,8 @@ Planner decisions:
 - **D-q5** (V-7, auto-decided 2026-11-19) Accepted residual, refining D47: after a failed round-end delete or read, the kept chunks go into `dismissed`, so a chunk with identical text written again for the new round is not shown. D47's "the same words written again in the next round count as new" holds only when the round-end delete succeeded.
 - **D-q6** (V-3, auto-decided 2026-11-19) D33 is kept: "Comments 2 and 3" and "Comments 1-3" attach the chunk to the first number named only. Not changed in 0.1.0.
 - **D-q7** (V-4, auto-decided 2026-11-19) E31 (multi-root notes path) stays without a test, because the integration harness is single-root. `resolveSidecar` uses one folder for both the sidecar and the notes file, so it is correct by construction.
+- **D-q8** (V-17, owner 2026-11-19) When a sidecar exists but `load()` cannot read it (any error other than not-found), or `quarantine()` cannot write the backup, the store is read-only for the session. Every commit that would persist is refused: state is unchanged, nothing is emitted, and nothing is written. One warning per store says comments cannot be saved until the comments file is fixed and the window is reloaded, and that nothing on disk was changed. In-memory-only edits and saving to another path were rejected. This closes L-corrupt-sidecar-backup for user edits, a gap older than this branch (V2).
+- **D-q9** (V-13, owner 2026-11-19) Accepted residual, refining D47/E20: `agentNotes.dismissed` is one list shared by every comment, so dismissing a chunk that names several comments hides it from all of them. The stored `ReviewFile` shape from N1 is unchanged.
 
 Rejected (discussion): shipping 0.1.0 now and deferring Mermaid; a "not rendered" label only.
 
@@ -1049,6 +1051,27 @@ Depends on: F.
 Entry check: `grep -c NOTES_ROUND_END_RETRIES src/store/ReviewStore.ts` prints 0.
 Done: tests pass, committed, tracker row updated.
 
+### V2: A sidecar that could not be read or backed up makes the store read-only (lane: app)
+
+GOAL: When a comments file exists but cannot be read, or is corrupt and its backup fails, the user's edits for that session are refused with one clear warning, and the original bytes on disk are never overwritten.
+READ FIRST: `src/store/ReviewStore.ts:478-500` (`commit`, `scheduleWrite`); `:525-600` (`load`'s unreadable branch, `safeToPersist`, `quarantine` and its "Nothing has been changed on disk" warning); `:625-640` (`performWrite`); `src/test/integration/suite/notes.spec.ts:279-348` (the failed-backup and unreadable-sidecar tests to mirror; they make the backup fail with a directory at `.json.bak`, and make the read fail with a directory at the sidecar path); `src/test/integration/suite/store.spec.ts:682-697`.
+CHANGE:
+- `src/store/ReviewStore.ts`: add `private writable = true` and `private readOnlyWarned = false`. In `load()`, set `writable = false` on the branch where the sidecar read fails with anything other than not-found, and where `quarantine()` returns false. Log `[store] <sidecar fsPath>: read-only for this session` on both. In `commit()`, when `persist` is true and `writable` is false, call `warnReadOnly()` and return before `this.state` is assigned, so nothing is changed, emitted or scheduled. `commit(..., { persist: false })` is unchanged. Add `private warnReadOnly(): void`, which shows one `vscode.window.showWarningMessage` per store: `Markdown Review can't save comments for ${this.state.targetPath}: its comments file could not be read or backed up. Nothing on disk was changed. Fix or move the file in .reviews and reload the window.` In `performWrite()`, return `false` without touching disk when `writable` is false, as a second guard. Update the doc comment on `quarantine` to name D-q8.
+- `src/test/integration/suite/store.spec.ts`: add a `describe('read-only after an unsafe load (D-q8)')` with three tests:
+  - `refuses edits when the backup cannot be written`: garbage sidecar plus a directory at `.json.bak`; `ensureLoaded()`, `addComment(...)`, `flush()`. The sidecar text equals the garbage, `getState().comments` is empty, and the output has the `read-only for this session` line.
+  - `refuses edits when the sidecar exists but cannot be read`: a directory at the sidecar path; `addComment`, `flush()`. The sidecar path is still a directory, and `getState().comments` is empty.
+  - `a parsed sidecar stays writable`: a valid sidecar; `addComment`, `flush()`; the sidecar on disk holds the comment.
+- `src/test/integration/suite/notes.spec.ts`: change it only if an existing test there fails because its `addComment` is now refused. Keep its assertions about notes, and adjust only what assumed the comment was stored.
+MIRROR: `src/test/integration/suite/notes.spec.ts:279-299`.
+INVARIANTS: L-corrupt-sidecar-backup; L-never-auto-delete-comment; L-no-network; PRD §11 fail soft (the pane still opens and shows the document). The notes-off behaviour from D-q3/V-9 stays as it is.
+DECIDED: D-q8 (read-only for the session, one warning per store, a reload is needed). Clear and re-link already refuse when their backup fails, and stay as they are.
+OUT OF SCOPE: pane UI for the read-only state (the warning toast is the signal); re-adopting a sidecar that is fixed externally during the session; V-13 (D-q9). Importers checked and not edited unless the compiler or a failing test names them: `src/commands/clearComments.ts`, `src/commands/copyPrompt.ts`, `src/detect/baselineDocuments.ts`, `src/extension.ts`, `src/panel/ReviewPanel.ts`, `src/status/reviewIndex.ts`, `src/store/sidecarPath.ts`, `src/test/integration/suite/index.ts`, `eslint.config.mjs`.
+ACCEPTANCE: `npm run check`, then `node esbuild.mjs --integration` and `npm run test:integration`. Both report 0 failed, and the three new tests pass. The integration suite has shown intermittent 20 s timeouts under load: when a timeout hits a test that this phase did not touch, rerun the suite once before treating it as a failure.
+FAILURE PATHS: the sidecar is unreadable → read-only plus the warning; the backup fails → read-only plus the warning; the warning is shown once per store and never on a successful load.
+Depends on: V1.
+Entry check: `grep -c "read-only for this session" src/store/ReviewStore.ts` prints 0.
+Done: tests pass, committed, tracker row updated.
+
 ## Lanes and the contract
 
 There is one lane (`app`, repo root; runner `npm (run )?(test|check)` / `npx vitest`), plus `docs` for 0, R1 and two owner rows, and `infra` for CI1 and CI2. There is no contract phase (D24): `messages.ts` is compiled into both bundles and type-checked by `npm run typecheck`, so drift fails the build. Shared files touched in several phases are all on the one sequential chain:
@@ -1257,6 +1280,7 @@ coverage-hash: 0300423e
 | R1 | docs | P1 | README, changelog, runsheet | done | tag | 1 fix round; 4; 3; 2; 1; 0 |
 | F | app | R1 | final checks | done | tag | Tests 698 passed (698); SUMMARY shift=0 review=0 applied_lines=0 base=21985746 code_files=77 nosym=0 |
 | V1 | app | F | notes round-end read retry | done | tag | Tests 698 passed (698) |
+| V2 | app | V1 | read-only store after an unsafe load | todo | - | - |
 | CI2 | infra | F | recorded green CI run | todo | - | - |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |
