@@ -93,6 +93,9 @@ export class ReviewStore {
 
   /** Non-zero while a write-then-rename is on the wire; `rereadExternal` must not run then (H4). */
   private writesPending = 0;
+  /** False after a load that could not read or back up the sidecar; edits are then refused (D-q8). */
+  private writable = true;
+  private readOnlyWarned = false;
   /** The tail of the notes reads, which `queueNotes` runs one at a time. */
   private notesQueue: Promise<void> = Promise.resolve();
 
@@ -479,9 +482,22 @@ export class ReviewStore {
    */
   private commit(next: ReviewFile, options: { persist?: boolean; notify?: boolean } = {}): void {
     const { persist = true, notify = true } = options;
+    if (persist && !this.writable) {
+      this.warnReadOnly();
+      return;
+    }
     this.state = next;
     if (notify) this.emit(next);
     if (persist) this.scheduleWrite();
+  }
+
+  /** Shows the read-only warning once per store (D-q8). */
+  private warnReadOnly(): void {
+    if (this.readOnlyWarned) return;
+    this.readOnlyWarned = true;
+    void vscode.window.showWarningMessage(
+      `Markdown Review can't save comments for ${this.state.targetPath}: its comments file could not be read or backed up. Nothing on disk was changed. Fix or move the file in .reviews and reload the window.`,
+    );
   }
 
   private scheduleWrite(): void {
@@ -497,9 +513,10 @@ export class ReviewStore {
    *
    * Returns whether the state is safely on disk: the result of the write this call triggered, or —
    * with nothing pending — the outcome of the most recent one. `relink` is the caller that must not
-   * treat this as advisory (H3).
+   * treat this as advisory (H3). A read-only store never writes, so it reports false.
    */
   async flush(): Promise<boolean> {
+    if (!this.writable) return false;
     if (this.debounce !== undefined) {
       clearTimeout(this.debounce);
       this.debounce = undefined;
@@ -534,6 +551,8 @@ export class ReviewStore {
         await this.settleNotes();
       } else {
         this.notes = undefined;
+        this.writable = false;
+        this.output.appendLine(`[store] ${this.sidecar.fsPath}: read-only for this session`);
         this.output.appendLine(
           `[store] ${this.sidecar.fsPath}: could not be read, agent notes are off until reload — ${String(error)}`,
         );
@@ -558,6 +577,8 @@ export class ReviewStore {
       // Off as for global storage (D20): no watcher, no read or delete at a prompt, and the prompt
       // keeps the old sentence, so nothing reaches the notes file until a reload.
       this.notes = undefined;
+      this.writable = false;
+      this.output.appendLine(`[store] ${this.sidecar.fsPath}: read-only for this session`);
       this.output.appendLine(`[store] ${this.sidecar.fsPath}: agent notes are off until reload`);
     }
   }
@@ -565,6 +586,7 @@ export class ReviewStore {
   /**
    * PRD §11: fail soft, keep every byte, say what happened. The backup is written before the empty
    * state is adopted, so a failure here leaves the original sidecar untouched rather than losing it.
+   * When it returns false, `load` makes the store read-only for the session (D-q8).
    */
   private async quarantine(raw: string, reason: string, detail: string): Promise<boolean> {
     this.output.appendLine(`[store] ${this.sidecar.fsPath}: ${reason} — ${detail}`);
@@ -627,6 +649,7 @@ export class ReviewStore {
   }
 
   private async performWrite(): Promise<boolean> {
+    if (!this.writable) return false;
     // Serialized at write time, not queue time: if state changed while an earlier write was on the
     // wire, this write picks up the newest state rather than persisting a stale snapshot.
     const text = serializeReviewFile(this.state);

@@ -17,7 +17,7 @@ import { createAnchor } from '../../../anchor/create.js';
 import type { Anchor, Comment, ReviewFile } from '../../../anchor/types.js';
 import { renderPlainText } from '../../../render/plaintext.js';
 import { ReviewStore } from '../../../store/ReviewStore.js';
-import { BASELINE_MAX_CHARS } from '../../../store/reviewFile.js';
+import { BASELINE_MAX_CHARS, emptyReviewFile, serializeReviewFile } from '../../../store/reviewFile.js';
 import { REVIEWS_DIR } from '../../../store/sidecarPath.js';
 import {
   GLOBAL_STORAGE_DIR,
@@ -789,5 +789,89 @@ describe('teardown', () => {
     assert.ok(await exists(sidecar), `expected ${path.basename(sidecar.fsPath)} to have been written`);
     const parsed = JSON.parse(await readText(sidecar)) as ReviewFile;
     assert.equal(parsed.comments[0]?.body, 'typed just before quitting');
+  });
+});
+
+describe('read-only after an unsafe load (D-q8)', () => {
+  it('refuses edits when the backup cannot be written', async () => {
+    const name = 'ro-nobackup.md';
+    const target = workspaceUri(name);
+    await writeText(target, DETECT_MARKDOWN);
+    const sidecar = workspaceUri(REVIEWS_DIR, `${name}.json`);
+    const garbage = '{ this is not json';
+    await writeText(sidecar, garbage);
+    await vscode.workspace.fs.createDirectory(workspaceUri(REVIEWS_DIR, `${name}.json.bak`));
+
+    const lines: string[] = [];
+    const store = ReviewStore.for(stubContext().context, target, stubOutput(lines));
+    await store.ensureLoaded();
+    store.addComment(comment({ id: 'ro000001' }));
+    await store.flush();
+
+    assert.equal(await readText(sidecar), garbage, 'the sidecar bytes must be unchanged');
+    assert.equal(store.getState().comments.length, 0);
+    assert.ok(lines.some((line) => line.includes('read-only for this session')));
+  });
+
+  it('refuses edits when the sidecar exists but cannot be read', async () => {
+    const name = 'ro-noread.md';
+    const target = workspaceUri(name);
+    await writeText(target, DETECT_MARKDOWN);
+    const sidecar = workspaceUri(REVIEWS_DIR, `${name}.json`);
+    await vscode.workspace.fs.createDirectory(sidecar);
+
+    const store = ReviewStore.for(stubContext().context, target, stubOutput([]));
+    await store.ensureLoaded();
+    store.addComment(comment({ id: 'ro000002' }));
+    await store.flush();
+
+    assert.equal((await vscode.workspace.fs.stat(sidecar)).type, vscode.FileType.Directory);
+    assert.equal(store.getState().comments.length, 0);
+    await vscode.workspace.fs.delete(sidecar, { recursive: true });
+  });
+
+  it('a parsed sidecar stays writable', async () => {
+    const name = 'ro-valid.md';
+    const target = workspaceUri(name);
+    await writeText(target, DETECT_MARKDOWN);
+    const sidecar = workspaceUri(REVIEWS_DIR, `${name}.json`);
+    const existing = { ...emptyReviewFile(name), comments: [comment({ id: 'ro000000' })] };
+    await writeText(sidecar, serializeReviewFile(existing));
+
+    const store = ReviewStore.for(stubContext().context, target, stubOutput([]));
+    await store.ensureLoaded();
+    store.addComment(comment({ id: 'ro000003' }));
+    assert.equal(await store.flush(), true);
+
+    const parsed = await readSidecar(sidecar);
+    assert.deepEqual(
+      parsed.comments.map((entry) => entry.id),
+      ['ro000000', 'ro000003'],
+    );
+  });
+
+  it('relink onto a read-only destination fails and leaves the source intact', async () => {
+    const { store, target, sidecar } = await storeOn('ro-relink-from.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'ro000004' }));
+    await store.flush();
+
+    const renamed = workspaceUri('ro-relink-to.md');
+    await writeText(renamed, DETECT_MARKDOWN);
+    const destSidecar = workspaceUri(REVIEWS_DIR, 'ro-relink-to.md.json');
+    await writeText(destSidecar, '{ this is not json');
+    await vscode.workspace.fs.createDirectory(workspaceUri(REVIEWS_DIR, 'ro-relink-to.md.json.bak'));
+
+    const result = await ReviewStore.relink(
+      stubContext().context,
+      target,
+      renamed,
+      stubOutput([]),
+    );
+
+    assert.deepEqual(result, { ok: false, reason: 'write-failed' });
+    assert.deepEqual(
+      (await readSidecar(sidecar)).comments.map((entry) => entry.id),
+      ['ro000004'],
+    );
   });
 });

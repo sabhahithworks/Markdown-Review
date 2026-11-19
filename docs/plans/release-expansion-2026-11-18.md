@@ -1280,7 +1280,7 @@ coverage-hash: 0300423e
 | R1 | docs | P1 | README, changelog, runsheet | done | tag | 1 fix round; 4; 3; 2; 1; 0 |
 | F | app | R1 | final checks | done | tag | Tests 698 passed (698); SUMMARY shift=0 review=0 applied_lines=0 base=21985746 code_files=77 nosym=0 |
 | V1 | app | F | notes round-end read retry | done | tag | Tests 698 passed (698) |
-| V2 | app | V1 | read-only store after an unsafe load | todo | - | - |
+| V2 | app | V1 | read-only store after an unsafe load | done | tag | 1 fix round; Tests 703 passed (703) |
 | CI2 | infra | F | recorded green CI run | todo | - | - |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |
