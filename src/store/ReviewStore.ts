@@ -884,7 +884,8 @@ export class ReviewStore {
     const name = path.basename(this.notes.fsPath);
     // The name is a glob pattern here: a target named `spec [draft].md` would read `[draft]` as a
     // character class and never match itself. Each glob character becomes `?`, and the handler
-    // keeps only the exact name.
+    // keeps only this name, folded as `registryKey` folds it: on macOS and Windows the watcher
+    // matches without case and reports the casing on disk, which an older notes file may differ in.
     const watcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(
         vscode.Uri.file(path.dirname(this.notes.fsPath)),
@@ -894,7 +895,7 @@ export class ReviewStore {
     const coalescer = createCoalescer(CHANGE_DEBOUNCE_MS, () => void this.settleNotes());
     this.disposables.push(watcher, coalescer);
     const schedule = (uri: vscode.Uri): void => {
-      if (path.basename(uri.fsPath) === name) coalescer.schedule();
+      if (registryKey(path.basename(uri.fsPath)) === registryKey(name)) coalescer.schedule();
     };
     watcher.onDidChange(schedule, null, this.disposables);
     watcher.onDidCreate(schedule, null, this.disposables);

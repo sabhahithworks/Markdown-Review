@@ -74,6 +74,15 @@ describe('agent notes', () => {
     await waitFor(async () => (await noteOf(store, a)) === chunk, 'the note to attach');
   });
 
+  it('ingests a notes file whose name differs in case on a case-insensitive file system', async () => {
+    const { store, a } = await notesStore('n-case.md');
+    // Only where `N-CASE.MD` and `n-case.md` are one file; on Linux they are two, and nothing attaches.
+    if (!(await exists(workspaceUri('N-CASE.MD')))) return;
+    const chunk = 'Comment 1: written under another casing of the same name.';
+    await writeText(workspaceUri(REVIEWS_DIR, 'N-CASE.md.notes.md'), chunk);
+    await waitFor(async () => (await noteOf(store, a)) === chunk, 'the note to attach');
+  });
+
   it('the unattached notes keep their time when their text is unchanged', async () => {
     const { store } = await notesStore('n-unattached-time.md');
     store.ingestAgentNotes('A general remark.', () => '2026-01-01T00:00:00.000Z');
@@ -83,6 +92,11 @@ describe('agent notes', () => {
     assert.equal(notes?.receivedAt, '2026-01-01T00:00:00.000Z');
     store.ingestAgentNotes('A general remark.\n\nAnother one.', () => '2026-01-03T00:00:00.000Z');
     assert.equal((await stateOf(store)).agentNotes?.receivedAt, '2026-01-03T00:00:00.000Z');
+    // Gone, then back: the words are new to the pane again, so they take the new time.
+    store.ingestAgentNotes('Comment 1: only a comment now.', () => '2026-01-04T00:00:00.000Z');
+    assert.equal((await stateOf(store)).agentNotes?.unattached, '');
+    store.ingestAgentNotes('A general remark.\n\nAnother one.', () => '2026-01-05T00:00:00.000Z');
+    assert.equal((await stateOf(store)).agentNotes?.receivedAt, '2026-01-05T00:00:00.000Z');
   });
 
   it('blank notes file is ignored', async () => {
