@@ -114,6 +114,15 @@ describe('agent notes', () => {
     assert.equal(await noteOf(store, b), 'Comment 2: second');
   });
 
+  it('a chunk naming a deleted comment and a live one shows on the live one only (D33)', async () => {
+    const { store, a, b } = await notesStore('n-deleted-pair.md');
+    store.deleteComment(a);
+    const chunk = '#1 and #2: I kept both sentences as is.';
+    store.ingestAgentNotes(chunk);
+    assert.equal(await noteOf(store, b), chunk);
+    assert.equal((await stateOf(store)).agentNotes?.unattached, '', 'a chunk that attaches is not also unattached');
+  });
+
   it('dismissed note stays dismissed', async () => {
     const { store, a } = await notesStore('n-dismiss.md');
     store.ingestAgentNotes('Comment 1: first');
@@ -277,6 +286,20 @@ describe('agent notes', () => {
     await store.endNotesRound();
     store.ingestAgentNotes('Comment 1: same words');
     assert.equal(await noteOf(store, a), 'Comment 1: same words');
+  });
+
+  it('a notes task that throws is logged and settleNotes and endNotesRound still resolve (N4)', async () => {
+    const { store, lines } = await notesStore('n-throws.md');
+    const internals = store as unknown as { readNotes: () => Promise<unknown> };
+    const original = internals.readNotes;
+    internals.readNotes = () => Promise.reject(new Error('notes boom'));
+    try {
+      await assert.doesNotReject(store.settleNotes());
+      await assert.doesNotReject(store.endNotesRound());
+    } finally {
+      internals.readNotes = original;
+    }
+    assert.equal(lines.filter((line) => line.includes('notes boom')).length, 2, lines.join(' | '));
   });
 
   it('unreadable notes file is logged', async () => {

@@ -859,6 +859,54 @@ describe('read-only after an unsafe load (D-q8)', () => {
     await vscode.workspace.fs.delete(sidecar, { recursive: true });
   });
 
+  it('tells the user once, on opening, when the sidecar exists but cannot be read', async () => {
+    const name = 'ro-noread-warn.md';
+    const target = workspaceUri(name);
+    await writeText(target, DETECT_MARKDOWN);
+    const sidecar = workspaceUri(REVIEWS_DIR, `${name}.json`);
+    await vscode.workspace.fs.createDirectory(sidecar);
+
+    const warnings: string[] = [];
+    const window = vscode.window as unknown as { showWarningMessage: (message: string) => Thenable<unknown> };
+    const original = window.showWarningMessage;
+    window.showWarningMessage = (message: string) => {
+      warnings.push(message);
+      return Promise.resolve(undefined);
+    };
+    try {
+      const store = ReviewStore.for(stubContext().context, target, stubOutput([]));
+      await store.ensureLoaded();
+      assert.equal(warnings.length, 1, 'opening the review must say the comments could not be read');
+      assert.ok(warnings[0]?.includes(`can't save comments for ${name}`), warnings[0]);
+      store.addComment(comment({ id: 'ro000004' }));
+      assert.equal(warnings.length, 1, 'one warning per store');
+    } finally {
+      window.showWarningMessage = original;
+      await vscode.workspace.fs.delete(sidecar, { recursive: true });
+    }
+  });
+
+  it('does not adopt an external rewrite while read-only, so Clear removes nothing', async () => {
+    const name = 'ro-reread.md';
+    const target = workspaceUri(name);
+    await writeText(target, DETECT_MARKDOWN);
+    const sidecar = workspaceUri(REVIEWS_DIR, `${name}.json`);
+    await vscode.workspace.fs.createDirectory(sidecar);
+
+    const store = ReviewStore.for(stubContext().context, target, stubOutput([]));
+    await store.ensureLoaded();
+    // The user fixes the file during the session: the comments come back on disk.
+    await vscode.workspace.fs.delete(sidecar, { recursive: true });
+    const fixed = { ...emptyReviewFile(name), comments: [comment({ id: 'ro000005' })] };
+    await writeText(sidecar, serializeReviewFile(fixed));
+    const internals = store as unknown as { rereadExternal: () => Promise<void> };
+    await internals.rereadExternal();
+
+    assert.equal(store.getState().comments.length, 0, 'a read-only store stays as loaded until a reload');
+    assert.deepEqual(await store.clearAll(), { ok: true, removed: 0 });
+    assert.deepEqual((await readSidecar(sidecar)).comments.map((entry) => entry.id), ['ro000005']);
+  });
+
   it('a parsed sidecar stays writable', async () => {
     const name = 'ro-valid.md';
     const target = workspaceUri(name);

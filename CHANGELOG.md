@@ -206,9 +206,15 @@ it reports itself.
 
 - **A comments file that could not be read or backed up could be overwritten.** When the file in
   `.reviews` exists but cannot be read, or is corrupt and its `.json.bak` backup cannot be written,
-  the review is now read-only for the session: a new comment is refused with one warning that says
-  nothing on disk was changed and that you should fix or move the file and reload the window.
-  Before, the next comment you added was saved over the file you could not read.
+  the review is now read-only for the session: new comments are refused, and one warning says that
+  nothing on disk was changed and that you should fix or move the file and reload the window. For a
+  file that cannot be read, the warning shows as soon as the review opens. Before, the next comment
+  you added was saved over the file you could not read.
+
+- **Documents with `[ ] { } * ? !` in their name were not watched.** For a file such as
+  `spec [draft].md`, a hand edit of its comments file was not picked up while the pane was open (and
+  the next save overwrote it), and an agent writing the document to disk without opening it in an
+  editor triggered no change detection. Both now work as they do for any other name.
 
 - **Reloading the window left the review pane permanently blank.** The tab came back, the contents
   never did, and the only way out was to close the pane and open it again. The extension wakes up

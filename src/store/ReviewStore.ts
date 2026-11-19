@@ -552,6 +552,9 @@ export class ReviewStore {
         await this.settleNotes();
       } else {
         this.readOnlyForSession(`could not be read, agent notes are off until reload — ${String(error)}`);
+        // Said now, not at the first edit: the pane opens empty, and Copy prompt would report no open
+        // comments for a file whose comments exist. A failed backup says so in `quarantine`.
+        this.warnReadOnly();
       }
       return;
     }
@@ -725,19 +728,27 @@ export class ReviewStore {
 
     const comments = this.state.comments.map((c) => ({ ...c }));
     const orphanChunks: string[] = [...split.unattached.filter((chunk) => !dismissed.includes(chunk))];
+    // D33: a chunk is unattached only when none of its numbers names a live comment, so a chunk
+    // citing a deleted comment and a live one shows on the live one alone.
+    const goneChunks: string[] = [];
+    const attachedChunks = new Set<string>();
     for (const [n, all] of split.byNumber) {
       const chunks = all.filter((chunk) => !dismissed.includes(chunk));
       if (chunks.length === 0) continue;
       const target = comments.find((c) => c.id === promptOrder[n - 1]);
       if (!target) {
-        for (const chunk of chunks) if (!orphanChunks.includes(chunk)) orphanChunks.push(chunk);
+        goneChunks.push(...chunks);
         continue;
       }
+      for (const chunk of chunks) attachedChunks.add(chunk);
       const text = joinChunks(chunks);
       target.agentNote = {
         text,
         receivedAt: target.agentNote?.text === text ? target.agentNote.receivedAt : receivedAt,
       };
+    }
+    for (const chunk of goneChunks) {
+      if (!attachedChunks.has(chunk) && !orphanChunks.includes(chunk)) orphanChunks.push(chunk);
     }
 
     const carried = previous?.carried ?? '';
@@ -856,7 +867,9 @@ export class ReviewStore {
     this.notesQueue = run.catch((error: unknown) => {
       this.output.appendLine(`[store] agent notes for ${this.sidecar.fsPath} failed: ${String(error)}`);
     });
-    return run;
+    // The logged tail, not `run`: a failure is the store's to report, and the prompt is still
+    // copied and the baseline taken (N4), and the watcher's `void settleNotes()` rejects nothing.
+    return this.notesQueue;
   }
 
   /** The notes file's text; missing is silent, unreadable is logged with its path. */
@@ -904,6 +917,9 @@ export class ReviewStore {
 
   private async rereadExternal(): Promise<void> {
     if (this.disposed) return;
+    // Read-only for the session (D-q8): adopting a file fixed during the session would show comments
+    // that no edit, clear or re-anchor can then save. The warning asks for a reload instead.
+    if (!this.writable) return;
     // A write of ours is still pending — either sitting in the debounce or already on the wire
     // (H4). Reading now would see pre-write bytes, fail the `lastWritten` echo check, and adopt
     // them over the state we are about to persist. The file on disk is about to be overwritten
