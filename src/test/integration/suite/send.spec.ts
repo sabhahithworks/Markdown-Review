@@ -146,6 +146,31 @@ describe('send review prompt (release-expansion S2)', () => {
     assert.ok(saved.baselineText !== undefined, 'baseline taken');
   });
 
+  it('a prompt file path with a line break falls back to copy without writing', async () => {
+    // A newline is not allowed in a Windows file name, so the case only exists elsewhere.
+    if (process.platform === 'win32') return;
+    const { target, read } = await seed('send-term-nl\nbreak');
+    await vscode.env.clipboard.writeText('sentinel');
+    const writes: string[] = [];
+    const io = recorder(
+      () => Promise.resolve(true),
+      () => Promise.resolve(true),
+      (file) => {
+        writes.push(file.fsPath);
+        return Promise.resolve();
+      },
+    );
+
+    await deliver(target, 'terminal', io);
+
+    assert.deepEqual(writes, []);
+    assert.equal(io.toTerminalCalls, 0);
+    assert.ok((await vscode.env.clipboard.readText()).includes('Why three?'));
+    assert.deepEqual(io.messages, ['Markdown Review could not save the prompt file. The prompt was copied instead.']);
+    const saved = await baselineOf(read);
+    assert.ok(saved.baselineText !== undefined, 'baseline taken');
+  });
+
   it('falls back to copy', async () => {
     const chatMessage = 'VS Code chat is not available here. The prompt was copied instead.';
     const terminalMessage = 'No terminal is open. The prompt was copied instead.';
