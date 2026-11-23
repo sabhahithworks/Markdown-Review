@@ -31,7 +31,7 @@ line of the README.
 
 Do not build these. They are deferred deliberately; adding them will sink the release.
 
-- Comment threads or replies (single comment per anchor only)
+- Comment threads or replies (single comment per anchor only). Agent notes are not threads: one-way, plain text, no reply, never sent back to the agent (release-expansion D42)
 - Multi-user identity, avatars, or attribution beyond a configurable display name
 - Real-time collaboration or any backend service
 - An MCP server (a good v2, explicitly out of scope now)
@@ -77,6 +77,9 @@ media/
 | Bundler | esbuild, two entry points (extension + webview) | VS Code team's recommendation; webview JS must ship separately |
 | Markdown | `markdown-it` | `token.map` gives source line ranges, needed for anchoring |
 | Sanitizer | `dompurify` | Webview renders untrusted file content |
+| GitHub alerts | `markdown-it-github-alerts` | `> [!NOTE]` blocks render as callouts instead of quotes with a literal marker |
+| Footnotes | `markdown-it-footnote` | `[^1]` references render as links to notes at the end of the document |
+| Diagrams | `mermaid` | `mermaid` code blocks render as diagrams; shipped as its own lazily loaded file |
 | Fuzzy match | `diff-match-patch` (`match_main`) | Purpose-built for relocating text after edits |
 | Webview UI | Vanilla TS + CSS. **No framework.** | Bundle size and startup time matter here |
 | Tests | `vitest` for units, `@vscode/test-electron` for integration | |
@@ -124,7 +127,7 @@ interface Comment {
   author: string;              // from config, defaults to os.userInfo().username
   createdAt: string;           // ISO
   status: 'open' | 'addressed' | 'orphaned' | 'resolved';
-  anchor: Anchor;
+  anchor?: Anchor;             // absent on a whole-document comment
   /** Set when status flips to 'addressed'. Shown as before/after in the UI. */
   resolution?: {
     previousText: string;
@@ -146,6 +149,9 @@ interface Anchor {
   hintOffset: number;          // char offset into the normalized plain text at creation
 }
 ```
+
+A comment with no `anchor` is a whole-document comment: it is about the document as a whole, not a
+passage. It is never located, re-anchored or orphaned, and its status changes only by the user's hand.
 
 **Status semantics:**
 
@@ -287,7 +293,14 @@ Do not consider this module done until all of these pass:
 
 - markdown-it with `html: false`, `linkify: true`, `typographer: false`
 - GFM tables, task lists, strikethrough
+- GitHub alerts render as titled callouts; the marker and title are not anchor text
+- Footnotes: reference style, rendered at the end, no back arrow
 - Fenced code with syntax highlighting (`highlight.js`, lazy-load languages)
+- `mermaid` fences render as diagrams, loaded on demand, with a Diagram/Source switch; a reviewer
+  comments by switching to Source and selecting text. An invalid diagram stays in Source view with
+  one line giving Mermaid's message, and a view choice survives a re-render. Selecting text on a
+  rendered diagram shows the hint "Switch to Source to comment on this diagram". The diagram SVG is
+  sanitized with DOMPurify before injection
 - Every block-level token gets `data-line="<start>"` from `token.map`
 - Sanitize the final HTML with DOMPurify before injection
 - Front matter (`---` at file start) rendered as a collapsed metadata block, excluded from anchor
@@ -301,6 +314,7 @@ Do not consider this module done until all of these pass:
 - All local resource URIs via `webview.asWebviewUri()`
 - External links open via `vscode.env.openExternal`, never navigate the webview
 - Never `eval`, never inject unsanitized file content
+- Mermaid ships as a separate file loaded with the page nonce; the CSP allows no connection, which is what enforces no-network for it
 
 ### Theming
 
@@ -356,6 +370,9 @@ If you disagree with a comment or need clarification, tell me instead of guessin
 ```
 
 Rules:
+- **Whole-document comments.** An open comment with no anchor is listed first, ordered by creation
+  time then id, as `N. On the document as a whole:` followed by the body quoted as above. Anchored
+  comments follow in document order, and the numbering runs through both groups.
 - Truncate quoted anchor text over 100 chars with a middle ellipsis
 - When an anchor covers an entire heading block, use the "On the section" phrasing
 - **Repeated quotes (D1).** When the quoted text occurs more than once in the document (exact,
@@ -366,10 +383,22 @@ Rules:
   `On the section "## Examples" (under "# Auth", line 40)`. When the copies share one block the hint
   adds `, occurrence N of M in this paragraph` (`code block` in fenced code). Unique quotes and
   unlocatable comments keep the bare form above.
+- **Agent notes (release-expansion D14, D18, D20, D47).** With `workspace` storage and a target inside
+  a workspace folder, the third header line becomes
+  ``If you disagree with a comment or need clarification, write that in plain words in `.reviews/<sidecar name without .json>.notes.md` instead of guessing, and mention the comment's number.``
+  Otherwise (`global` storage, or a document outside every workspace folder) the sentence above is
+  unchanged (D20). The notes file is free prose; the extension matches a mention of a comment's
+  number to that comment and shows the rest as "Notes from the agent". The path is relative to the
+  same folder as the target path on the prompt's first line. A "round" runs from one prompt to the
+  next: copying the next prompt reads the file once more, deletes it only if what was read has been
+  ingested, and clears the stored raw text and the dismissed record. A note stays until the user
+  dismisses it or the agent writes a newer note for the same comment; dismissed chunks stay
+  filtered within the round; unattached notes carry into the next round.
 - Include the workspace-relative path so the user's `@`-mention is unambiguous
 - Copy to clipboard via `vscode.env.clipboard.writeText`, then show an info message:
   *"3 comments copied. Paste into your agent and @-mention docs/auth.md."*
 - **Snapshot `baselineText` at this moment** — this is what change detection diffs against
+- **Sending:** `Send Review Prompt to Chat` opens VS Code chat with the prompt prefilled (`workbench.action.chat.open`, `isPartialQuery: true`); `Send Review Prompt to Terminal` focuses the active terminal and pastes the clipboard with `workbench.action.terminal.paste`. Nothing is submitted; the user presses Enter. The prompt is always on the clipboard first. Text is never typed into a terminal. If the target is unavailable the prompt stays copied, a message says so, and the baseline is still snapshotted.
 
 ---
 
@@ -420,6 +449,8 @@ Rules:
     "commands": [
       { "command": "markdownReview.open", "title": "Markdown Review: Open Review Pane", "icon": "$(comment-discussion)" },
       { "command": "markdownReview.copyPrompt", "title": "Markdown Review: Copy Review Prompt" },
+      { "command": "markdownReview.sendPromptToChat", "title": "Markdown Review: Send Review Prompt to Chat" },
+      { "command": "markdownReview.sendPromptToTerminal", "title": "Markdown Review: Send Review Prompt to Terminal" },
       { "command": "markdownReview.clearAddressed", "title": "Markdown Review: Clear Addressed Comments" },
       { "command": "markdownReview.clearAll", "title": "Markdown Review: Clear All Comments" }
     ],
@@ -489,7 +520,7 @@ status inference, before/after display.
 `addressed`; a full document rewrite produces orphaned comments and no crash.
 
 **Phase 5 — Ship.** Icon, README with an animated GIF of the loop, CHANGELOG, LICENSE,
-`.vscodeignore`, `npx @vscode/vsce package` under 500 KB.
+`.vscodeignore`, `npx @vscode/vsce package` under 2 MB.
 
 ---
 

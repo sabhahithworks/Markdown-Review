@@ -93,6 +93,37 @@ just produces a verified archive of an unverified product.
       `No changes since prompt`. On a document too large to mark inline the button still opens the
       diff and its tooltip says why there are no marks.
 
+- [ ] **A1, Mermaid diagram.** A document with a `mermaid` block shows a diagram with a
+      Diagram/Source switch, readable in Dark+, Light+ and high contrast.
+- [ ] **A1, invalid diagram.** A broken `mermaid` block stays in Source view with Mermaid's message.
+- [ ] **A1, comment on a diagram.** Select text in the Source view and comment; the card places
+      beside the diagram, clicking the card reveals the source, and selecting text in the drawn
+      diagram shows the hint to switch to Source.
+- [ ] **A2, alerts and footnotes.** Each alert kind renders as a callout, one with its own title
+      keeps it, and `[^1]` links to the note and back.
+- [ ] **A2, reading position.** Scroll to the footnotes, let an agent edit the document, and confirm
+      the pane stays at the same place.
+- [ ] **S, send to chat.** *Send to* chat in VS Code puts the prompt in the chat input and submits
+      nothing.
+- [ ] **S, terminal with Claude Code and with Codex.** *Send to* terminal in a terminal running
+      Claude Code, then in one running Codex: one line is pasted, nothing is submitted, and after
+      Enter the agent reads the prompt file and edits the document.
+- [ ] **S, plain shell prompt (U8).** *Send to* terminal at a plain shell prompt: the line is pasted
+      and nothing runs until Enter. If prompt lines run, this box is red.
+- [ ] **S, terminal on Windows.** *Send to* terminal in Claude Code on Windows: one line is pasted,
+      nothing is submitted, and after Enter the agent follows the prompt file.
+- [ ] **S, fallback in Cursor.** In Cursor, where the chat command may be missing, the prompt is
+      copied instead and a message says so.
+- [ ] **W, whole-document comment.** Add one with **Comment on document**, copy the prompt, let an
+      agent edit, and take it through addressed and **Looks good**.
+- [ ] **N, agent notes, blind run (D6).** With `storageLocation` = `workspace`, paste a prompt that
+      has a pushback-worthy comment at each of Claude Code, Copilot Chat, Cursor and Codex in turn.
+      Record per agent whether it wrote the notes file and whether the note landed on the card. An
+      agent that ignores the file is recorded, not failed; one that breaks the document because of
+      the notes sentence is red.
+- [ ] **N, Dismiss.** Dismiss a note; edit again so the agent adds another note, and the dismissed
+      one stays dismissed.
+
 ---
 
 ## Part B — the packaged build
@@ -103,7 +134,8 @@ The C1–C5 records below are from the 2026-08 D24 archive. They are history, no
 rebuilt 0.1.0 archive (two `activationEvents`, change marks, indicators): re-run each check on
 that archive and tick its box here.
 
-- [ ] **C1 re-run** on the rebuilt 0.1.0 archive.
+- [ ] **C1 re-run** on the rebuilt 0.1.0 archive; the package budget is now 2 MB (it was 500 KB
+      before Mermaid shipped in the archive), so record the size against 2 MB.
 - [ ] **C2 re-run** on the rebuilt 0.1.0 archive.
 - [ ] **C3 re-run** on the rebuilt 0.1.0 archive; the manifest has exactly two `activationEvents`
       entries (`onWebviewPanel:markdownReview.panel`, `workspaceContains:.reviews/*.json`).
@@ -309,8 +341,9 @@ Recorded here so publish day is a checklist rather than a research session (Plan
       name lives on the Marketplace publisher account, so a locally installed `.vsix` can only show
       `SabhahithWorks` and C1 could never have checked this.
 - [ ] Clean machine or profile: install from the Marketplace and run the loop once.
-- [ ] `v0.1.0` tagged; issues opened for D22, E7, and B3c — the rewrite banner's **Dismiss** button,
-      which step 5's skip leaves with no coverage of any kind.
+- [ ] `v0.1.0` tagged; an issue opened for E7 only if the Windows CI job is not green. D22 and B3c
+      have test coverage and need no issue.
+- [ ] Enable private vulnerability reporting on the repository (Settings, Code security).
 
 ---
 

@@ -93,15 +93,20 @@ describe('copy review prompt (PRD §7)', () => {
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   });
 
-  it('puts the PRD §7 prompt on the clipboard and snapshots the baseline', async () => {
+  it('puts the PRD §7 prompt with the notes sentence on the clipboard and snapshots the baseline', async () => {
     const { target, sidecar, read } = await seedReview('auth');
+    const oldSentence = 'If you disagree with a comment or need clarification, tell me instead of guessing.\n';
+    const newSentence =
+      "If you disagree with a comment or need clarification, write that in plain words in `.reviews/docs__auth.md.notes.md` instead of guessing, and mention the comment's number.\n";
+    const expected = AUTH_EXPECTED_PROMPT.replace(oldSentence, newSentence);
+    assert.notEqual(expected, AUTH_EXPECTED_PROMPT, 'the notes sentence replace must match');
     await vscode.env.clipboard.writeText('sentinel — must be overwritten');
 
     await vscode.commands.executeCommand('markdownReview.copyPrompt', target);
 
     await waitFor(
-      async () => (await vscode.env.clipboard.readText()) === AUTH_EXPECTED_PROMPT,
-      'the clipboard to hold the PRD §7 prompt',
+      async () => (await vscode.env.clipboard.readText()) === expected,
+      'the clipboard to hold the PRD §7 prompt with the notes sentence',
     );
 
     // The sidecar write is debounced behind the clipboard write, so the baseline lands second.
@@ -182,8 +187,16 @@ describe('change detection (PRD §8)', () => {
     const { target, read } = await seedReview('detect-disk');
     await vscode.commands.executeCommand('markdownReview.open', target);
 
-    // No editor is open on this file, so only the FileSystemWatcher can see this — which is the
-    // whole reason PRD §8 requires a second source.
+    // A first edit, seen by whichever pass comes first: written straight after the open, it is
+    // picked up by the pane's first render, so on its own it would pass with the watcher broken.
+    await writeText(target, AUTH_MARKDOWN.replace('up to three times', 'up to five times'));
+    await waitFor(
+      async () => (await statuses(read))['detect-disk-1'] === 'addressed',
+      'the first render to have run',
+    );
+
+    // The pane has rendered, and no editor is open on this file, so only the FileSystemWatcher can
+    // see this second edit — which is the whole reason PRD §8 requires a second source.
     await writeText(target, AGENT_EDITED);
 
     await waitFor(async () => {
@@ -204,10 +217,35 @@ describe('change detection (PRD §8)', () => {
       'the before/after must carry what the agent actually wrote',
     );
     assert.equal(
-      addressed?.anchor.exact,
+      addressed?.anchor?.exact,
       AUTH_ANCHORS.retries,
       'anchor.exact is the durable record and must survive the flip',
     );
+  });
+
+  it('detects a direct write to disk for a target whose name holds glob characters', async () => {
+    const { target, read } = await seedReview('detect [draft]');
+    await vscode.commands.executeCommand('markdownReview.open', target);
+    // A first edit, seen by whichever pass comes first: written straight after the open, it is
+    // picked up by the pane's first render, so on its own it would pass with the watcher broken.
+    await writeText(target, AUTH_MARKDOWN.replace('up to three times', 'up to five times'));
+    await waitFor(
+      async () => (await statuses(read))['detect [draft]-1'] === 'addressed',
+      'the first render to have run',
+    );
+
+    // The pane has rendered, and no editor is open on this file, so only the FileSystemWatcher can
+    // see this second edit — which is what this test is about.
+    await writeText(target, AGENT_EDITED);
+
+    await waitFor(async () => {
+      const byId = await statuses(read);
+      return (
+        byId['detect [draft]-1'] === 'addressed' &&
+        byId['detect [draft]-2'] === 'orphaned' &&
+        byId['detect [draft]-3'] === 'open'
+      );
+    }, 'the agent edit to be detected for a glob-character name');
   });
 
   it('leaves a heading comment open when only its section body changed (D17)', async () => {

@@ -35,7 +35,7 @@
 import type MarkdownIt from 'markdown-it';
 import { splitFrontMatter } from './frontMatter.js';
 import { createMarkdownIt } from './markdownIt.js';
-import { walkSpans } from './plaintext.js';
+import { footnoteCaption, walkSpans } from './plaintext.js';
 
 /**
  * Maps a markdown image `src` to a webview-safe URI, or returns `null` to leave the original
@@ -90,6 +90,15 @@ function readEnv(env: MarkdownIt.Env | undefined): RenderEnv {
   return isRenderEnv(slot) ? slot : FALLBACK_ENV;
 }
 
+/** Default titles for the five GitHub alert types; also the set of types a callout may be styled as. */
+const ALERT_TITLES: Record<string, string> = {
+  note: 'Note',
+  tip: 'Tip',
+  important: 'Important',
+  warning: 'Warning',
+  caution: 'Caution',
+};
+
 /**
  * Builds a configured instance. Exported only as a test seam (R6 compares this instance's token
  * stream against a bare `createMarkdownIt()`); production uses the module singleton below.
@@ -100,10 +109,14 @@ export function createRenderMarkdownIt(): MarkdownIt.MarkdownIt {
 
   md.core.ruler.push('markdown_review_data_line', (state: MarkdownIt.StateCore): void => {
     const env = readEnv(state.env);
+    let inFootnotes = false;
 
     for (let i = 0; i < state.tokens.length; i++) {
       const token = state.tokens[i];
-      if (!token?.map) continue;
+      if (!token) continue;
+      if (token.type === 'footnote_block_open') inFootnotes = true;
+      else if (token.type === 'footnote_block_close') inFootnotes = false;
+      if (!token.map) continue;
       // Closing tokens carry no attributes of their own; `inline` tokens are unwrapped by
       // `renderInline`, so an attribute there would never reach the DOM.
       if (token.nesting === -1 || token.type === 'inline') continue;
@@ -113,7 +126,9 @@ export function createRenderMarkdownIt(): MarkdownIt.MarkdownIt {
       // every fenced block in the document. Indented `code_block` needs no adjustment: plaintext
       // anchors it at `map[0]`, on the token's own first line.
       const line = (token.type === 'fence' ? token.map[0] + 1 : token.map[0]) + env.lineOffset;
-      token.attrSet('data-line', String(line));
+      // Footnote blocks sit last in the document but their source lines are earlier; a `data-line`
+      // there would make the webview's scroll restore and line lookups stop at the wrong place.
+      if (!inFootnotes) token.attrSet('data-line', String(line));
 
       if (token.type === 'heading_open') {
         // markdown-it emits no heading ids, so in-document `#fragment` links would have nothing to
@@ -133,6 +148,12 @@ export function createRenderMarkdownIt(): MarkdownIt.MarkdownIt {
    * `<pre><code class="language-x">`. Highlighting itself happens webview-side, so the host stays
    * free of DOM-shaped concerns.
    */
+  md.renderer.rules.footnote_caption = (tokens, idx): string => {
+    const token = tokens[idx];
+    return token ? footnoteCaption(token) : '';
+  };
+  md.renderer.rules.footnote_anchor = (): string => '';
+
   md.renderer.rules.fence = (tokens, idx): string => {
     const token = tokens[idx];
     if (!token) return '';
@@ -155,6 +176,31 @@ export function createRenderMarkdownIt(): MarkdownIt.MarkdownIt {
 
     return `<pre${attrs}><code${classAttr}>${escapeHtml(token.content)}</code></pre>\n`;
   };
+
+  /**
+   * `alert_open` is hand-built so the plugin's icon markup never reaches the page. The title
+   * paragraph is not a token, so it carries no anchor offsets and `data-no-anchor` marks it for
+   * the webview's selection code.
+   */
+  md.renderer.rules.alert_open = (tokens, idx): string => {
+    const token = tokens[idx];
+    if (!token) return '';
+
+    const meta = (token.meta ?? {}) as { type?: unknown; title?: unknown };
+    const rawType = typeof meta.type === 'string' ? meta.type.toLowerCase() : '';
+    const type = Object.hasOwn(ALERT_TITLES, rawType) ? rawType : 'note';
+    const rawTitle = typeof meta.title === 'string' ? meta.title.trim() : '';
+    const title = rawTitle !== '' ? rawTitle : (ALERT_TITLES[type] ?? 'Note');
+
+    const line = token.attrGet('data-line');
+    const lineAttr = line === null ? '' : ` data-line="${escapeHtml(String(line))}"`;
+
+    return (
+      `<div class="mr-alert mr-alert-${type}"${lineAttr}>` +
+      `<p class="mr-alert-title" data-no-anchor="title">${escapeHtml(title)}</p>`
+    );
+  };
+  md.renderer.rules.alert_close = (): string => '</div>\n';
 
   const baseImage = md.renderer.rules.image;
   md.renderer.rules.image = (tokens, idx, options, env, self): string => {

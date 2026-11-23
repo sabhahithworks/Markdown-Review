@@ -17,6 +17,9 @@ import {
   noOpenCommentsMessage,
   nothingToClearMessage,
   promptCopiedMessage,
+  promptFileFailedMessage,
+  promptSentMessage,
+  sendFallbackMessage,
   badgeText,
   badgeTooltip,
   statusBarText,
@@ -61,6 +64,25 @@ describe('promptCopiedMessage', () => {
 
   it('keeps the @-mention instruction, which is what makes the path actionable', () => {
     expect(promptCopiedMessage(2, 'docs/specs/auth.md')).toContain('@-mention docs/specs/auth.md');
+  });
+});
+
+describe('promptSentMessage', () => {
+  it('words chat and terminal, singular and plural', () => {
+    expect(promptSentMessage(3, 'chat')).toBe('3 comments placed in VS Code chat. Press Enter to send.');
+    expect(promptSentMessage(1, 'chat')).toBe('1 comment placed in VS Code chat. Press Enter to send.');
+    expect(promptSentMessage(1, 'terminal')).toBe(
+      '1 comment pasted into the terminal. Press Enter to send.',
+    );
+  });
+});
+
+describe('sendFallbackMessage', () => {
+  it('says the prompt was copied instead', () => {
+    expect(sendFallbackMessage('terminal')).toBe('No terminal is open. The prompt was copied instead.');
+    expect(sendFallbackMessage('chat')).toBe(
+      'VS Code chat is not available here. The prompt was copied instead.',
+    );
   });
 });
 
@@ -141,6 +163,14 @@ describe('indicator wording', () => {
   it('status bar tooltip ends with the re-check line', () => {
     expect(statusBarTooltip(counts(1, 0, 0))).toBe(
       '1 open · 0 to confirm · 0 needs re-link\nOpen the review to check for changes.',
+    );
+  });
+});
+
+describe('promptFileFailedMessage', () => {
+  it('matches the specified wording', () => {
+    expect(promptFileFailedMessage()).toBe(
+      'Markdown Review could not save the prompt file. The prompt was copied instead.',
     );
   });
 });

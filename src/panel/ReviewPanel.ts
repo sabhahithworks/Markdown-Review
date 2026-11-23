@@ -277,6 +277,9 @@ export class ReviewPanel {
           case 'addComment':
             void this.addComment(raw.selectedText, raw.offset, raw.hintLine, raw.body);
             break;
+          case 'addDocumentComment':
+            void this.addDocumentComment(raw.body);
+            break;
           case 'editComment':
             this.store.updateCommentBody(raw.id, raw.body.trim());
             break;
@@ -301,6 +304,15 @@ export class ReviewPanel {
             break;
           case 'reanchorComment':
             this.reanchor(raw.id, raw.selectedText, raw.offset, raw.hintLine);
+            break;
+          case 'dismissAgentNote':
+            this.store.dismissAgentNote(raw.id);
+            break;
+          case 'sendPrompt':
+            void vscode.commands.executeCommand(
+              raw.target === 'chat' ? 'markdownReview.sendPromptToChat' : 'markdownReview.sendPromptToTerminal',
+              this.target,
+            );
             break;
           case 'copyPrompt':
             void vscode.commands.executeCommand('markdownReview.copyPrompt', this.target);
@@ -467,7 +479,10 @@ export class ReviewPanel {
         this.locatorMemo = { doc: this.doc, locate: createLocator(this.doc) };
       }
       const locate = this.locatorMemo.locate;
-      for (const comment of review.comments) located[comment.id] = locate(comment.anchor);
+      for (const comment of review.comments) {
+        if (comment.anchor === undefined) continue;
+        located[comment.id] = locate(comment.anchor);
+      }
     } else {
       // Nothing rendered yet; the cards still render, without highlights.
       for (const comment of review.comments) located[comment.id] = null;
@@ -546,6 +561,7 @@ export class ReviewPanel {
       // loss. The same weaker signal applies: not a status, just "the text around where this
       // lived changed since you asked".
       if (comment.status !== 'open' && comment.status !== 'orphaned') continue;
+      if (comment.anchor === undefined) continue;
 
       const found = located[comment.id];
       // An orphan has no current position — that is what orphaned means — but its hint was
@@ -621,6 +637,23 @@ export class ReviewPanel {
       anchor: result.anchor,
     };
     this.store.addComment(comment);
+  }
+
+  /** Stores a comment with no anchor: it belongs to the document, not to a passage. */
+  private async addDocumentComment(body: string): Promise<void> {
+    const text = body.trim();
+    if (text.length === 0) return;
+
+    await this.store.ensureLoaded();
+    if (this.disposed) return;
+
+    this.store.addComment({
+      id: nanoid(8),
+      body: text,
+      author: authorName(this.target),
+      createdAt: new Date().toISOString(),
+      status: 'open',
+    });
   }
 
   /**
@@ -793,6 +826,7 @@ export class ReviewPanel {
   <!-- Orphans live outside the gutter: they have no anchor to align to, so they cannot be
        positioned like a card, and PRD §6 asks for them in a section of their own. -->
   <section id="orphans" hidden aria-label="Comments that lost their anchor"></section>
+  <section id="agent-notes" hidden aria-label="Notes from the agent"></section>
   <!-- First run shows a rendered document and no UI whatsoever: the header hides itself at zero
        counts, and nothing says selecting text does anything (H20). Dismissable, and it never comes
        back once the pane has a comment on it. -->

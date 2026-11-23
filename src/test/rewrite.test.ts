@@ -40,6 +40,14 @@ describe('detectRewrite', () => {
     expect(detectRewrite(before, after)).toEqual({ rewritten: true, orphaned: 2 });
   });
 
+  it('does not fire again once every comment is already orphaned', () => {
+    const first = review({ a: 'open', b: 'open' });
+    const after = review({ a: 'orphaned', b: 'orphaned' });
+
+    expect(detectRewrite(first, after)).toEqual({ rewritten: true, orphaned: 2 });
+    expect(detectRewrite(after, after)).toEqual({ rewritten: false, orphaned: 0 });
+  });
+
   it('counts an addressed comment as a candidate — it was located too', () => {
     const before = review({ a: 'open', b: 'addressed', c: 'open' });
     const after = review({ a: 'orphaned', b: 'orphaned', c: 'orphaned' });
@@ -120,5 +128,23 @@ describe('detectRewrite', () => {
     const after = review({ a: 'orphaned' });
 
     expect(detectRewrite(before, after).rewritten).toBe(false);
+  });
+});
+
+describe('detectRewrite — whole-document comments', () => {
+  it('rewrite detection ignores document comments', () => {
+    const documentComment: Comment = {
+      id: 'd',
+      body: 'about the whole document',
+      author: 'tester',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      status: 'open',
+    };
+    const before = review({ a: 'open', b: 'open' });
+    before.comments.push(documentComment);
+    const after = review({ a: 'orphaned', b: 'orphaned' });
+    after.comments.push(documentComment);
+
+    expect(detectRewrite(before, after)).toEqual({ rewritten: true, orphaned: 2 });
   });
 });

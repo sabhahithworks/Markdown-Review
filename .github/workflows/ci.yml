@@ -1,0 +1,63 @@
+# Continuous integration: the full check on Linux, and the unit and integration suites on Windows.
+#
+# The "no network calls, ever" rule binds the shipped extension (src/** and media/src/**), not this
+# workflow. CI downloads npm packages and a VS Code build for the integration suite; none of that
+# reaches the packaged extension, so running it on GitHub's runners is allowed.
+#
+# PERF is off for every job: the 5 MB reanchor timing suite measures wall-clock time, which is not
+# meaningful on a shared runner. It stays a local gate (`npm test` with PERF unset).
+#
+# This workflow never packages for or publishes to any marketplace, and it holds no token.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  PERF: '0'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the node20 target in esbuild.mjs.
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      # The extension host needs a display; xvfb-run provides a virtual one.
+      - run: xvfb-run -a npm run test:integration
+
+  windows:
+    name: Unit and integration (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      # The runner's git defaults to core.autocrlf=true, which would check the fixtures out with
+      # CRLF and shift every offset the tests assert on. Keep the bytes identical to Linux.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:integration

@@ -224,6 +224,16 @@ export function renderPlainText(markdown: string): PlainTextDoc {
 }
 
 /**
+ * The visible label of a `footnote_ref` token: `[1]`, or `[1:1]` for the second reference to the
+ * same note. Shared by anchor space and the HTML renderer so the two cannot disagree.
+ */
+export function footnoteCaption(token: MarkdownIt.Token): string {
+  const meta = token.meta as { id: number; subId?: number };
+  const subId = meta.subId ?? 0;
+  return subId > 0 ? `[${meta.id + 1}:${subId}]` : `[${meta.id + 1}]`;
+}
+
+/**
  * Concatenates the rendered text of an inline token's children.
  *
  * Links need no special case: markdown-it puts the label's `text` tokens in the same flat children
@@ -245,6 +255,9 @@ function inlineText(children: readonly MarkdownIt.Token[]): string {
         break;
       case 'image':
         out += child.children ? inlineText(child.children) : child.content;
+        break;
+      case 'footnote_ref':
+        out += footnoteCaption(child);
         break;
       case 'html_inline':
       case 'html_block':

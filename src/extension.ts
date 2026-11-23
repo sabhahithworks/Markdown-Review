@@ -23,7 +23,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { clearAddressed, clearAll } from './commands/clearComments.js';
-import { copyPrompt } from './commands/copyPrompt.js';
+import { copyPrompt, deliverPrompt } from './commands/copyPrompt.js';
 import { resolveTarget } from './commands/resolveTarget.js';
 import { registerBaselineProvider } from './detect/baselineDocuments.js';
 import { ReviewPanel } from './panel/ReviewPanel.js';
@@ -56,6 +56,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('markdownReview.copyPrompt', (arg?: unknown) => {
       void copyPrompt(context, output, arg);
+    }),
+
+    vscode.commands.registerCommand('markdownReview.sendPromptToChat', (arg?: unknown) => {
+      void deliverPrompt(context, output, arg, 'chat');
+    }),
+
+    vscode.commands.registerCommand('markdownReview.sendPromptToTerminal', (arg?: unknown) => {
+      void deliverPrompt(context, output, arg, 'terminal');
     }),
 
     vscode.commands.registerCommand('markdownReview.clearAddressed', (arg?: unknown) => {

@@ -5,8 +5,9 @@
  * into `stackTops` — a pure function over numbers. That is the reason it is exported.
  */
 
-import { describe, expect, it } from 'vitest';
-import { relativeTime, sectionNote, stackTops } from '../src/comments.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resetBlockMaps } from '../src/anchorSpace.js';
+import { initComments, relativeTime, sectionNote, stackTops } from '../src/comments.js';
 
 /**
  * The wording of the D17 note, pinned as a *requirement* rather than as copy (§10 D19).
@@ -78,5 +79,86 @@ describe('relativeTime', () => {
   it('falls back to the raw value for an unparseable timestamp', () => {
     // The sidecar is hand-editable, so this is reachable input, not a hypothetical.
     expect(relativeTime('not a date', now)).toBe('not a date');
+  });
+});
+
+
+describe('fallback placement and reveal', () => {
+  afterEach(() => {
+    resetBlockMaps();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    document.body.className = '';
+  });
+
+  function mount(extra: { fallbackRect?: () => DOMRect | undefined; onReveal?: () => boolean }) {
+    document.body.innerHTML =
+      '<div id="root"><pre data-ap-start="0" data-ap-end="9"><code>graph TD A</code></pre></div>' +
+      '<div id="gutter"></div><div id="overlay"></div><div id="markers"></div>';
+    resetBlockMaps();
+    const el = (id: string): HTMLElement => document.getElementById(id) as HTMLElement;
+    Object.defineProperty(el('root'), 'clientWidth', { value: 800, configurable: true });
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe(): void {}
+        disconnect(): void {}
+        unobserve(): void {}
+      },
+    );
+    Range.prototype.getClientRects = (() => []) as unknown as Range['getClientRects'];
+    const view = initComments({
+      root: el('root'),
+      gutter: el('gutter'),
+      overlay: el('overlay'),
+      markerLayer: el('markers'),
+      onEdit: () => undefined,
+      onDelete: () => undefined,
+      onResolve: () => undefined,
+      onReopen: () => undefined,
+      onDismissNote: () => undefined,
+      announce: () => undefined,
+      ...extra,
+    });
+    view.setState(
+      {
+        version: 1,
+        targetPath: 'a.md',
+        comments: [
+          {
+            id: 'c1',
+            body: 'note',
+            author: 'me',
+            createdAt: '2026-01-01T00:00:00Z',
+            status: 'open',
+            anchor: { exact: 'graph', prefix: '', suffix: '', hintLine: 0, hintOffset: 0 },
+          },
+        ],
+      },
+      { c1: { start: 0, end: 5, confidence: 1 } },
+      [],
+    );
+    return { gutter: el('gutter'), overlay: el('overlay') };
+  }
+
+  it('card is placed from the fallback rect', () => {
+    const { gutter, overlay } = mount({ fallbackRect: () => new DOMRect(0, 123, 10, 10) });
+    const card = gutter.querySelector<HTMLElement>('.mr-card');
+    expect(card?.style.top).toBe('123px');
+    expect(overlay.querySelector('.mr-highlight')).toBeNull();
+  });
+
+  it('card is not placed without a fallback rect', () => {
+    const { gutter } = mount({ fallbackRect: () => undefined });
+    expect(gutter.querySelector<HTMLElement>('.mr-card')?.style.top).toBe('');
+  });
+
+  it('a card click reveals a hidden source in a wide pane', () => {
+    const onReveal = vi.fn(() => false);
+    const { gutter } = mount({ onReveal });
+    gutter.querySelector<HTMLElement>('.mr-card')?.click();
+    expect(onReveal).toHaveBeenCalledTimes(1);
+    const range = (onReveal.mock.calls[0] as unknown as [Range])[0];
+    expect(range.toString()).toBe('graph');
   });
 });

@@ -12,6 +12,7 @@
     "url": "https://github.com/sabhahithworks/Markdown-Review"
   },
   "categories": [
+    "AI",
     "Other"
   ],
   "keywords": [
@@ -19,7 +20,16 @@
     "review",
     "comments",
     "ai",
-    "agent"
+    "agent",
+    "annotations",
+    "feedback",
+    "mermaid",
+    "spec",
+    "prd",
+    "copilot",
+    "claude",
+    "cursor",
+    "codex"
   ],
   "engines": {
     "vscode": "^1.90.0",
@@ -50,6 +60,14 @@
       {
         "command": "markdownReview.copyPrompt",
         "title": "Markdown Review: Copy Review Prompt"
+      },
+      {
+        "command": "markdownReview.sendPromptToChat",
+        "title": "Markdown Review: Send Review Prompt to Chat"
+      },
+      {
+        "command": "markdownReview.sendPromptToTerminal",
+        "title": "Markdown Review: Send Review Prompt to Terminal"
       },
       {
         "command": "markdownReview.clearAddressed",
@@ -132,7 +150,7 @@
             "global"
           ],
           "default": "workspace",
-          "markdownDescription": "`workspace` writes to `.reviews/` (shareable via git). `global` keeps comments private to your machine."
+          "markdownDescription": "`workspace` writes to `.reviews/` (shareable via git). `global` keeps comments private to your machine. Agent notes need `workspace` storage."
         },
         "markdownReview.autoDetectResolution": {
           "type": "boolean",
@@ -147,7 +165,7 @@
     "package": "npx --yes @vscode/vsce package",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "node esbuild.mjs --integration && node dist-test/run.js",
+    "test:integration": "node esbuild.mjs && node esbuild.mjs --integration && node dist-test/run.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit && tsc -p tsconfig.webview-test.json --noEmit",
     "lint": "eslint .",
     "lint:css": "node scripts/check-css-colors.mjs && node scripts/check-theme-vars.mjs",
@@ -161,7 +179,10 @@
     "dompurify": "^3.4.13",
     "highlight.js": "^11.11.1",
     "markdown-it": "^15.0.0",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-github-alerts": "^1.0.1",
     "markdown-it-task-lists": "^2.1.1",
+    "mermaid": "^12.3.0",
     "nanoid": "^3.3.17"
   },
   "devDependencies": {

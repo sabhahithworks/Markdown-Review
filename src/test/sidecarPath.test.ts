@@ -10,6 +10,9 @@ import { describe, expect, it } from 'vitest';
 import {
   REVIEWS_DIR,
   backupFileName,
+  notesFileName,
+  notesPromptPath,
+  promptFileName,
   globalSidecarFileName,
   sidecarFileName,
   toTargetPath,
@@ -155,5 +158,35 @@ describe('Windows path shapes (Plan 05 §9)', () => {
 describe('REVIEWS_DIR', () => {
   it('is the PRD §4 directory', () => {
     expect(REVIEWS_DIR).toBe('.reviews');
+  });
+});
+
+describe('prompt file names', () => {
+  it('promptFileName replaces the json suffix', () => {
+    expect(promptFileName('docs__specs__auth.md.json')).toBe('docs__specs__auth.md.prompt.md');
+  });
+
+  it('promptFileName appends without a json suffix', () => {
+    expect(promptFileName('a.md')).toBe('a.md.prompt.md');
+  });
+
+  it('promptFileName keeps a global hashed name', () => {
+    expect(promptFileName('0123456789abcdef.json')).toBe('0123456789abcdef.prompt.md');
+  });
+});
+
+describe('notes file names', () => {
+  it('notesFileName replaces the json suffix', () => {
+    expect(notesFileName('docs__specs__auth.md.json')).toBe('docs__specs__auth.md.notes.md');
+  });
+
+  it('appends .notes.md when there is no json suffix', () => {
+    expect(notesFileName('abc')).toBe('abc.notes.md');
+  });
+
+  it('uses forward slashes on Windows', () => {
+    expect(notesPromptPath(sidecarFileName('docs\\specs\\auth.md'))).toBe(
+      '.reviews/docs__specs__auth.md.notes.md',
+    );
   });
 });

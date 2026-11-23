@@ -18,12 +18,15 @@ describe('isWebviewMessage', () => {
     { type: 'addComment', selectedText: 'hello', offset: 12, hintLine: 3, body: 'fix this' },
     // `-1` is the documented "webview could not map the selection" sentinel (Plan 03 §2).
     { type: 'addComment', selectedText: 'hello', offset: -1, hintLine: 3, body: '' },
+    { type: 'addDocumentComment', body: 'overall, tighten this' },
     { type: 'editComment', id: 'abc12345', body: 'reworded' },
     { type: 'deleteComment', id: 'abc12345' },
     { type: 'resolveComment', id: 'abc12345' },
     { type: 'showRewriteDiff' },
     { type: 'relinkTarget' },
     { type: 'copyPrompt' },
+    { type: 'dismissAgentNote' },
+    { type: 'dismissAgentNote', id: 'abc12345' },
     { type: 'clearAddressed' },
     { type: 'reopenComment', id: 'abc12345' },
     { type: 'reanchorComment', id: 'abc12345', selectedText: 'new text', offset: 42, hintLine: 7 },
@@ -95,14 +98,37 @@ describe('isWebviewMessage', () => {
       'addComment with a non-string selectedText',
       { type: 'addComment', selectedText: null, offset: 1, hintLine: 1, body: 'b' },
     ],
+    ['addDocumentComment with a non-string body', { type: 'addDocumentComment', body: 7 }],
+    ['addDocumentComment without a body', { type: 'addDocumentComment' }],
     ['editComment without a body', { type: 'editComment', id: 'a' }],
     ['editComment with a numeric id', { type: 'editComment', id: 7, body: 'b' }],
+    ['dismissAgentNote with a numeric id', { type: 'dismissAgentNote', id: 7 }],
     ['deleteComment without an id', { type: 'deleteComment' }],
     ['resolveComment with a null id', { type: 'resolveComment', id: null }],
   ];
 
   it.each(invalid)('rejects %s', (_label, value) => {
     expect(isWebviewMessage(value)).toBe(false);
+  });
+
+  it('accepts sendPrompt for chat and terminal', () => {
+    expect(isWebviewMessage({ type: 'sendPrompt', target: 'chat' })).toBe(true);
+    expect(isWebviewMessage({ type: 'sendPrompt', target: 'terminal' })).toBe(true);
+  });
+
+  it('rejects an unknown target', () => {
+    expect(isWebviewMessage({ type: 'sendPrompt', target: 'email' })).toBe(false);
+    expect(isWebviewMessage({ type: 'sendPrompt' })).toBe(false);
+  });
+
+  it('accepts dismissAgentNote with and without an id', () => {
+    expect(isWebviewMessage({ type: 'dismissAgentNote' })).toBe(true);
+    expect(isWebviewMessage({ type: 'dismissAgentNote', id: 'abc12345' })).toBe(true);
+  });
+
+  it('rejects a non-string id', () => {
+    expect(isWebviewMessage({ type: 'dismissAgentNote', id: 7 })).toBe(false);
+    expect(isWebviewMessage({ type: 'dismissAgentNote', id: null })).toBe(false);
   });
 
   it('narrows to the member type', () => {
@@ -134,6 +160,27 @@ describe('toReviewSummary', () => {
       promptOrder: ['x', 'y'],
     });
     expect('baselineText' in summary).toBe(false);
+  });
+
+  it('summary drops the raw notes', () => {
+    const review = {
+      ...emptyReviewFile('a.md'),
+      agentNotes: {
+        raw: 'RAW',
+        carried: 'CARRIED',
+        unattached: 'shown',
+        cut: true,
+        receivedAt: '2026-01-01T00:00:00.000Z',
+        dismissed: ['gone'],
+      },
+    };
+    const summary = toReviewSummary(review);
+    expect(summary.agentNotes).toEqual({
+      unattached: 'shown',
+      cut: true,
+      receivedAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(JSON.stringify(summary)).not.toMatch(/RAW|CARRIED|gone|dismissed/);
   });
 });
 

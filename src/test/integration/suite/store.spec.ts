@@ -17,7 +17,7 @@ import { createAnchor } from '../../../anchor/create.js';
 import type { Anchor, Comment, ReviewFile } from '../../../anchor/types.js';
 import { renderPlainText } from '../../../render/plaintext.js';
 import { ReviewStore } from '../../../store/ReviewStore.js';
-import { BASELINE_MAX_CHARS } from '../../../store/reviewFile.js';
+import { BASELINE_MAX_CHARS, emptyReviewFile, serializeReviewFile } from '../../../store/reviewFile.js';
 import { REVIEWS_DIR } from '../../../store/sidecarPath.js';
 import {
   GLOBAL_STORAGE_DIR,
@@ -212,6 +212,35 @@ describe('external edits (the sidecar is a hand-editable file)', () => {
       {
         version: 1,
         targetPath: 'external.md',
+        comments: [comment({ id: 'ext00001', body: 'edited by hand in the JSON' })],
+      },
+      null,
+      2,
+    );
+
+    let latest: ReviewFile | undefined;
+    const subscription = store.onDidChange((state) => (latest = state));
+    try {
+      await writeText(sidecar, `${handEdited}\n`);
+      await waitFor(
+        () => latest?.comments[0]?.body === 'edited by hand in the JSON',
+        'the store to pick up an external edit',
+      );
+    } finally {
+      subscription.dispose();
+    }
+  });
+
+  it('adopts an external rewrite of a sidecar whose name holds glob characters', async () => {
+    const { store, sidecar } = await freshStore('external [draft] {x}.md');
+
+    store.addComment(comment({ id: 'ext00001' }));
+    await store.flush();
+
+    const handEdited = JSON.stringify(
+      {
+        version: 1,
+        targetPath: 'external [draft] {x}.md',
         comments: [comment({ id: 'ext00001', body: 'edited by hand in the JSON' })],
       },
       null,
@@ -511,7 +540,32 @@ describe('applyReanchor', () => {
     assert.equal(addressed?.resolution?.previousText, 'retries failed requests up to three times');
     assert.equal(addressed?.resolution?.currentText, 'retries failed requests up to five times');
     // The original selection is the durable record and must survive for the before/after.
-    assert.equal(addressed?.anchor.exact, 'retries failed requests up to three times');
+    assert.equal(addressed?.anchor?.exact, 'retries failed requests up to three times');
+  });
+
+  it('a whole-document comment persists and survives a re-anchor', async () => {
+    const { store, target, sidecar, anchorOn } = await storeOn('reanchor-document.md', DETECT_MARKDOWN);
+    const unanchored = comment({ id: 'doc00001', body: 'overall note' });
+    delete unanchored.anchor;
+    store.addComment(unanchored);
+    store.addComment(
+      comment({ id: 'doc00002', anchor: anchorOn('retries failed requests up to three times') }),
+    );
+    await store.flush();
+
+    const edited = DETECT_MARKDOWN.replace(
+      'retries failed requests up to three times',
+      'retries failed requests up to five times',
+    );
+    await writeText(target, edited);
+    store.applyReanchor(renderPlainText(edited));
+    await store.flush();
+
+    const saved = (await readSidecar(sidecar)).comments.find((c) => c.id === 'doc00001');
+    assert.ok(saved);
+    assert.equal('anchor' in saved, false);
+    assert.equal(saved.status, 'open');
+    assert.equal((await readSidecar(sidecar)).comments.length, 2);
   });
 
   it('orphans an anchor whose text is gone, and reports no change when nothing moved', async () => {
@@ -599,7 +653,7 @@ describe('reattach (manual re-anchor, PRD §6)', () => {
     assert.equal(reattached?.id, 'reat0001');
     assert.equal(reattached?.body, 'still the same concern');
     assert.equal(reattached?.createdAt, '2026-02-02T00:00:00.000Z');
-    assert.equal(reattached?.anchor.exact, 'processes requests in parallel');
+    assert.equal(reattached?.anchor?.exact, 'processes requests in parallel');
     assert.equal(reattached?.resolution, undefined, 'a stale before/after would render as a phantom diff');
   });
 });
@@ -701,7 +755,7 @@ describe('relink (PRD §11 — target renamed or deleted)', () => {
     assert.equal(destination.targetPath, 'relink-to.md');
     assert.equal(destination.baselineText, 'the baseline text');
     // Anchors ride across untouched; the next re-anchor decides whether they still fit.
-    assert.equal(destination.comments[0]?.anchor.exact, 'the anchored sentence');
+    assert.equal(destination.comments[0]?.anchor?.exact, 'the anchored sentence');
 
     // PRD §11: the old sidecar is emptied, never deleted — the comments now live elsewhere.
     const origin = JSON.parse(
@@ -764,5 +818,137 @@ describe('teardown', () => {
     assert.ok(await exists(sidecar), `expected ${path.basename(sidecar.fsPath)} to have been written`);
     const parsed = JSON.parse(await readText(sidecar)) as ReviewFile;
     assert.equal(parsed.comments[0]?.body, 'typed just before quitting');
+  });
+});
+
+describe('read-only after an unsafe load (D-q8)', () => {
+  it('refuses edits when the backup cannot be written', async () => {
+    const name = 'ro-nobackup.md';
+    const target = workspaceUri(name);
+    await writeText(target, DETECT_MARKDOWN);
+    const sidecar = workspaceUri(REVIEWS_DIR, `${name}.json`);
+    const garbage = '{ this is not json';
+    await writeText(sidecar, garbage);
+    await vscode.workspace.fs.createDirectory(workspaceUri(REVIEWS_DIR, `${name}.json.bak`));
+
+    const lines: string[] = [];
+    const store = ReviewStore.for(stubContext().context, target, stubOutput(lines));
+    await store.ensureLoaded();
+    store.addComment(comment({ id: 'ro000001' }));
+    await store.flush();
+
+    assert.equal(await readText(sidecar), garbage, 'the sidecar bytes must be unchanged');
+    assert.equal(store.getState().comments.length, 0);
+    assert.ok(lines.some((line) => line.includes('read-only for this session')));
+  });
+
+  it('refuses edits when the sidecar exists but cannot be read', async () => {
+    const name = 'ro-noread.md';
+    const target = workspaceUri(name);
+    await writeText(target, DETECT_MARKDOWN);
+    const sidecar = workspaceUri(REVIEWS_DIR, `${name}.json`);
+    await vscode.workspace.fs.createDirectory(sidecar);
+
+    const store = ReviewStore.for(stubContext().context, target, stubOutput([]));
+    await store.ensureLoaded();
+    store.addComment(comment({ id: 'ro000002' }));
+    await store.flush();
+
+    assert.equal((await vscode.workspace.fs.stat(sidecar)).type, vscode.FileType.Directory);
+    assert.equal(store.getState().comments.length, 0);
+    await vscode.workspace.fs.delete(sidecar, { recursive: true });
+  });
+
+  it('tells the user once, on opening, when the sidecar exists but cannot be read', async () => {
+    const name = 'ro-noread-warn.md';
+    const target = workspaceUri(name);
+    await writeText(target, DETECT_MARKDOWN);
+    const sidecar = workspaceUri(REVIEWS_DIR, `${name}.json`);
+    await vscode.workspace.fs.createDirectory(sidecar);
+
+    const warnings: string[] = [];
+    const window = vscode.window as unknown as { showWarningMessage: (message: string) => Thenable<unknown> };
+    const original = window.showWarningMessage;
+    window.showWarningMessage = (message: string) => {
+      warnings.push(message);
+      return Promise.resolve(undefined);
+    };
+    try {
+      const store = ReviewStore.for(stubContext().context, target, stubOutput([]));
+      await store.ensureLoaded();
+      assert.equal(warnings.length, 1, 'opening the review must say the comments could not be read');
+      assert.ok(warnings[0]?.includes(`can't save comments for ${name}`), warnings[0]);
+      store.addComment(comment({ id: 'ro000004' }));
+      assert.equal(warnings.length, 1, 'one warning per store');
+    } finally {
+      window.showWarningMessage = original;
+      await vscode.workspace.fs.delete(sidecar, { recursive: true });
+    }
+  });
+
+  it('does not adopt an external rewrite while read-only, so Clear removes nothing', async () => {
+    const name = 'ro-reread.md';
+    const target = workspaceUri(name);
+    await writeText(target, DETECT_MARKDOWN);
+    const sidecar = workspaceUri(REVIEWS_DIR, `${name}.json`);
+    await vscode.workspace.fs.createDirectory(sidecar);
+
+    const store = ReviewStore.for(stubContext().context, target, stubOutput([]));
+    await store.ensureLoaded();
+    // The user fixes the file during the session: the comments come back on disk.
+    await vscode.workspace.fs.delete(sidecar, { recursive: true });
+    const fixed = { ...emptyReviewFile(name), comments: [comment({ id: 'ro000005' })] };
+    await writeText(sidecar, serializeReviewFile(fixed));
+    const internals = store as unknown as { rereadExternal: () => Promise<void> };
+    await internals.rereadExternal();
+
+    assert.equal(store.getState().comments.length, 0, 'a read-only store stays as loaded until a reload');
+    assert.deepEqual(await store.clearAll(), { ok: true, removed: 0 });
+    assert.deepEqual((await readSidecar(sidecar)).comments.map((entry) => entry.id), ['ro000005']);
+  });
+
+  it('a parsed sidecar stays writable', async () => {
+    const name = 'ro-valid.md';
+    const target = workspaceUri(name);
+    await writeText(target, DETECT_MARKDOWN);
+    const sidecar = workspaceUri(REVIEWS_DIR, `${name}.json`);
+    const existing = { ...emptyReviewFile(name), comments: [comment({ id: 'ro000000' })] };
+    await writeText(sidecar, serializeReviewFile(existing));
+
+    const store = ReviewStore.for(stubContext().context, target, stubOutput([]));
+    await store.ensureLoaded();
+    store.addComment(comment({ id: 'ro000003' }));
+    assert.equal(await store.flush(), true);
+
+    const parsed = await readSidecar(sidecar);
+    assert.deepEqual(
+      parsed.comments.map((entry) => entry.id),
+      ['ro000000', 'ro000003'],
+    );
+  });
+
+  it('relink onto a read-only destination fails and leaves the source intact', async () => {
+    const { store, target, sidecar } = await storeOn('ro-relink-from.md', DETECT_MARKDOWN);
+    store.addComment(comment({ id: 'ro000004' }));
+    await store.flush();
+
+    const renamed = workspaceUri('ro-relink-to.md');
+    await writeText(renamed, DETECT_MARKDOWN);
+    const destSidecar = workspaceUri(REVIEWS_DIR, 'ro-relink-to.md.json');
+    await writeText(destSidecar, '{ this is not json');
+    await vscode.workspace.fs.createDirectory(workspaceUri(REVIEWS_DIR, 'ro-relink-to.md.json.bak'));
+
+    const result = await ReviewStore.relink(
+      stubContext().context,
+      target,
+      renamed,
+      stubOutput([]),
+    );
+
+    assert.deepEqual(result, { ok: false, reason: 'write-failed' });
+    assert.deepEqual(
+      (await readSidecar(sidecar)).comments.map((entry) => entry.id),
+      ['ro000004'],
+    );
   });
 });

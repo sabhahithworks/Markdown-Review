@@ -10,6 +10,9 @@ import './target.spec.js';
 import './store.spec.js';
 import './detection.spec.js';
 import './indicators.spec.js';
+import './notes.spec.js';
+import './send.spec.js';
+import './terminalPaste.spec.js';
 import { runAll } from './harness.js';
 
 export async function run(): Promise<void> {

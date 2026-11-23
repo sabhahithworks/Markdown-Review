@@ -15,6 +15,7 @@ import type {
   ChangeState,
   CommentStatus,
   ReviewSummary,
+  SendTarget,
   WebviewMessage,
 } from '../../src/panel/messages.js';
 import { countByStatus } from '../../src/panel/messages.js';
@@ -27,12 +28,15 @@ export const FILTERABLE: readonly CommentStatus[] = ['open', 'addressed', 'orpha
 export interface HeaderOptions {
   root: HTMLElement;
   onCopyPrompt(): void;
+  onSendPrompt(target: SendTarget): void;
   onClearAddressed(): void;
   /** PRD §6's second destructive command, which had no in-pane surface at all (H27). */
   onClearAll(): void;
   onFilterChange(statuses: CommentStatus[]): void;
   /** The change view's button (D31): opens the baseline↔current diff. */
   onShowChanges(): void;
+  /** Opens the whole-document composer; `button` is where focus returns and the composer sits. */
+  onCommentOnDocument(button: HTMLElement): void;
 }
 
 export interface HeaderView {
@@ -164,11 +168,96 @@ export function initHeader(options: HeaderOptions): HeaderView {
   copy.className = 'mr-button-primary';
   copy.addEventListener('click', options.onCopyPrompt);
 
+  const sendWrap = document.createElement('div');
+  sendWrap.className = 'mr-send';
+
+  const sendButton = document.createElement('button');
+  sendButton.type = 'button';
+  sendButton.className = 'mr-button-secondary';
+  sendButton.textContent = 'Send to';
+  sendButton.setAttribute('aria-haspopup', 'menu');
+  sendButton.setAttribute('aria-expanded', 'false');
+
+  const sendMenu = document.createElement('div');
+  sendMenu.className = 'mr-send-menu';
+  sendMenu.setAttribute('role', 'menu');
+  sendMenu.setAttribute('aria-label', 'Send to');
+  sendMenu.hidden = true;
+
+  const sendItems: HTMLButtonElement[] = [];
+  for (const [target, label] of [
+    ['chat', 'VS Code chat'],
+    ['terminal', 'Active terminal'],
+  ] as const) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'mr-send-item';
+    item.setAttribute('role', 'menuitem');
+    item.textContent = label;
+    item.addEventListener('click', () => {
+      closeSendMenu(true);
+      options.onSendPrompt(target);
+    });
+    sendItems.push(item);
+    sendMenu.append(item);
+  }
+  sendWrap.append(sendButton, sendMenu);
+
+  function onOutsidePointer(event: Event): void {
+    if (!(event.target instanceof Node) || !sendWrap.contains(event.target)) closeSendMenu(false);
+  }
+
+  function openSendMenu(): void {
+    sendMenu.hidden = false;
+    sendMenu.style.left = '0px';
+    sendButton.setAttribute('aria-expanded', 'true');
+    // Opens below the button; shifted left when it would run past the pane's right edge.
+    const overflow = sendMenu.getBoundingClientRect().right - document.documentElement.clientWidth;
+    if (overflow > 0) sendMenu.style.left = `${String(-overflow)}px`;
+    document.addEventListener('pointerdown', onOutsidePointer);
+    sendItems[0]?.focus();
+  }
+
+  function closeSendMenu(returnFocus: boolean): void {
+    if (sendMenu.hidden) return;
+    sendMenu.hidden = true;
+    sendButton.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('pointerdown', onOutsidePointer);
+    if (returnFocus) sendButton.focus();
+  }
+
+  // Enter and Space on a button arrive as a click, so this one handler covers all three.
+  sendButton.addEventListener('click', () => {
+    if (sendMenu.hidden) openSendMenu();
+    else closeSendMenu(true);
+  });
+
+  sendMenu.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeSendMenu(true);
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const at = sendItems.findIndex((item) => item === document.activeElement);
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    sendItems[(at + step + sendItems.length) % sendItems.length]?.focus();
+  });
+
   const clear = document.createElement('button');
   clear.type = 'button';
   clear.className = 'mr-button-secondary';
   clear.textContent = 'Clear addressed';
   clear.addEventListener('click', options.onClearAddressed);
+
+  const commentOnDocument = document.createElement('button');
+  commentOnDocument.type = 'button';
+  commentOnDocument.className = 'mr-button-secondary';
+  commentOnDocument.textContent = 'Comment on document';
+  commentOnDocument.addEventListener('click', () => {
+    options.onCommentOnDocument(commentOnDocument);
+  });
 
   // Both clears are modal-confirmed and backed up host-side, so surfacing this one costs nothing
   // in safety and closes the gap where PRD §6's other command existed only in the palette (H27).
@@ -199,7 +288,7 @@ export function initHeader(options: HeaderOptions): HeaderView {
   const noChanges = document.createElement('span');
   noChanges.className = 'mr-popover-hint';
 
-  actions.append(copy, clear, clearAll, showChanges, noChanges);
+  actions.append(copy, sendWrap, commentOnDocument, clear, clearAll, showChanges, noChanges);
   options.root.replaceChildren(countsRow, actions);
 
   function paint(): void {
@@ -220,6 +309,8 @@ export function initHeader(options: HeaderOptions): HeaderView {
     const primary = copyPromptLabel(counts.open);
     copy.textContent = primary.label;
     copy.disabled = primary.disabled;
+    sendButton.disabled = primary.disabled;
+    if (primary.disabled) closeSendMenu(false);
 
     clear.hidden = counts.addressed === 0;
     clearAll.hidden = Object.values(counts).every((count) => count === 0);

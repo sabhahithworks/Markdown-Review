@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-test/
 media/webview.js
+media/mermaid.min.js
 media/webview.js.map
 *.vsix
 .vscode-test/

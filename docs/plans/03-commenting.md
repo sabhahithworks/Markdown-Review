@@ -206,6 +206,8 @@ enforce all of it, and `media/test/anchorSpace.test.ts` asserts the DOM walk rep
 `verifyBlockMap` is kept as a runtime backstop: on a mismatch the webview reports to the output
 channel and degrades to `offset: -1`, rather than trusting a number it cannot justify.
 
+**Release-expansion D27 — `data-no-anchor` is skipped inside a block.** `buildBlockMap`'s `walk` leaves out any child element carrying `data-no-anchor` (before the `isBlock` check), so marked text such as an alert title is never counted in a block's text; `capture` returns the `front-matter` hint only when the value is `true`.
+
 **C2 — `locate()` is not bundled into the webview.** §6's closing paragraph justified shipping the
 confidence cascade webview-side "for the §5 highlight refresh on resize". Resizing changes layout,
 not `doc.text`, so located offsets are invariant under it — there is nothing to recompute, only

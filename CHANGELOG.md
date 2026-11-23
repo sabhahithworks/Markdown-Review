@@ -19,7 +19,8 @@ comments were addressed, showing you the before and after so you can accept or r
 
 Comments live in readable JSON in `.reviews/` beside the file, so they survive edits, rename, and a
 window reload, and they can be committed and shared. Nothing is deleted automatically. There is no
-telemetry and no network access of any kind.
+telemetry and no network access of any kind: Mermaid ships inside the extension, and the pane's
+Content Security Policy allows no connection.
 
 Below is the full history of how it was built, including the defects found and fixed along the way.
 
@@ -28,6 +29,13 @@ what the extension is for, but how much of it you can reach, how little it can l
 it reports itself.
 
 ### Added
+
+- Send the review prompt to VS Code chat or paste a one-line pointer to the saved prompt file into the active terminal (two new commands); nothing is submitted, and if the target is unavailable the prompt is copied instead.
+- Agent notes on a card: when the agent pushes back on a comment, its note shows under "Agent note" on that card, in the margin and in the lost-anchor section, with a Dismiss button.
+- Whole-document comments: comment on the document as a whole, without selecting text; the card sits first, labelled "Whole document", and notes when the file has changed since the prompt.
+- Footnotes: `[^1]` renders as a `[1]` link to the note at the end of the document; both can be commented on.
+- GitHub alerts (`> [!NOTE]`, Tip, Important, Warning, Caution) render as titled callouts.
+- Mermaid diagrams: a `mermaid` code block shows as a diagram with a Diagram/Source switch; an invalid diagram stays in Source view with Mermaid's message.
 
 - The review prompt now says where a quoted passage is when it appears more than once, for example
   `On: "the token" (under "## Refresh", line 42)`. Quotes that appear once are unchanged.
@@ -195,6 +203,18 @@ it reports itself.
   lists these and the smaller corrections fixed inline.
 
 ### Fixed
+
+- **A comments file that could not be read or backed up could be overwritten.** When the file in
+  `.reviews` exists but cannot be read, or is corrupt and its `.json.bak` backup cannot be written,
+  the review is now read-only for the session: new comments are refused, and one warning says that
+  nothing on disk was changed and that you should fix or move the file and reload the window. For a
+  file that cannot be read, the warning shows as soon as the review opens. Before, the next comment
+  you added was saved over the file you could not read.
+
+- **Documents with `[ ] { } * ? !` in their name were not watched.** For a file such as
+  `spec [draft].md`, a hand edit of its comments file was not picked up while the pane was open (and
+  the next save overwrote it), and an agent writing the document to disk without opening it in an
+  editor triggered no change detection. Both now work as they do for any other name.
 
 - **Reloading the window left the review pane permanently blank.** The tab came back, the contents
   never did, and the only way out was to close the pane and open it again. The extension wakes up

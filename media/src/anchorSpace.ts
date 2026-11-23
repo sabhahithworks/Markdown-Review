@@ -138,6 +138,8 @@ function buildBlockMap(el: HTMLElement): BlockMap {
       }
 
       if (!(child instanceof Element)) continue;
+      // Text marked `data-no-anchor` is not anchor text, wherever the element sits in the block.
+      if (child.hasAttribute('data-no-anchor')) continue;
       // A nested block owns its own offsets; descending would double-count it.
       if (isBlock(child)) continue;
 

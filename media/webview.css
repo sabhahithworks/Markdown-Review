@@ -202,6 +202,73 @@ pre {
   background-color: var(--vscode-textCodeBlock-background);
 }
 
+/* ---------- Mermaid diagrams ---------- */
+
+.mr-mermaid {
+  margin: 0 0 var(--mr-code-pad);
+}
+
+.mr-mermaid-switch {
+  display: inline-flex;
+  margin-bottom: 4px;
+}
+
+.mr-mermaid-switch[hidden] {
+  display: none;
+}
+
+.mr-mermaid-switch button {
+  padding: 2px 10px;
+  border: 1px solid var(--vscode-panel-border);
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  font-family: inherit;
+  font-size: 0.85em;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.mr-mermaid-switch button[aria-pressed='true'] {
+  border-width: 2px;
+  border-color: var(--vscode-focusBorder);
+  font-weight: 700;
+}
+
+.mr-mermaid-marker {
+  display: inline-block;
+  margin: 0 0 4px 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--vscode-focusBorder);
+  background: none;
+  color: var(--vscode-editor-foreground);
+  font-family: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.mr-mermaid-marker[hidden] {
+  display: none;
+}
+
+.mr-mermaid-status {
+  margin: 0 0 4px;
+  font-size: 0.9em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.mr-mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mr-mermaid[data-view='diagram'] + pre {
+  display: none;
+}
+
+.mr-mermaid[data-view='source'] .mr-mermaid-diagram {
+  display: none;
+}
+
 pre > code {
   display: block;
   padding: 0;
@@ -221,6 +288,45 @@ blockquote {
 
 blockquote > :last-child {
   margin-bottom: 0;
+}
+
+/* ---------- GitHub alerts ---------- */
+
+.mr-alert {
+  --mr-alert-color: var(--vscode-charts-blue);
+  margin: 1em 0;
+  padding: 0.4em var(--mr-gap);
+  border-left: 4px solid var(--mr-alert-color);
+}
+
+.mr-alert > :last-child {
+  margin-bottom: 0;
+}
+
+.mr-alert-title {
+  margin: 0 0 0.4em;
+  font-weight: 700;
+  color: var(--mr-alert-color);
+}
+
+.mr-alert-note {
+  --mr-alert-color: var(--vscode-charts-blue);
+}
+
+.mr-alert-tip {
+  --mr-alert-color: var(--vscode-charts-green);
+}
+
+.mr-alert-important {
+  --mr-alert-color: var(--vscode-charts-purple);
+}
+
+.mr-alert-warning {
+  --mr-alert-color: var(--vscode-editorWarning-foreground);
+}
+
+.mr-alert-caution {
+  --mr-alert-color: var(--vscode-charts-red);
 }
 
 /* ---------- Tables ---------- */
@@ -679,6 +785,11 @@ body:not(.mr-narrow):not(.mr-no-cards) {
   background-color: var(--vscode-editorWidget-background);
 }
 
+.mr-popover-heading {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
 .mr-popover-actions {
   display: flex;
   justify-content: flex-end;
@@ -805,7 +916,8 @@ body:not(.mr-narrow):not(.mr-no-cards) {
 }
 
 #header[hidden],
-#orphans[hidden] {
+#orphans[hidden],
+#agent-notes[hidden] {
   display: none;
 }
 
@@ -815,6 +927,53 @@ body:not(.mr-narrow):not(.mr-no-cards) {
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+}
+
+.mr-send {
+  position: relative;
+}
+
+.mr-button-secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mr-send-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  min-width: max-content;
+  max-width: calc(100vw - 16px);
+  margin-top: 2px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-editorWidget-background);
+  color: var(--vscode-editor-foreground);
+}
+
+.mr-send-menu[hidden] {
+  display: none;
+}
+
+.mr-send-item {
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.9em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mr-send-item:hover,
+.mr-send-item:focus-visible {
+  background-color: var(--vscode-toolbar-hoverBackground);
+  border-color: var(--vscode-focusBorder);
 }
 
 .mr-chip {
@@ -864,6 +1023,28 @@ body:not(.mr-narrow):not(.mr-no-cards) {
 .mr-diff-after {
   color: var(--vscode-charts-green);
   text-decoration: none;
+}
+
+/* ---------- The agent's note on a card ---------- */
+
+/* A left border plus the "Agent note" label: the block is identified by text, not by colour. */
+.mr-agent-note {
+  margin-top: 6px;
+  padding-left: 8px;
+  border-left: 3px solid var(--vscode-textBlockQuote-border);
+  overflow-wrap: anywhere;
+}
+
+.mr-agent-note-label {
+  margin: 0;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+}
+
+.mr-agent-note-text {
+  margin: 2px 0 4px;
+  white-space: pre-wrap;
 }
 
 /* ---------- The section-change note (D17) ---------- */
@@ -1093,4 +1274,71 @@ body:not(.mr-narrow):not(.mr-no-cards) {
   .mr-highlight {
     transition: none;
   }
+}
+
+/* Footnotes: reference style, rendered at the end of the document. */
+.footnotes-sep {
+  display: none;
+}
+
+.footnotes {
+  margin-top: 2em;
+  padding-top: 0.5em;
+  border-top: 1px solid var(--vscode-panel-border);
+  font-size: 0.9em;
+}
+
+.footnotes ol {
+  padding-left: 1.5em;
+}
+
+.footnote-ref {
+  vertical-align: super;
+  font-size: 0.75em;
+}
+
+/* ---------- Notes from the agent ---------- */
+
+#agent-notes {
+  max-width: var(--mr-measure);
+  margin-bottom: var(--mr-gap);
+  padding: 12px 14px;
+  border: 1px solid var(--vscode-panel-border);
+  border-left: 3px solid var(--vscode-textBlockQuote-border);
+  border-radius: var(--mr-radius);
+  background-color: var(--vscode-editorWidget-background);
+}
+
+.mr-agent-notes-heading {
+  margin: 0 0 8px;
+  border: none;
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.mr-agent-notes-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mr-agent-notes-cut {
+  margin: 8px 0 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+.mr-agent-notes-dismiss {
+  margin-top: 10px;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 4px 14px;
+  border: 1px solid var(--vscode-button-border);
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--vscode-button-foreground);
+  background-color: var(--vscode-button-background);
+}
+
+.mr-agent-notes-dismiss:hover {
+  background-color: var(--vscode-button-hoverBackground);
 }

@@ -14,6 +14,8 @@
 import type { CommentStatus, CreateResult } from '../anchor/types.js';
 import { MAX_ANCHOR_LENGTH, MIN_ANCHOR_LENGTH } from '../anchor/types.js';
 
+import type { SendTarget } from './messages.js';
+
 type Rejection = Extract<CreateResult, { ok: false }>['reason'];
 
 export function anchorRejectionMessage(reason: Rejection): string {
@@ -31,6 +33,26 @@ export function anchorRejectionMessage(reason: Rejection): string {
 export function promptCopiedMessage(count: number, targetPath: string): string {
   const comments = count === 1 ? '1 comment' : `${String(count)} comments`;
   return `${comments} copied. Paste into your agent and @-mention ${targetPath}.`;
+}
+
+/** Confirmation after the review prompt is placed in chat or pasted into the terminal. */
+export function promptSentMessage(count: number, target: SendTarget): string {
+  const comments = count === 1 ? '1 comment' : `${String(count)} comments`;
+  return target === 'chat'
+    ? `${comments} placed in VS Code chat. Press Enter to send.`
+    : `${comments} pasted into the terminal. Press Enter to send.`;
+}
+
+/** Shown when the chosen send target is unavailable and the prompt was copied instead. */
+export function sendFallbackMessage(target: SendTarget): string {
+  return target === 'terminal'
+    ? 'No terminal is open. The prompt was copied instead.'
+    : 'VS Code chat is not available here. The prompt was copied instead.';
+}
+
+/** Shown when the prompt file could not be written and the prompt was copied instead. */
+export function promptFileFailedMessage(): string {
+  return 'Markdown Review could not save the prompt file. The prompt was copied instead.';
 }
 
 /** Shown instead of copying when there is nothing to ask for (Plan 04 §4). */

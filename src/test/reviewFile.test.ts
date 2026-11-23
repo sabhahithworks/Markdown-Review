@@ -145,13 +145,42 @@ describe('isComment', () => {
   it.each([
     ['an unknown status', comment({ status: 'wontfix' as Comment['status'] })],
     ['an empty id', comment({ id: '' })],
-    ['a missing anchor', { ...comment(), anchor: undefined }],
+    ['a null anchor', { ...comment(), anchor: null }],
     ['a NaN hintOffset', { ...comment(), anchor: { ...ANCHOR, hintOffset: Number.NaN } }],
     ['an Infinity hintLine', { ...comment(), anchor: { ...ANCHOR, hintLine: Number.POSITIVE_INFINITY } }],
     ['a numeric body', comment({ body: 3 as unknown as string })],
     ['a malformed resolution', { ...comment(), resolution: { previousText: 'a' } }],
   ])('rejects %s', (_label, value) => {
     expect(isComment(value)).toBe(false);
+  });
+});
+
+describe('whole-document comments', () => {
+  function documentComment(): Comment {
+    return {
+      id: 'doc00001',
+      body: 'needs work',
+      author: 'tester',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      status: 'open',
+    };
+  }
+
+  it('comment without an anchor is valid', () => {
+    expect(isComment(documentComment())).toBe(true);
+    const original = review({ comments: [documentComment()] });
+    const result = parseReviewFile(serializeReviewFile(original));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.review).toEqual(original);
+      expect(result.review.version).toBe(1);
+      expect('anchor' in (result.review.comments[0] ?? {})).toBe(false);
+    }
+  });
+
+  it('a malformed anchor is still rejected', () => {
+    expect(isComment({ ...documentComment(), anchor: { exact: 'x' } })).toBe(false);
+    expect(isComment({ ...documentComment(), anchor: 'nope' })).toBe(false);
   });
 });
 
@@ -168,5 +197,32 @@ describe('isReviewFile', () => {
     expect(SIDECAR_VERSION).toBe(1);
     expect(isReviewFile(review())).toBe(true);
     expect(isReviewFile({ ...review(), version: 2 })).toBe(false);
+  });
+});
+
+describe('agent notes', () => {
+  const notes = {
+    raw: 'r',
+    carried: '',
+    unattached: 'u',
+    cut: false,
+    receivedAt: '2026-01-01T00:00:00.000Z',
+    dismissed: ['d'],
+  };
+
+  it('review file with agent notes is valid', () => {
+    const original = review({
+      agentNotes: notes,
+      comments: [comment({ agentNote: { text: 'hi', receivedAt: '2026-01-01T00:00:00.000Z' } })],
+    });
+    const result = parseReviewFile(serializeReviewFile(original));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.review).toEqual(original);
+  });
+
+  it('a non-string note text is rejected', () => {
+    expect(isComment(comment({ agentNote: { text: 5, receivedAt: 'x' } as never }))).toBe(false);
+    expect(isReviewFile(review({ agentNotes: { ...notes, raw: 5 } as never }))).toBe(false);
+    expect(isReviewFile(review({ agentNotes: { ...notes, dismissed: [1] } as never }))).toBe(false);
   });
 });

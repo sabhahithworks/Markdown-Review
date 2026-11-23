@@ -49,6 +49,7 @@ async function loadHostModules() {
     export { renderPlainText } from '${posix(path.join(root, 'src/render/plaintext.ts'))}';
     export { createAnchor } from '${posix(path.join(root, 'src/anchor/create.ts'))}';
     export { createLocator } from '${posix(path.join(root, 'src/anchor/locate.ts'))}';
+    export { buildCsp } from '${posix(path.join(root, 'src/panel/csp.ts'))}';
     export { changeStateOf, changedRanges } from '${posix(path.join(root, 'src/detect/changedRanges.ts'))}';
   `;
 
@@ -112,8 +113,27 @@ function baselineSource(source) {
   return text;
 }
 
-function review(comments) {
-  return { version: 1, targetPath: 'docs/fixtures/kitchen-sink.md', comments };
+function review(comments, targetPath = 'docs/fixtures/kitchen-sink.md') {
+  return { version: 1, targetPath, comments };
+}
+
+/** The passages of `docs/fixtures/rich-blocks.md` the `rich` scenario comments on. */
+const RICH_PASSAGES = {
+  alert: 'Notes carry extra context for the reader.',
+  footnote: 'The source, with emphasis.',
+  flowchart: 'B -->|yes| C[Done]',
+};
+
+/** The rich-blocks document as it stood when the prompt was copied: one flowchart line rewound. */
+const RICH_BASELINE_EDITS = [['B -->|no| A', 'B -->|no| C']];
+
+function richBaselineSource(source) {
+  let text = source;
+  for (const [current, previous] of RICH_BASELINE_EDITS) {
+    if (text.split(current).length !== 2) throw new Error(`rich baseline edit does not apply exactly once: ${JSON.stringify(current)}`);
+    text = text.replace(current, previous);
+  }
+  return text;
 }
 
 async function main() {
@@ -125,6 +145,32 @@ async function main() {
   const locate = host.createLocator(doc);
 
   const comment = (id, passage, overrides) => makeComment(host, doc, id, passage, overrides);
+
+  const richSource = await fs.readFile(path.join(root, 'docs/fixtures/rich-blocks.md'), 'utf8');
+  const richRendered = host.renderMarkdown(richSource, {});
+  const richDoc = host.renderPlainText(richSource);
+  const richLocate = host.createLocator(richDoc);
+  const richTarget = 'docs/fixtures/rich-blocks.md';
+  const richComment = (id, passage, overrides) => makeComment(host, richDoc, id, passage, overrides);
+  const richDocument = {
+    html: richRendered.html,
+    frontMatterHtml: richRendered.frontMatterHtml ?? '',
+    plainText: richDoc.text,
+    targetPath: richTarget,
+  };
+  const locatedFor = (comments) => Object.fromEntries(comments.map((item) => [item.id, richLocate(item.anchor)]));
+
+  const richComments = [
+    richComment('rich0001', RICH_PASSAGES.alert, { body: 'Is this note still true?' }),
+    richComment('rich0002', RICH_PASSAGES.footnote, { body: 'Cite the page number.' }),
+    richComment('rich0003', RICH_PASSAGES.flowchart, { body: 'Should the yes branch loop back?' }),
+  ];
+
+  const kitchenSinkBaseline = host.renderPlainText(baselineSource(source)).text;
+  const kitchenSinkChanges = host.changeStateOf(kitchenSinkBaseline, doc, host.changedRanges(kitchenSinkBaseline, doc.text));
+  if (kitchenSinkChanges.state !== 'changed' || kitchenSinkChanges.blocks.length === 0) {
+    throw new Error(`the kitchen-sink baseline produced ${JSON.stringify(kitchenSinkChanges)}, expected changed blocks`);
+  }
 
   const scenarios = {
     basic: {
@@ -321,14 +367,7 @@ async function main() {
       label: 'Changed since prompt',
       description:
         'The change view (D28/D30): a baseline that differs from the document in one paragraph and one fenced code block, so exactly those blocks carry a bar, and two comments numbered by the prompt that was copied. `changes` comes from the real `changeStateOf`, as `ReviewPanel.changeState` computes it.',
-      changes: (() => {
-        const baseline = host.renderPlainText(baselineSource(source)).text;
-        const state = host.changeStateOf(baseline, doc, host.changedRanges(baseline, doc.text));
-        if (state.state !== 'changed' || state.blocks.length === 0) {
-          throw new Error(`the changed scenario produced ${JSON.stringify(state)}, expected changed blocks`);
-        }
-        return state;
-      })(),
+      changes: kitchenSinkChanges,
       review: {
         ...review([
           comment('chng0001', PASSAGES.paragraph, { body: 'Say what happens when the key set cannot be fetched.' }),
@@ -342,8 +381,93 @@ async function main() {
     },
   };
 
+  // A whole-document comment has no anchor, so it is built by hand rather than through `makeComment`.
+  const documentComment = (id, overrides) => ({
+    id,
+    body: 'Overall, the document needs a short summary at the top.',
+    author: 'harness',
+    createdAt: '2026-08-01T09:00:00.000Z',
+    status: 'open',
+    ...overrides,
+  });
+
+  const documentComments = [
+    documentComment('docm0001'),
+    comment('docm0002', PASSAGES.paragraph, { body: 'Say what happens when the key set cannot be fetched.' }),
+    comment('docm0003', PASSAGES.fence, { body: 'Should this throw instead of returning?' }),
+  ];
+  scenarios.document = {
+    label: 'Whole-document comment',
+    description:
+      'One whole-document comment and two anchored comments, numbered by `promptOrder`, with a change state of `changed`: the whole-document card sits first and says the document changed.',
+    changes: kitchenSinkChanges,
+    review: {
+      ...review(documentComments),
+      baselineAt: '2026-08-01T09:00:00.000Z',
+      promptOrder: ['docm0001', 'docm0002', 'docm0003'],
+    },
+    located: Object.fromEntries(
+      documentComments.filter((item) => item.anchor !== undefined).map((item) => [item.id, locate(item.anchor)]),
+    ),
+  };
+
+  const noteComments = [
+    comment('note0001', PASSAGES.paragraph, {
+      body: 'Say what happens when the key set cannot be fetched.',
+      agentNote: {
+        text: 'I added a sentence on the fallback. The cached key set is used for up to five minutes, and I was not sure whether that figure is right.',
+        receivedAt: '2026-08-01T10:00:00.000Z',
+      },
+    }),
+    comment('note0002', PASSAGES.fence, { body: 'Should this throw instead of returning?' }),
+  ];
+  scenarios.notes = {
+    label: 'Agent notes',
+    description:
+      'One comment carrying an agent note, and the "Notes from the agent" section above the document with unattached text and the cut line.',
+    review: {
+      ...review(noteComments),
+      baselineAt: '2026-08-01T09:00:00.000Z',
+      promptOrder: ['note0001', 'note0002'],
+      agentNotes: {
+        unattached: 'I also tidied the headings, which none of your comments asked for. Check that the section names still match the links.',
+        cut: true,
+        receivedAt: '2026-08-01T10:00:00.000Z',
+      },
+    },
+    located: Object.fromEntries(noteComments.map((item) => [item.id, locate(item.anchor)])),
+  };
+
+  scenarios.rich = {
+    ...richDocument,
+    label: 'Rich blocks',
+    description:
+      'Alerts, footnotes and Mermaid diagrams (release-expansion): comments on an alert body, a footnote and a line of the flowchart source, and a baseline whose flowchart source differs so the diagram carries a change bar.',
+    review: {
+      ...review(richComments, richTarget),
+      baselineAt: '2026-08-01T09:00:00.000Z',
+    },
+    located: locatedFor(richComments),
+    changes: (() => {
+      const baseline = host.renderPlainText(richBaselineSource(richSource)).text;
+      const state = host.changeStateOf(baseline, richDoc, host.changedRanges(baseline, richDoc.text));
+      if (state.state !== 'changed' || state.blocks.length === 0) {
+        throw new Error(`the rich scenario produced ${JSON.stringify(state)}, expected changed blocks`);
+      }
+      return state;
+    })(),
+  };
+  scenarios['rich-clean'] = {
+    ...richDocument,
+    label: 'Rich blocks, no comments',
+    description: 'The same rich-blocks document with no comments and no baseline.',
+    review: review([], richTarget),
+    located: {},
+  };
+
   // `located` is computed the same way `ReviewPanel.postReviewState` computes it, per scenario.
   for (const scenario of Object.values(scenarios)) {
+    if (scenario.located) continue;
     scenario.located = {};
     for (const item of scenario.review.comments) {
       scenario.located[item.id] = locate(item.anchor);
@@ -360,6 +484,8 @@ async function main() {
     // is the whole contract between `anchorSpace.ts` and `plaintext.ts`, and nothing else in the
     // harness is in a position to check it.
     plainText: doc.text,
+    // The pane's real CSP string, so the harness page's meta tag can be held to it.
+    expectedCsp: host.buildCsp("'self'", 'harness'),
     scenarios,
   };
 

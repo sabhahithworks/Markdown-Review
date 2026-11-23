@@ -22,11 +22,18 @@ import {
   parseReviewFile,
   serializeReviewFile,
 } from './reviewFile.js';
+import { globSafeName, isSameFileName } from './fileNamePattern.js';
 import { registryKey } from './registryKey.js';
+import { joinChunks, splitAgentNotes, splitChunks } from '../detect/agentNotes.js';
+import { CHANGE_DEBOUNCE_MS } from '../detect/changeWatcher.js';
+import { createCoalescer } from '../detect/coalesce.js';
 import {
   REVIEWS_DIR,
   backupFileName,
   globalSidecarFileName,
+  notesFileName,
+  notesPromptPath as toNotesPromptPath,
+  promptFileName,
   sidecarFileName,
   toTargetPath,
 } from './sidecarPath.js';
@@ -44,6 +51,10 @@ const WRITE_DEBOUNCE_MS = 250;
  * keeps the reopen cheap without making the leak permanent.
  */
 const IDLE_DISPOSE_MS = 5 * 60_000;
+
+/** Extra reads of the notes file at round end when a read fails, and the wait before each. */
+const NOTES_ROUND_END_RETRIES = 2;
+const NOTES_RETRY_MS = 100;
 
 /** Shown once per machine, not once per file — the point is made the first time (PRD §11). */
 const LOOSE_FILE_WARNING_KEY = 'markdownReview.looseFileWarningShown';
@@ -84,6 +95,11 @@ export class ReviewStore {
 
   /** Non-zero while a write-then-rename is on the wire; `rereadExternal` must not run then (H4). */
   private writesPending = 0;
+  /** False after a load that could not read or back up the sidecar; edits are then refused (D-q8). */
+  private writable = true;
+  private readOnlyWarned = false;
+  /** The tail of the notes reads, which `queueNotes` runs one at a time. */
+  private notesQueue: Promise<void> = Promise.resolve();
 
   /** Open panels holding this store, and the pending idle-disposal timer when that reaches zero. */
   private holders = 0;
@@ -101,6 +117,8 @@ export class ReviewStore {
     private readonly sidecar: vscode.Uri,
     private readonly output: vscode.OutputChannel,
     targetPath: string,
+    /** The notes file; set to undefined by `load()` on an unsafe path, which turns agent notes off (D-q3). */
+    private notes: vscode.Uri | undefined,
   ) {
     this.state = emptyReviewFile(targetPath);
   }
@@ -118,8 +136,8 @@ export class ReviewStore {
     const existing = ReviewStore.stores.get(key);
     if (existing) return existing;
 
-    const { sidecar, targetPath, loose } = resolveSidecar(context, target);
-    const store = new ReviewStore(context, target, sidecar, output, targetPath);
+    const { sidecar, targetPath, loose, notes } = resolveSidecar(context, target);
+    const store = new ReviewStore(context, target, sidecar, output, targetPath, notes);
     ReviewStore.stores.set(key, store);
 
     if (loose) void store.warnLooseFile();
@@ -466,9 +484,22 @@ export class ReviewStore {
    */
   private commit(next: ReviewFile, options: { persist?: boolean; notify?: boolean } = {}): void {
     const { persist = true, notify = true } = options;
+    if (persist && !this.writable) {
+      this.warnReadOnly();
+      return;
+    }
     this.state = next;
     if (notify) this.emit(next);
     if (persist) this.scheduleWrite();
+  }
+
+  /** Shows the read-only warning once per store (D-q8). */
+  private warnReadOnly(): void {
+    if (this.readOnlyWarned) return;
+    this.readOnlyWarned = true;
+    void vscode.window.showWarningMessage(
+      `Markdown Review can't save comments for ${this.state.targetPath}: its comments file could not be read or backed up. Nothing on disk was changed. Fix or move the file in .reviews and reload the window.`,
+    );
   }
 
   private scheduleWrite(): void {
@@ -484,9 +515,10 @@ export class ReviewStore {
    *
    * Returns whether the state is safely on disk: the result of the write this call triggered, or —
    * with nothing pending — the outcome of the most recent one. `relink` is the caller that must not
-   * treat this as advisory (H3).
+   * treat this as advisory (H3). A read-only store never writes, so it reports false.
    */
   async flush(): Promise<boolean> {
+    if (!this.writable) return false;
     if (this.debounce !== undefined) {
       clearTimeout(this.debounce);
       this.debounce = undefined;
@@ -513,28 +545,55 @@ export class ReviewStore {
     let raw: string;
     try {
       raw = new TextDecoder().decode(await vscode.workspace.fs.readFile(this.sidecar));
-    } catch {
+    } catch (error) {
       // No sidecar yet is the normal first-run case, not an error.
       this.watchSidecar();
+      if (isNotFound(error)) {
+        this.watchNotes();
+        await this.settleNotes();
+      } else {
+        this.readOnlyForSession(`could not be read, agent notes are off until reload — ${String(error)}`);
+        // Said now, not at the first edit: the pane opens empty, and Copy prompt would report no open
+        // comments for a file whose comments exist. A failed backup says so in `quarantine`.
+        this.warnReadOnly();
+      }
       return;
     }
 
     const result = parseReviewFile(raw);
+    let safeToPersist = true;
     if (result.ok) {
       this.state = result.review;
       this.emit(this.state);
     } else {
-      await this.quarantine(raw, result.reason, result.detail);
+      safeToPersist = await this.quarantine(raw, result.reason, result.detail);
     }
 
     this.watchSidecar();
+    if (safeToPersist) {
+      this.watchNotes();
+      await this.settleNotes();
+    } else {
+      // Off as for global storage (D20): no watcher, no read or delete at a prompt, and the prompt
+      // keeps the old sentence, so nothing reaches the notes file until a reload.
+      this.readOnlyForSession('agent notes are off until reload');
+    }
+  }
+
+  /** After an unsafe load: agent notes off and edits refused until a reload (D-q3, D-q8). */
+  private readOnlyForSession(notesLine: string): void {
+    this.notes = undefined;
+    this.writable = false;
+    this.output.appendLine(`[store] ${this.sidecar.fsPath}: read-only for this session`);
+    this.output.appendLine(`[store] ${this.sidecar.fsPath}: ${notesLine}`);
   }
 
   /**
    * PRD §11: fail soft, keep every byte, say what happened. The backup is written before the empty
    * state is adopted, so a failure here leaves the original sidecar untouched rather than losing it.
+   * When it returns false, `load` makes the store read-only for the session (D-q8).
    */
-  private async quarantine(raw: string, reason: string, detail: string): Promise<void> {
+  private async quarantine(raw: string, reason: string, detail: string): Promise<boolean> {
     this.output.appendLine(`[store] ${this.sidecar.fsPath}: ${reason} — ${detail}`);
 
     const backup = await this.writeBackup(raw);
@@ -544,7 +603,7 @@ export class ReviewStore {
       void vscode.window.showWarningMessage(
         `Markdown Review could not read the comments for ${this.state.targetPath}, and could not back the file up either. Nothing has been changed on disk.`,
       );
-      return;
+      return false;
     }
 
     this.state = emptyReviewFile(this.state.targetPath);
@@ -563,6 +622,7 @@ export class ReviewStore {
       .then((choice) => {
         if (choice === 'Show backup') void vscode.window.showTextDocument(backup);
       });
+    return true;
   }
 
   /**
@@ -594,6 +654,7 @@ export class ReviewStore {
   }
 
   private async performWrite(): Promise<boolean> {
+    if (!this.writable) return false;
     // Serialized at write time, not queue time: if state changed while an earlier write was on the
     // wire, this write picks up the newest state rather than persisting a stale snapshot.
     const text = serializeReviewFile(this.state);
@@ -627,21 +688,244 @@ export class ReviewStore {
    * promises the file is editable, which is only true if the UI notices.
    */
   private watchSidecar(): void {
+    const sidecarName = path.basename(this.sidecar.fsPath);
     const watcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(
         vscode.Uri.file(path.dirname(this.sidecar.fsPath)),
-        path.basename(this.sidecar.fsPath),
+        globSafeName(sidecarName),
       ),
     );
     this.disposables.push(watcher);
 
-    const reread = (): void => void this.rereadExternal();
+    const reread = (uri: vscode.Uri): void => {
+      if (!isSameFileName(path.basename(uri.fsPath), sidecarName)) return;
+      void this.rereadExternal();
+    };
     watcher.onDidChange(reread, null, this.disposables);
     watcher.onDidCreate(reread, null, this.disposables);
   }
 
+  // ------------------------------------------------------------------ agent notes
+
+  /** The notes file as the prompt names it, or undefined when the review is not stored in the workspace. */
+  notesPromptPath(): string | undefined {
+    return this.notes === undefined ? undefined : toNotesPromptPath(path.basename(this.sidecar.fsPath));
+  }
+
+  /** The prompt file, beside the sidecar in either storage mode. */
+  promptFileUri(): vscode.Uri {
+    return vscode.Uri.joinPath(this.sidecar, '..', promptFileName(path.basename(this.sidecar.fsPath)));
+  }
+
+  /**
+   * Attaches what the agent wrote to the comments of the last prompt, keeps notes the user has not
+   * dismissed, and puts chunks that name no live comment in `unattached`.
+   */
+  ingestAgentNotes(raw: string, now: () => string = () => new Date().toISOString()): void {
+    if (this.notes === undefined) return;
+    if (raw.trim().length === 0) return;
+    if (raw === this.state.agentNotes?.raw) return;
+
+    const promptOrder = this.state.promptOrder ?? [];
+    const previous = this.state.agentNotes;
+    const dismissed = previous?.dismissed ?? [];
+    const receivedAt = now();
+    const split = splitAgentNotes(raw, promptOrder.length);
+
+    const comments = this.state.comments.map((c) => ({ ...c }));
+    const orphanChunks: string[] = [...split.unattached.filter((chunk) => !dismissed.includes(chunk))];
+    // D33: a chunk is unattached only when none of its numbers names a live comment, so a chunk
+    // citing a deleted comment and a live one shows on the live one alone.
+    const goneChunks: string[] = [];
+    const attachedChunks = new Set<string>();
+    for (const [n, all] of split.byNumber) {
+      const chunks = all.filter((chunk) => !dismissed.includes(chunk));
+      if (chunks.length === 0) continue;
+      const target = comments.find((c) => c.id === promptOrder[n - 1]);
+      if (!target) {
+        goneChunks.push(...chunks);
+        continue;
+      }
+      for (const chunk of chunks) attachedChunks.add(chunk);
+      const text = joinChunks(chunks);
+      target.agentNote = {
+        text,
+        receivedAt: target.agentNote?.text === text ? target.agentNote.receivedAt : receivedAt,
+      };
+    }
+    for (const chunk of goneChunks) {
+      if (!attachedChunks.has(chunk) && !orphanChunks.includes(chunk)) orphanChunks.push(chunk);
+    }
+
+    const carried = previous?.carried ?? '';
+    const unattached = joinChunks([...(carried.length > 0 ? [carried] : []), ...orphanChunks]);
+    this.commit({
+      ...this.state,
+      comments,
+      agentNotes: {
+        raw,
+        carried,
+        unattached,
+        cut: split.cut,
+        // As for a comment's note: unchanged words keep their time, so the pane does not announce them again.
+        receivedAt: previous?.unattached === unattached ? previous.receivedAt : receivedAt,
+        dismissed: [...dismissed],
+      },
+    });
+  }
+
+  /** Dismisses one comment's note, or with no id the unattached notes; the same words stay hidden for the rest of the round. */
+  dismissAgentNote(id?: string): void {
+    if (this.notes === undefined) return;
+    const previous = this.state.agentNotes;
+    if (id !== undefined) {
+      const target = this.state.comments.find((c) => c.id === id);
+      if (!target?.agentNote) return;
+      const text = target.agentNote.text;
+      const comments = this.state.comments.map((c) => {
+        if (c.id !== id) return c;
+        const rest = { ...c };
+        delete rest.agentNote;
+        return rest;
+      });
+      const base = previous ?? {
+        raw: '',
+        carried: '',
+        unattached: '',
+        cut: false,
+        receivedAt: new Date().toISOString(),
+        dismissed: [],
+      };
+      this.commit({
+        ...this.state,
+        comments,
+        agentNotes: { ...base, dismissed: [...base.dismissed, ...splitChunks(text)] },
+      });
+      return;
+    }
+    if (!previous) return;
+    this.commit({
+      ...this.state,
+      agentNotes: {
+        ...previous,
+        dismissed: [...previous.dismissed, ...splitChunks(previous.unattached)],
+        unattached: '',
+        carried: '',
+      },
+    });
+  }
+
+  /** Reads the notes file when it exists and ingests it. */
+  settleNotes(): Promise<void> {
+    return this.queueNotes(async () => {
+      if (this.disposed || this.notes === undefined) return;
+      const read = await this.readNotes();
+      if (read.kind === 'text') this.ingestAgentNotes(read.text);
+    });
+  }
+
+  /**
+   * Ends a round: reads the file once more against the old `promptOrder`, deletes it only when that
+   * read is what was stored, and moves the unattached notes into `carried`. A file that could not be
+   * deleted, or not read (so not deleted), still holds this round's words, so they are kept out of
+   * the next round's reads: read again, they would attach by the next prompt's numbers and repeat
+   * the carried notes. For an unreadable file the words last ingested stand in for its text.
+   * A read that fails is retried up to `NOTES_ROUND_END_RETRIES` times, `NOTES_RETRY_MS` apart,
+   * before that stale path is taken (D-q4).
+   */
+  endNotesRound(): Promise<void> {
+    return this.queueNotes(async () => {
+      if (this.notes === undefined) return;
+      let read = await this.readNotes();
+      for (let retry = 0; read.kind === 'unreadable' && retry < NOTES_ROUND_END_RETRIES; retry++) {
+        await new Promise<void>((resolve) => setTimeout(resolve, NOTES_RETRY_MS));
+        read = await this.readNotes();
+      }
+      let stale: string | undefined;
+      if (read.kind === 'text') {
+        this.ingestAgentNotes(read.text);
+        if (read.text === (this.state.agentNotes?.raw ?? '') && !(await this.deleteNotes())) {
+          stale = read.text;
+        }
+      } else if (read.kind === 'unreadable' && (this.state.agentNotes?.raw ?? '') !== '') {
+        stale = this.state.agentNotes?.raw;
+      }
+      const current = this.state.agentNotes;
+      if (!current) return;
+      this.commit({
+        ...this.state,
+        agentNotes: {
+          ...current,
+          carried: current.unattached,
+          raw: stale ?? '',
+          dismissed: stale === undefined ? [] : allChunks(stale),
+        },
+      });
+    });
+  }
+
+  /**
+   * Runs notes reads one after another, so a read still in flight (a watcher-driven settle, a second
+   * Send) cannot land after a round has ended and ingest the old words a second time.
+   */
+  private queueNotes(task: () => Promise<void>): Promise<void> {
+    const run = this.notesQueue.then(task);
+    this.notesQueue = run.catch((error: unknown) => {
+      this.output.appendLine(`[store] agent notes for ${this.sidecar.fsPath} failed: ${String(error)}`);
+    });
+    // The logged tail, not `run`: a failure is the store's to report, and the prompt is still
+    // copied and the baseline taken (N4), and the watcher's `void settleNotes()` rejects nothing.
+    return this.notesQueue;
+  }
+
+  /** The notes file's text; missing is silent, unreadable is logged with its path. */
+  private async readNotes(): Promise<NotesRead> {
+    if (this.notes === undefined) return { kind: 'missing' };
+    try {
+      return { kind: 'text', text: new TextDecoder().decode(await vscode.workspace.fs.readFile(this.notes)) };
+    } catch (error) {
+      if (isNotFound(error)) return { kind: 'missing' };
+      this.output.appendLine(`[store] could not read ${this.notes.fsPath}: ${String(error)}`);
+      return { kind: 'unreadable' };
+    }
+  }
+
+  /** Deletes the notes file; true when it is gone, false (logged with its path) when it is still there. */
+  private async deleteNotes(): Promise<boolean> {
+    if (this.notes === undefined) return true;
+    try {
+      await vscode.workspace.fs.delete(this.notes);
+      return true;
+    } catch (error) {
+      if (isNotFound(error)) return true;
+      this.output.appendLine(`[store] could not delete ${this.notes.fsPath}: ${String(error)}`);
+      return false;
+    }
+  }
+
+  private watchNotes(): void {
+    if (this.notes === undefined) return;
+    const name = path.basename(this.notes.fsPath);
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(
+        vscode.Uri.file(path.dirname(this.notes.fsPath)),
+        globSafeName(name),
+      ),
+    );
+    const coalescer = createCoalescer(CHANGE_DEBOUNCE_MS, () => void this.settleNotes());
+    this.disposables.push(watcher, coalescer);
+    const schedule = (uri: vscode.Uri): void => {
+      if (isSameFileName(path.basename(uri.fsPath), name)) coalescer.schedule();
+    };
+    watcher.onDidChange(schedule, null, this.disposables);
+    watcher.onDidCreate(schedule, null, this.disposables);
+  }
+
   private async rereadExternal(): Promise<void> {
     if (this.disposed) return;
+    // Read-only for the session (D-q8): adopting a file fixed during the session would show comments
+    // that no edit, clear or re-anchor can then save. The warning asks for a reload instead.
+    if (!this.writable) return;
     // A write of ours is still pending — either sitting in the debounce or already on the wire
     // (H4). Reading now would see pre-write bytes, fail the `lastWritten` echo check, and adopt
     // them over the state we are about to persist. The file on disk is about to be overwritten
@@ -689,7 +973,7 @@ export class ReviewStore {
 function resolveSidecar(
   context: vscode.ExtensionContext,
   target: vscode.Uri,
-): { sidecar: vscode.Uri; targetPath: string; loose: boolean } {
+): { sidecar: vscode.Uri; targetPath: string; loose: boolean; notes: vscode.Uri | undefined } {
   const folder = vscode.workspace.getWorkspaceFolder(target);
   // Scoped to the target: in a multi-root workspace one folder may keep its reviews in git while
   // another keeps them private, and an unscoped read would silently apply the first folder's answer
@@ -700,10 +984,12 @@ function resolveSidecar(
 
   if (folder && mode === 'workspace') {
     const relative = path.relative(folder.uri.fsPath, target.fsPath);
+    const sidecarName = sidecarFileName(relative);
     return {
-      sidecar: vscode.Uri.joinPath(folder.uri, REVIEWS_DIR, sidecarFileName(relative)),
+      sidecar: vscode.Uri.joinPath(folder.uri, REVIEWS_DIR, sidecarName),
       targetPath: toTargetPath(relative),
       loose: false,
+      notes: vscode.Uri.joinPath(folder.uri, REVIEWS_DIR, notesFileName(sidecarName)),
     };
   }
 
@@ -718,5 +1004,18 @@ function resolveSidecar(
       ? toTargetPath(path.relative(folder.uri.fsPath, target.fsPath))
       : path.basename(target.fsPath),
     loose: !folder,
+    notes: undefined,
   };
+}
+
+/** Every chunk of a notes text: with no comment to attach to, each one comes back unattached. */
+function allChunks(text: string): string[] {
+  return splitAgentNotes(text, 0).unattached;
+}
+
+/** What reading the notes file found. */
+type NotesRead = { kind: 'text'; text: string } | { kind: 'missing' } | { kind: 'unreadable' };
+
+function isNotFound(error: unknown): boolean {
+  return error instanceof vscode.FileSystemError && error.code === 'FileNotFound';
 }

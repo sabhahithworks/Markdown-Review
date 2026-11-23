@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A VS Code extension (working name `markdown-review`) that renders any Markdown file in a review pane where the user selects passages and leaves comments — Google Docs-style commenting for local `.md` files. The user copies a generated prompt into any AI agent, the agent edits the file as plain prose, and the extension detects which comments were addressed by watching the file change.
 
-**The core design principle:** the agent is never asked to write structured data or follow a schema — it only edits prose. All bookkeeping (anchoring, status tracking, sidecar storage) is the extension's job. This is what makes it agent-agnostic.
+**The core design principle:** the agent is never asked to write structured data or follow a schema — it only edits prose. All bookkeeping (anchoring, status tracking, sidecar storage) is the extension's job. This is what makes it agent-agnostic. The one thing the prompt asks beyond editing is a notes file for disagreements, which is free prose; all matching of notes to comments is the extension's job.
 
 `MARKDOWN_REVIEW_PRD.md` is the authoritative spec. Read it before implementing anything. The rest of this file is orientation, not a substitute.
 
@@ -14,11 +14,11 @@ A VS Code extension (working name `markdown-review`) that renders any Markdown f
 
 **Phases 1–4 are built.** Anchoring core (`src/anchor/`, `src/render/`), the read-only preview pane (`src/panel/`, `media/`), commenting (`src/store/`, `media/src/{anchorSpace,selection,comments}.ts`) and the review loop (`src/prompt/`, `src/detect/`, `src/commands/`) are implemented and tested — `npm run check` = typecheck (three tsconfig projects) + lint + the vitest suites, plus the host-side assertions in `npm run test:integration`.
 
-**Phase 5 (ship) is executed; Phase 6 (production hardening) has landed its code.** A verified `markdown-review-pane-0.1.0.vsix` exists (~139 KB against the 500 KB budget). `docs/plans/06-production-hardening.md` is the current plan and the ledger for the 2026-08-05 full-codebase audit — H0–H37, all fixed or explicitly accepted in its §4. That closed D21 and D22 from Plan 04's ledger.
+**Phase 5 (ship) is executed; Phase 6 (production hardening) has landed its code.** A verified `markdown-review-pane-0.1.0.vsix` exists (~139 KB against the 500 KB budget at the time; the budget is now 2 MB (release-expansion D11)). `docs/plans/06-production-hardening.md` is the ledger for the 2026-08-05 full-codebase audit — H0–H37, all fixed or explicitly accepted in its §4. That closed D21 and D22 from Plan 04's ledger.
 
-**What is still open is manual and cannot be automated:** `docs/plans/05-acceptance-run.md` Part A — the Phase 4 acceptance remainder, including a blind real-agent run and the B4 re-link flow that has never once been exercised — and then the publisher claim, which is the single irreversible step. Phase 5 was scoped *package, not publish*; the Marketplace publish is written down and still outside a definition of done.
+**`docs/plans/release-expansion-2026-11-18.md` is the current plan** (Mermaid diagrams, alerts and footnotes, send to chat or terminal, whole-document comments, agent notes, CI). **What is still open is manual and cannot be automated:** `docs/plans/05-acceptance-run.md` Part A, which now carries a box for every new feature, the Plan 04 remainder (including the B4 re-link flow, never once exercised) and the blind run with all four agents (Claude Code, Copilot Chat, Cursor, Codex); a recorded green run of both CI jobs; and then the publisher claim, which is the single irreversible step. Phase 5 was scoped *package, not publish*; the Marketplace publish is written down and still outside a definition of done.
 
-Per-phase execution plans live under `docs/plans/` — start at `docs/plans/README.md` (phase map, shared conventions, contract-ownership table, verification harnesses), then execute the plan for the current phase. Run the previous phase's acceptance checklist before starting a new phase. The 2026-08-05 full-codebase audit recorded its findings (H-numbers) and their fixes in `docs/plans/06-production-hardening.md`, which is the current phase.
+Per-phase execution plans live under `docs/plans/` — start at `docs/plans/README.md` (phase map, shared conventions, contract-ownership table, verification harnesses), then execute the plan for the current phase. Run the previous phase's acceptance checklist before starting a new phase. The 2026-08-05 full-codebase audit recorded its findings (H-numbers) and their fixes in `docs/plans/06-production-hardening.md`, which is the ledger for that audit.
 
 Commands are in `package.json`; the ones with non-obvious behaviour: `npm run check` is what the definition-of-done maps to, `npm run build` also runs the CSS colour + theme-variable checks and the bundle guard, and `PERF=0 npm test` skips the 5 MB performance suite. Tests are split into two vitest projects — `--project node` for `src/test/`, `--project webview` for the jsdom suites in `media/test/`.
 
@@ -44,6 +44,9 @@ The versions are in `package.json`; what it can't tell you is why each one is th
 - `markdown-it` — its `token.map` provides the source-line ranges anchoring depends on
 - `diff-match-patch` — `match_main` specifically, for fuzzy anchor relocation
 - `dompurify` sanitizes all rendered HTML
+- `mermaid` — diagram rendering, lazy-loaded from its own file
+- `markdown-it-github-alerts` — `> [!NOTE]` callouts
+- `markdown-it-footnote` — footnote references and notes
 - Webview UI is vanilla TS + CSS — **no framework**
 - No new dependencies beyond these without asking first
 

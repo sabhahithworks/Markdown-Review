@@ -10,6 +10,8 @@
  * which is precisely the failure this phase was designed to make impossible.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createAnchor } from '../../src/anchor/create.js';
 import { locate } from '../../src/anchor/locate.js';
@@ -186,5 +188,29 @@ describe('select → anchor → locate → highlight', () => {
     const found = locate(created.anchor, doc);
     expect(found).not.toBeNull();
     if (found) expect(doc.text.slice(found.start, found.end)).toBe('return decode(token);');
+  });
+});
+
+describe('alert round trip (release-expansion D31)', () => {
+  const RICH = readFileSync(resolve(process.cwd(), 'docs/fixtures/rich-blocks.md'), 'utf8');
+
+  it.each([
+    ['an alert body', 'Notes carry extra context for the reader.'],
+    ['the second paragraph of an alert', 'Second paragraph of a caution.'],
+    ['an alert inside a tight list item', 'A note inside a tight list item.'],
+  ])('round-trips %s', (_label, needle) => {
+    const root = mount(RICH);
+    const doc = renderPlainText(RICH);
+    const { selectedText, offset } = capture(root, selectText(root, needle));
+
+    expect(selectedText).toBe(needle);
+    expect(doc.text.slice(offset, offset + needle.length)).toBe(needle);
+  });
+
+  it('keeps the alert title out of the block text', () => {
+    const root = mount(RICH);
+    const doc = renderPlainText(RICH);
+    expect(doc.text).not.toContain('Read this first');
+    expect(root.querySelector('.mr-alert-title[data-no-anchor]')).not.toBeNull();
   });
 });

@@ -107,7 +107,11 @@ export function changeBarRects(root: ParentNode): DOMRect[] {
       }
     }
 
-    const rect = element.getBoundingClientRect();
+    let rect = element.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      const before = element.previousElementSibling;
+      if (before?.classList.contains('mr-mermaid')) rect = before.getBoundingClientRect();
+    }
     const nested = element.querySelector('[data-ap-start]');
     if (nested) {
       const height = Math.max(0, nested.getBoundingClientRect().top - rect.top);

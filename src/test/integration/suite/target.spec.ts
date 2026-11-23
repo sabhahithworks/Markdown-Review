@@ -26,7 +26,9 @@ describe('toUri', () => {
     const rebuilt = toUri(shaped);
     assert.ok(rebuilt instanceof vscode.Uri, 'expected a genuine Uri');
     assert.equal(rebuilt.scheme, 'file');
-    assert.equal(rebuilt.fsPath, '/tmp/from-another-extension.md');
+    // fsPath uses the platform's separators (`\tmp\…` on Windows), so compare against a Uri built
+    // the same way rather than a POSIX literal.
+    assert.equal(rebuilt.fsPath, vscode.Uri.file('/tmp/from-another-extension.md').fsPath);
   });
 
   it('rebuilds a non-file scheme from its path', () => {

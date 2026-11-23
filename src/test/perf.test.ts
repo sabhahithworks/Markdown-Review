@@ -202,6 +202,7 @@ describe.skipIf(!ENABLED)('performance — PRD §5 budget', () => {
     const ranges = changedRanges(baseline, current);
     let flagged = 0;
     for (const comment of review.comments) {
+      if (comment.anchor === undefined) continue;
       const found = locate(comment.anchor, afterDoc);
       if (!found) continue;
       const scope = scopeOf(afterDoc, found);

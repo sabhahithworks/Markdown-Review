@@ -248,3 +248,54 @@ describe('renderPlainText — idempotence', () => {
     expect(renderPlainText(twice.text).text).toBe(twice.text);
   });
 });
+
+describe('alerts (release-expansion D31)', () => {
+  it('alert marker and title are outside anchor space', () => {
+    expect(renderPlainText('> [!NOTE]\n> Keep this.\n').text).toBe('Keep this.');
+  });
+
+  it('marker-only alert', () => {
+    const doc = renderPlainText('> [!TIP]\n');
+    expect(doc.text).toBe('');
+    expect(doc.blocks).toHaveLength(0);
+  });
+
+  it('lowercase marker is an alert', () => {
+    expect(renderPlainText('> [!warning]\n> x').text).toBe('x');
+  });
+
+  it('ordinary blockquote is unchanged', () => {
+    expect(renderPlainText('> plain quote').text).toBe('plain quote');
+  });
+
+  it('words after the marker become the title', () => {
+    expect(renderPlainText('> [!NOTE] Read this first\n> Body').text).toBe('Body');
+  });
+
+  it('a nested quote stays inside the alert', () => {
+    expect(renderPlainText('> [!NOTE]\n> > inner').text).toBe('inner');
+  });
+});
+
+describe('footnotes (release-expansion D30)', () => {
+  it('footnote reference label is anchor text', () => {
+    expect(renderPlainText('Text[^1] more.\n\n[^1]: The note.\n').text).toBe('Text[1] more.\nThe note.');
+  });
+
+  it('footnote text sits at the end of anchor space', () => {
+    const text = renderPlainText('A[^1].\n\n[^1]: The note.\n\nLater paragraph.\n').text;
+    expect(text).toBe('A[1].\nLater paragraph.\nThe note.');
+  });
+
+  it('undefined reference stays literal', () => {
+    expect(renderPlainText('See [^nope].').text).toBe('See [^nope].');
+  });
+
+  it('inline footnote syntax is not parsed', () => {
+    expect(renderPlainText('A^[inline] b').text).toBe('A^[inline] b');
+  });
+
+  it('repeated reference', () => {
+    expect(renderPlainText('A[^1] B[^1].\n\n[^1]: N.\n').text).toBe('A[1] B[1:1].\nN.');
+  });
+});

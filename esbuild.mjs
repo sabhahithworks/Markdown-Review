@@ -6,6 +6,7 @@
  */
 
 import esbuild from 'esbuild';
+import { copyFileSync } from 'node:fs';
 
 const watch = process.argv.includes('--watch');
 /** Builds only the integration-test bundles. They are dev-only and never part of the `.vsix`. */
@@ -38,6 +39,14 @@ const common = {
   logLevel: 'silent',
   plugins: [progress],
 };
+
+const MERMAID_SRC = 'node_modules/mermaid/dist/mermaid.min.js';
+const MERMAID_OUT = 'media/mermaid.min.js';
+
+/** Mermaid ships as its own file beside the webview bundle; a missing source throws with its path. */
+function copyMermaid() {
+  copyFileSync(MERMAID_SRC, MERMAID_OUT);
+}
 
 const builds = [
   {
@@ -97,6 +106,7 @@ async function main() {
   }
 
   if (watch) {
+    copyMermaid();
     const contexts = await Promise.all(builds.map((config) => esbuild.context(config)));
     await Promise.all(contexts.map((context) => context.watch()));
     return;
@@ -104,10 +114,12 @@ async function main() {
 
   await Promise.all(builds.map((config) => esbuild.build(config)));
 
-  // Phase 5 has a 500 KB package budget and the webview bundle (DOMPurify + highlight.js) is the
-  // main risk to it, so every production build reports the number rather than making someone ask.
+  copyMermaid();
+
+  // The package budget is 2 MB (release-expansion D11) and the Mermaid file is the main risk to
+  // it, so every production build reports the number rather than making someone ask.
   const { statSync } = await import('node:fs');
-  for (const { outfile } of builds) {
+  for (const outfile of [...builds.map((b) => b.outfile), MERMAID_OUT]) {
     const kb = (statSync(outfile).size / 1024).toFixed(1);
     console.log(`  ${outfile.padEnd(24)} ${kb.padStart(8)} KB`);
   }

@@ -31,12 +31,17 @@ import type {
   PanelState,
   WebviewMessage,
 } from '../../src/panel/messages.js';
+import { isDocumentComment } from '../../src/panel/messages.js';
 import { resetBlockMaps } from './anchorSpace.js';
 import { applyChangeMarks } from './changes.js';
+import type { AgentNotesView } from './agentNotes.js';
+import { initAgentNotes, notesArrived, notesKey } from './agentNotes.js';
 import type { CommentsView } from './comments.js';
 import { initComments } from './comments.js';
 import type { HeaderView } from './header.js';
 import { FILTERABLE, SHOW_CHANGES_MESSAGE, initHeader } from './header.js';
+import { initMermaid } from './mermaid.js';
+import { createMermaidLoader } from './mermaidLoader.js';
 import type { OrphansView } from './orphans.js';
 import { initOrphans } from './orphans.js';
 import type { SelectionController } from './selection.js';
@@ -53,6 +58,10 @@ declare function acquireVsCodeApi(): {
 };
 
 const vscode = acquireVsCodeApi();
+
+/** The bundle's own `<script>`, which gives the Mermaid file's folder and the page nonce. */
+const SELF = document.currentScript instanceof HTMLScriptElement ? document.currentScript : null;
+export const loadMermaid = createMermaidLoader(SELF?.src, SELF?.nonce);
 
 /**
  * A curated set rather than `highlight.js/lib/common`: unknown languages fall back to plain `<code>`
@@ -87,6 +96,7 @@ const overlayRoot = requireElement('highlight-overlay');
 const markerRoot = requireElement('marker-layer');
 const headerRoot = requireElement('header');
 const orphansRoot = requireElement('orphans');
+const agentNotesRoot = requireElement('agent-notes');
 const announcerRoot = requireElement('announcer');
 const emptyStateRoot = requireElement('empty-state');
 
@@ -94,7 +104,18 @@ const emptyStateRoot = requireElement('empty-state');
 let comments: CommentsView | undefined;
 let header: HeaderView | undefined;
 let orphans: OrphansView | undefined;
+const agentNotes: AgentNotesView = initAgentNotes({
+  root: agentNotesRoot,
+  onDismiss: () => {
+    vscode.postMessage({ type: 'dismissAgentNote' });
+  },
+});
+/** The notes key of the last state, or undefined before the first `reviewState` of this load. */
+let lastNotesKey: string | undefined;
 let selection: SelectionController | undefined;
+
+/** Set by `setContent` to the line it restored; `onLayout` restores it again until the user acts. */
+let pinnedLine: number | undefined;
 
 let targetPath = '';
 /** A `data-line` value, not a pixel offset, so it survives a re-render that changes layout. */
@@ -182,6 +203,23 @@ const SANITIZE_OPTIONS = {
   ADD_ATTR: ['data-line', 'data-no-anchor', 'data-ap-start', 'data-ap-end'],
 };
 
+const MERMAID_SANITIZE_OPTIONS = { USE_PROFILES: { svg: true, svgFilters: true } };
+
+const mermaid = initMermaid({
+  root: contentRoot,
+  load: loadMermaid,
+  sanitize: (svg) => DOMPurify.sanitize(svg, MERMAID_SANITIZE_OPTIONS),
+  onLayout: () => {
+    if (pinnedLine !== undefined) {
+      scrollLine = pinnedLine;
+      restoreScroll(pinnedLine);
+    }
+    rebuildLineIndex();
+    if (lastReviewState && !documentGone) mermaid.setMarkers(lastReviewState.located);
+    comments?.reposition();
+  },
+});
+
 function setContent(html: string, frontMatterHtml: string | undefined): void {
   hideNotice();
 
@@ -193,10 +231,12 @@ function setContent(html: string, frontMatterHtml: string | undefined): void {
     : '';
 
   highlightAll();
+  mermaid.refresh();
   // After highlighting, not before: highlight.js replaces the text nodes inside every `<pre>`, and
   // a map built against the old ones would point at detached nodes.
   resetBlockMaps();
-  restoreScroll();
+  pinnedLine = scrollLine;
+  restoreScroll(scrollLine);
   // After `restoreScroll`, so the measured tops describe where the content actually settled.
   rebuildLineIndex();
   comments?.reposition();
@@ -229,6 +269,10 @@ function startCommenting(author: string): CommentsView {
       announce('Comment added.');
       vscode.postMessage({ type: 'addComment', selectedText, offset, hintLine, body });
     },
+    onDocumentSubmit: (body) => {
+      announce('Comment added.');
+      vscode.postMessage({ type: 'addDocumentComment', body });
+    },
     onReanchor: ({ id, selectedText, offset, hintLine }) => {
       announce('Comment re-anchored to the selected text.');
       vscode.postMessage({ type: 'reanchorComment', id, selectedText, offset, hintLine });
@@ -245,12 +289,18 @@ function startCommenting(author: string): CommentsView {
     },
     onReanchor: (id) => selection?.armReanchor(id),
     onCancelReanchor: () => selection?.disarm(),
+    onDismissNote: (id) => {
+      vscode.postMessage({ type: 'dismissAgentNote', id });
+    },
   });
 
   header = initHeader({
     root: headerRoot,
     onCopyPrompt: () => {
       vscode.postMessage({ type: 'copyPrompt' });
+    },
+    onSendPrompt: (target) => {
+      vscode.postMessage({ type: 'sendPrompt', target });
     },
     onClearAddressed: () => {
       vscode.postMessage({ type: 'clearAddressed' });
@@ -261,6 +311,7 @@ function startCommenting(author: string): CommentsView {
     onShowChanges: () => {
       vscode.postMessage(SHOW_CHANGES_MESSAGE);
     },
+    onCommentOnDocument: openDocumentComposerFrom,
     onFilterChange: (statuses) => {
       filter = statuses;
       saveState();
@@ -288,6 +339,8 @@ function startCommenting(author: string): CommentsView {
     overlay: overlayRoot,
     markerLayer: markerRoot,
     announce,
+    fallbackRect: (range) => mermaid.rectFor(range),
+    onReveal: (range) => mermaid.showSourceFor(range),
     onEdit: (id, body) => {
       vscode.postMessage({ type: 'editComment', id, body });
     },
@@ -299,6 +352,9 @@ function startCommenting(author: string): CommentsView {
     },
     onReopen: (id) => {
       vscode.postMessage({ type: 'reopenComment', id });
+    },
+    onDismissNote: (id) => {
+      vscode.postMessage({ type: 'dismissAgentNote', id });
     },
   });
 }
@@ -362,6 +418,8 @@ function rebuildLineIndex(): void {
   for (const element of contentRoot.querySelectorAll('[data-line]')) {
     const line = Number(element.getAttribute('data-line'));
     if (!Number.isFinite(line)) continue;
+    // A hidden diagram source has no layout box; its zero rectangle would break the ascending order.
+    if (element.getClientRects().length === 0) continue;
     next.push({ bottom: element.getBoundingClientRect().bottom + window.scrollY, line });
   }
   lineIndex = next;
@@ -394,16 +452,27 @@ function currentScrollLine(): number | undefined {
   return found;
 }
 
-function restoreScroll(): void {
-  if (scrollLine === undefined) return;
+function restoreScroll(target: number | undefined): void {
+  if (target === undefined) return;
 
   let best: Element | undefined;
   for (const element of contentRoot.querySelectorAll('[data-line]')) {
     const line = Number(element.getAttribute('data-line'));
-    if (Number.isFinite(line) && line <= scrollLine) best = element;
-    else break;
+    if (!Number.isFinite(line)) continue;
+    if (line > target) break;
+    if (element.getClientRects().length > 0) best = element;
   }
   best?.scrollIntoView({ block: 'start' });
+}
+
+for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+  window.addEventListener(
+    type,
+    () => {
+      pinnedLine = undefined;
+    },
+    { passive: true, capture: true },
+  );
 }
 
 window.addEventListener(
@@ -476,6 +545,10 @@ let lastReviewState: Extract<HostMessage, { type: 'reviewState' }> | undefined;
  */
 let emptyStateDismissed = false;
 
+function openDocumentComposerFrom(button: HTMLElement): void {
+  selection?.openDocumentComposer(button.getBoundingClientRect(), button);
+}
+
 function paintEmptyState(isEmpty: boolean): void {
   if (!isEmpty || emptyStateDismissed || documentGone) {
     emptyStateRoot.hidden = true;
@@ -502,11 +575,25 @@ function paintEmptyState(isEmpty: boolean): void {
     paintEmptyState(true);
   });
 
-  emptyStateRoot.replaceChildren(title, body, dismiss);
+  const commentOnDocument = document.createElement('button');
+  commentOnDocument.type = 'button';
+  commentOnDocument.className = 'mr-button-secondary';
+  commentOnDocument.textContent = 'Comment on document';
+  commentOnDocument.addEventListener('click', () => {
+    openDocumentComposerFrom(commentOnDocument);
+  });
+
+  emptyStateRoot.replaceChildren(title, body, commentOnDocument, dismiss);
   emptyStateRoot.hidden = false;
 }
 
 function applyReviewState(message: Extract<HostMessage, { type: 'reviewState' }>): void {
+  const key = notesKey(message.review);
+  if (notesArrived(lastNotesKey, key)) {
+    announce('The agent left notes.');
+  }
+  lastNotesKey = key;
+  agentNotes.setState(message.review.agentNotes);
   paintEmptyState(message.review.comments.length === 0);
   // Order matters, and not cosmetically. `#header` and `#orphans` are both in normal flow
   // *above* `#content`, so showing or resizing either one moves every block below it. Cards and
@@ -520,16 +607,27 @@ function applyReviewState(message: Extract<HostMessage, { type: 'reviewState' }>
   // A gone document has nothing to diff against, so its change control hides with its marks. The
   // content is gone too, but a mark is state on an element: clear it rather than trust that the
   // element went with it.
+  mermaid.setMarkers(documentGone ? {} : message.located);
   const changes = documentGone ? undefined : message.changes;
   const marked = applyChangeMarks(contentRoot, changes);
   header?.setState(message.review, changes, marked);
   if (documentGone) {
     orphans?.setState([], {});
-    comments?.setState({ ...message.review, comments: [] }, {}, []);
+    comments?.setState(
+      { ...message.review, comments: message.review.comments.filter(isDocumentComment) },
+      {},
+      [],
+      false,
+    );
     return;
   }
   orphans?.setState(message.review.comments, message.located, message.sectionChanged);
-  comments?.setState(message.review, message.located, message.sectionChanged);
+  comments?.setState(
+    message.review,
+    message.located,
+    message.sectionChanged,
+    changes?.state === 'changed',
+  );
 }
 
 window.addEventListener('message', (event: MessageEvent<unknown>) => {

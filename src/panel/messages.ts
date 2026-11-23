@@ -17,6 +17,7 @@ import type { ChangeState, CommentStatus, Located, ReviewFile } from '../anchor/
  * with no node, vscode or DOM dependency, so it bundles into the webview for free.
  */
 export type {
+  AgentNote,
   Anchor,
   ChangeSpan,
   ChangeState,
@@ -25,7 +26,12 @@ export type {
   Located,
   ReviewFile,
 } from '../anchor/types.js';
-export { MAX_ANCHOR_LENGTH, MIN_ANCHOR_LENGTH, UNCERTAIN_BELOW } from '../anchor/types.js';
+export {
+  isDocumentComment,
+  MAX_ANCHOR_LENGTH,
+  MIN_ANCHOR_LENGTH,
+  UNCERTAIN_BELOW,
+} from '../anchor/types.js';
 /** PRD §7's quote truncation. Re-exported because addressed cards quote text webview-side too. */
 export { MAX_QUOTE_LENGTH, truncateQuote } from '../anchor/text.js';
 export { countByStatus } from '../anchor/counts.js';
@@ -38,7 +44,9 @@ export { countByStatus } from '../anchor/counts.js';
  * webview channel each time a status flips. The webview never renders it (the rewrite diff is opened
  * host-side), so it is stripped at the boundary, and this type makes forgetting a compile error.
  */
-export type ReviewSummary = Omit<ReviewFile, 'baselineText'>;
+export type ReviewSummary = Omit<ReviewFile, 'baselineText' | 'agentNotes'> & {
+  agentNotes?: { unattached: string; cut: boolean; receivedAt: string };
+};
 
 /**
  * Drops the baseline on its way to the webview.
@@ -53,6 +61,15 @@ export function toReviewSummary(review: ReviewFile): ReviewSummary {
     comments: review.comments,
     baselineAt: review.baselineAt,
     ...(review.promptOrder ? { promptOrder: [...review.promptOrder] } : {}),
+    ...(review.agentNotes
+      ? {
+          agentNotes: {
+            unattached: review.agentNotes.unattached,
+            cut: review.agentNotes.cut,
+            receivedAt: review.agentNotes.receivedAt,
+          },
+        }
+      : {}),
   };
 }
 
@@ -109,6 +126,9 @@ export type HostMessage =
    */
   | { type: 'rewriteDetected'; orphaned: number };
 
+/** Where "Send to…" puts the review prompt. */
+export type SendTarget = 'chat' | 'terminal';
+
 /** webview -> extension */
 export type WebviewMessage =
   | { type: 'ready' }
@@ -126,6 +146,8 @@ export type WebviewMessage =
    * offset. `-1` means the mapping failed, and the host falls back to `hintLine`.
    */
   | { type: 'addComment'; selectedText: string; offset: number; hintLine: number; body: string }
+  /** A comment on the document as a whole: no selection, so no anchor. */
+  | { type: 'addDocumentComment'; body: string }
   | { type: 'editComment'; id: string; body: string }
   | { type: 'deleteComment'; id: string }
   /** Also the "Looks good" button on an addressed card — same host action, different label. */
@@ -140,12 +162,15 @@ export type WebviewMessage =
   | { type: 'reanchorComment'; id: string; selectedText: string; offset: number; hintLine: number }
   /** Header actions. The palette commands are the same code paths. */
   | { type: 'copyPrompt' }
+  | { type: 'sendPrompt'; target: SendTarget }
   | { type: 'clearAddressed' }
   | { type: 'clearAll' }
   /** The rewrite banner's action: open baseline ↔ current as a diff (PRD §11). */
   | { type: 'showRewriteDiff' }
   /** "Locate file…" on the unreadable notice: point this review at a file that still exists. */
-  | { type: 'relinkTarget' };
+  | { type: 'relinkTarget' }
+  /** Dismisses one comment's agent note, or with no id the notes that name no comment. */
+  | { type: 'dismissAgentNote'; id?: string };
 
 /**
  * Serializer state, and what the webview writes via `setState`. `scrollLine` is a `data-line`
@@ -192,6 +217,12 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
         isFiniteNumber(value['offset']) &&
         isFiniteNumber(value['hintLine'])
       );
+    case 'sendPrompt':
+      return value['target'] === 'chat' || value['target'] === 'terminal';
+    case 'dismissAgentNote':
+      return value['id'] === undefined || typeof value['id'] === 'string';
+    case 'addDocumentComment':
+      return typeof value['body'] === 'string';
     case 'editComment':
       return typeof value['id'] === 'string' && typeof value['body'] === 'string';
     case 'deleteComment':

@@ -8,6 +8,8 @@
  */
 
 import MarkdownIt from 'markdown-it';
+import footnote from 'markdown-it-footnote';
+import githubAlerts from 'markdown-it-github-alerts';
 import taskLists from 'markdown-it-task-lists';
 
 export function createMarkdownIt(): MarkdownIt.MarkdownIt {
@@ -24,6 +26,52 @@ export function createMarkdownIt(): MarkdownIt.MarkdownIt {
   // PRD §6 requires task lists to render as checkboxes. `enabled: false` keeps them non-interactive:
   // the review pane is read-only.
   md.use(taskLists, { enabled: false, label: false });
+
+  // `> [!NOTE]` blocks become `alert_open` / `alert_close` container tokens. The plugin strips the
+  // marker from the first inline token; the title is carried in `token.meta`.
+  md.use(githubAlerts, { matchCaseSensitive: false });
+
+  // The plugin retypes the *first* `blockquote_close` after an alert's opening token, which for
+  // `> [!NOTE]\n> > inner` is the inner quote's close. Re-pair every close with the open it
+  // actually matches so the container tokens nest correctly.
+  md.core.ruler.after('github-alerts', 'github-alerts-pairing', (state): void => {
+    const stack: MarkdownIt.Token[] = [];
+    for (const token of state.tokens) {
+      if (token.type === 'alert_open' || token.type === 'blockquote_open') {
+        stack.push(token);
+      } else if (token.type === 'alert_close' || token.type === 'blockquote_close') {
+        const open = stack.pop();
+        if (!open) continue;
+        const isAlert = open.type === 'alert_open';
+        token.type = isAlert ? 'alert_close' : 'blockquote_close';
+        token.tag = isAlert ? 'div' : 'blockquote';
+      }
+    }
+
+    // The plugin leaves an empty paragraph where the marker was when nothing else shared its line.
+    for (let i = state.tokens.length - 3; i >= 0; i--) {
+      const [open, p, inline, close] = [
+        state.tokens[i],
+        state.tokens[i + 1],
+        state.tokens[i + 2],
+        state.tokens[i + 3],
+      ];
+      if (
+        open?.type === 'alert_open' &&
+        p?.type === 'paragraph_open' &&
+        inline?.type === 'inline' &&
+        inline.content.trim() === '' &&
+        close?.type === 'paragraph_close'
+      ) {
+        state.tokens.splice(i + 1, 3);
+      }
+    }
+  });
+
+  // `[^1]` references plus a footnote block at the end of the document. Inline footnotes
+  // (`^[text]`) stay literal.
+  md.use(footnote);
+  md.inline.ruler.disable('footnote_inline');
 
   return md;
 }

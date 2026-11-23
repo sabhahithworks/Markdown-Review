@@ -490,3 +490,97 @@ describe('buildPrompt — repeated quotes (D1)', () => {
     expect(line.endsWith(`${'u'.repeat(48)}"`)).toBe(true);
   });
 });
+
+describe('buildPrompt — whole-document comments (D15)', () => {
+  const header =
+    "I've left review comments on `docs/auth.md`. Please revise the document to address them.\n" +
+    '\n' +
+    "Edit the file directly. Don't add annotations, comments, or replies — just make the changes.\n" +
+    'If you disagree with a comment or need clarification, tell me instead of guessing.\n';
+
+  it('document comments come first and are numbered', () => {
+    const doc = docOf(AUTH_MARKDOWN);
+    const review = makeReviewFile(
+      [
+        makeComment(anchorOn(doc, AUTH_ANCHORS.parallel), { body: AUTH_BODIES.parallel }),
+        makeComment(anchorOn(doc, AUTH_ANCHORS.retries), { body: AUTH_BODIES.retries }),
+        { ...makeComment(anchorOn(doc, AUTH_ANCHORS.heading), { body: 'Tighten the tone.' }), anchor: undefined },
+      ],
+      { targetPath: AUTH_TARGET_PATH },
+    );
+
+    const { prompt, count } = buildPrompt(review, doc);
+
+    expect(count).toBe(3);
+    expect(prompt).toContain('\n1. On the document as a whole:\n   > Tighten the tone.\n\n2. On: ');
+    expect(prompt).toContain('\n3. On: ');
+    expect(prompt.startsWith(`${header}\n1. On the document as a whole:\n   > Tighten the tone.\n\n2. `)).toBe(true);
+  });
+
+  it('only document comments', () => {
+    const doc = docOf(AUTH_MARKDOWN);
+    const a = { ...makeComment(anchorOn(doc, AUTH_ANCHORS.heading), { id: 'a', body: 'One.' }), anchor: undefined };
+    const b = { ...makeComment(anchorOn(doc, AUTH_ANCHORS.heading), { id: 'b', body: 'Two.' }), anchor: undefined };
+    const review = makeReviewFile([a, b], { targetPath: AUTH_TARGET_PATH });
+
+    const result = buildPrompt(review, doc);
+
+    expect(result.count).toBe(2);
+    expect(result.prompt).toBe(
+      `${header}\n1. On the document as a whole:\n   > One.\n\n2. On the document as a whole:\n   > Two.\n`,
+    );
+  });
+
+  it('order includes document comments first', () => {
+    const doc = docOf(AUTH_MARKDOWN);
+    const review = makeReviewFile(
+      [
+        makeComment(anchorOn(doc, AUTH_ANCHORS.retries), { id: 'r' }),
+        { ...makeComment(anchorOn(doc, AUTH_ANCHORS.heading), { id: 'z' }), anchor: undefined },
+        { ...makeComment(anchorOn(doc, AUTH_ANCHORS.heading), { id: 'd' }), anchor: undefined },
+      ],
+      { targetPath: AUTH_TARGET_PATH },
+    );
+
+    // Same timestamp, so the two document comments fall back to id order.
+    expect(buildPrompt(review, doc).order).toEqual(['d', 'z', 'r']);
+  });
+
+  it('resolved document comment is not listed', () => {
+    const doc = docOf(AUTH_MARKDOWN);
+    const review = makeReviewFile(
+      [{ ...makeComment(anchorOn(doc, AUTH_ANCHORS.heading), { status: 'resolved' }), anchor: undefined }],
+      { targetPath: AUTH_TARGET_PATH },
+    );
+
+    expect(buildPrompt(review, doc)).toEqual({ prompt: '', count: 0, order: [] });
+  });
+});
+
+describe('buildPrompt — agent notes sentence', () => {
+  const doc = docOf(AUTH_MARKDOWN);
+  const review = makeReviewFile(
+    [
+      makeComment(anchorOn(doc, AUTH_ANCHORS.retries), { body: AUTH_BODIES.retries }),
+      makeComment(anchorOn(doc, AUTH_ANCHORS.parallel), { body: AUTH_BODIES.parallel }),
+      makeComment(anchorOn(doc, AUTH_ANCHORS.heading), { body: AUTH_BODIES.heading }),
+    ],
+    { targetPath: AUTH_TARGET_PATH },
+  );
+  const oldSentence = 'If you disagree with a comment or need clarification, tell me instead of guessing.\n';
+
+  it('notes path changes the third header line', () => {
+    const notesPath = '.reviews/docs__specs__auth.md.notes.md';
+    const { prompt } = buildPrompt(review, doc, { notesPath });
+    const newSentence = `If you disagree with a comment or need clarification, write that in plain words in \`${notesPath}\` instead of guessing, and mention the comment's number.\n`;
+
+    expect(prompt).toBe(AUTH_EXPECTED_PROMPT.replace(oldSentence, newSentence));
+    expect(prompt).not.toBe(AUTH_EXPECTED_PROMPT);
+  });
+
+  it('no notes path keeps the old sentence', () => {
+    expect(buildPrompt(review, doc).prompt).toBe(AUTH_EXPECTED_PROMPT);
+    expect(buildPrompt(review, doc, { notesPath: '' }).prompt).toBe(AUTH_EXPECTED_PROMPT);
+    expect(AUTH_EXPECTED_PROMPT).toContain(oldSentence);
+  });
+});
