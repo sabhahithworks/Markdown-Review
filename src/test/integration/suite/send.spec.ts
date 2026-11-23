@@ -9,6 +9,7 @@ import { createAnchor } from '../../../anchor/create.js';
 import type { Comment, ReviewFile } from '../../../anchor/types.js';
 import { deliverPrompt } from '../../../commands/copyPrompt.js';
 import { defaultIo, type PromptIo } from '../../../commands/promptTargets.js';
+import { promptPointerLine } from '../../../prompt/pointer.js';
 import { renderPlainText } from '../../../render/plaintext.js';
 import { REVIEWS_DIR } from '../../../store/sidecarPath.js';
 import { readSettledText, stubContext, stubOutput, workspaceUri, writeText } from './context.js';
@@ -20,23 +21,33 @@ const NEEDLE = 'retries three times';
 interface Recorder extends PromptIo {
   readonly chatPrompts: string[];
   toTerminalCalls: number;
+  readonly clipboardAtTerminal: string[];
   readonly messages: string[];
   readonly errors: string[];
 }
 
-function recorder(chat: () => Promise<boolean>, terminal: () => Promise<boolean>): Recorder {
+function recorder(
+  chat: () => Promise<boolean>,
+  terminal: () => Promise<boolean>,
+  write: (file: vscode.Uri, text: string) => Promise<void> = (f, t) => defaultIo.writePromptFile(f, t),
+): Recorder {
   const rec: Recorder = {
     chatPrompts: [],
     toTerminalCalls: 0,
+    clipboardAtTerminal: [],
     messages: [],
     errors: [],
     toChat(prompt: string): Promise<boolean> {
       rec.chatPrompts.push(prompt);
       return chat();
     },
-    toTerminal(): Promise<boolean> {
+    async toTerminal(): Promise<boolean> {
       rec.toTerminalCalls += 1;
+      rec.clipboardAtTerminal.push(await vscode.env.clipboard.readText());
       return terminal();
+    },
+    writePromptFile(file: vscode.Uri, text: string): Promise<void> {
+      return write(file, text);
     },
     notify(message: string): void {
       rec.messages.push(message);
@@ -97,6 +108,42 @@ describe('send review prompt (release-expansion S2)', () => {
     assert.deepEqual(io.messages, ['1 comment placed in VS Code chat. Press Enter to send.']);
     const saved = await baselineOf(read);
     assert.ok(saved.promptOrder !== undefined && saved.promptOrder.length === 1);
+  });
+
+  it('terminal target pastes one line that points at the prompt file', async () => {
+    const { target, read } = await seed('send-term-line');
+    await vscode.env.clipboard.writeText('sentinel');
+    const io = recorder(() => Promise.resolve(true), () => Promise.resolve(true));
+
+    await deliver(target, 'terminal', io);
+
+    const file = workspaceUri(REVIEWS_DIR, 'docs__send-term-line.md.prompt.md');
+    assert.deepEqual(io.clipboardAtTerminal, [promptPointerLine(file.fsPath)]);
+    assert.doesNotMatch(io.clipboardAtTerminal[0] ?? '', /[\r\n]/);
+    const written = await readSettledText(file);
+    assert.ok(written.includes('Why three?'));
+    assert.ok(written.includes('\n'));
+    assert.deepEqual(io.messages, ['1 comment pasted into the terminal. Press Enter to send.']);
+    const saved = await baselineOf(read);
+    assert.ok(saved.baselineText !== undefined, 'baseline taken');
+  });
+
+  it('a prompt file that cannot be saved falls back to copy', async () => {
+    const { target, read } = await seed('send-term-nowrite');
+    await vscode.env.clipboard.writeText('sentinel');
+    const io = recorder(
+      () => Promise.resolve(true),
+      () => Promise.resolve(true),
+      () => Promise.reject(new Error('disk full')),
+    );
+
+    await deliver(target, 'terminal', io);
+
+    assert.equal(io.toTerminalCalls, 0);
+    assert.ok((await vscode.env.clipboard.readText()).includes('Why three?'));
+    assert.deepEqual(io.messages, ['Markdown Review could not save the prompt file. The prompt was copied instead.']);
+    const saved = await baselineOf(read);
+    assert.ok(saved.baselineText !== undefined, 'baseline taken');
   });
 
   it('falls back to copy', async () => {

@@ -1,7 +1,8 @@
 /**
- * The terminal Send target pastes with the workbench paste command (release-expansion S4). A
- * terminal program that enabled bracketed paste must receive the prompt as one paste, so a
- * multi-line prompt does not submit on its first newline.
+ * The terminal Send target pastes one pointer line, never the prompt (release-expansion D-q16): the
+ * CI run's recorded bytes showed a multi-line paste reaching a Windows terminal as separate lines,
+ * because ConPTY does not bracket it. This proves the line reaches a terminal program whole and
+ * with no line break, on every platform.
  */
 
 import * as assert from 'node:assert/strict';
@@ -9,6 +10,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { promptPointerLine } from '../../../prompt/pointer.js';
 import { defaultIo } from '../../../commands/promptTargets.js';
 import { delay, describe, it, waitFor } from './harness.js';
 
@@ -18,7 +20,12 @@ const PASTE_ARRIVAL_TIMEOUT_MS = 10000;
 const TAIL_SETTLE_MS = 300;
 const OPEN = '\x1b[200~';
 const CLOSE = '\x1b[201~';
-const LINES = ['first line of the prompt', 'second line of the prompt', 'third line of the prompt'];
+
+function stripMarkers(bytes: string): string {
+  return bytes.split(OPEN).join('').split(CLOSE).join('');
+}
+
+let pointerLine = '';
 
 const PROBE = path.resolve(__dirname, '..', 'src', 'test', 'integration', 'fixtures', 'pasteProbe.cjs');
 
@@ -72,7 +79,10 @@ function pasteIntoProbe(): Promise<string | undefined> {
       }
       await delay(PASTE_SETTLE_MS);
 
-      const text = LINES.join('\n');
+      const line = promptPointerLine(path.join(dir, 'spec [draft].md.prompt.md'));
+      assert.ok(line !== undefined);
+      pointerLine = line;
+      const text = line;
       await vscode.env.clipboard.writeText(text);
       if ((await vscode.env.clipboard.readText()) !== text) {
         if (process.platform === 'linux') {
@@ -85,8 +95,8 @@ function pasteIntoProbe(): Promise<string | undefined> {
       assert.equal(await defaultIo.toTerminal(), true);
       try {
         await waitFor(
-          () => fs.existsSync(recordFile) && fs.readFileSync(recordFile, 'latin1').includes(CLOSE),
-          'the probe to record the closing paste marker',
+          () => fs.existsSync(recordFile) && stripMarkers(fs.readFileSync(recordFile, 'latin1')).includes(line),
+          'the probe to record the pointer line',
           PASTE_ARRIVAL_TIMEOUT_MS,
         );
       } catch (err) {
@@ -105,38 +115,16 @@ function pasteIntoProbe(): Promise<string | undefined> {
   return recorded;
 }
 
-describe('terminal paste (release-expansion S4)', () => {
-  it('paste arrives bracketed and whole', async () => {
+describe('terminal paste (release-expansion S6)', () => {
+  it('the pointer line arrives whole', async () => {
     const bytes = await pasteIntoProbe();
     if (bytes === undefined) return;
-    const open = bytes.indexOf(OPEN);
-    const close = bytes.indexOf(CLOSE);
-    assert.ok(open >= 0, `no opening marker in ${JSON.stringify(bytes)}`);
-    assert.ok(close > open, `no closing marker after the opening one in ${JSON.stringify(bytes)}`);
-    const inner = bytes.slice(open + OPEN.length, close);
-    let from = 0;
-    for (const line of LINES) {
-      const at = inner.indexOf(line, from);
-      assert.ok(at >= 0, `line ${JSON.stringify(line)} missing or out of order in ${JSON.stringify(inner)}`);
-      from = at + line.length;
-    }
+    assert.equal(stripMarkers(bytes), pointerLine);
   });
 
-  it('no line is submitted outside the paste', async () => {
+  it('no line break reaches the terminal', async () => {
     const bytes = await pasteIntoProbe();
     if (bytes === undefined) return;
-    const open = bytes.indexOf(OPEN);
-    const close = bytes.indexOf(CLOSE);
-    assert.ok(open >= 0 && close > open, `markers missing in ${JSON.stringify(bytes)}`);
-    assert.equal(bytes.slice(0, open), '', 'bytes arrived before the paste');
-    assert.equal(bytes.slice(close + CLOSE.length), '', 'bytes arrived after the paste');
-    const inner = bytes.slice(open + OPEN.length, close);
-    const lineRegex = new RegExp(LINES.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'));
-    const pieces = inner.split(lineRegex);
-    assert.equal(pieces.length, LINES.length + 1, `unexpected pieces in ${JSON.stringify(inner)}`);
-    pieces.forEach((piece, i) => {
-      const edge = i === 0 || i === pieces.length - 1;
-      assert.match(piece, edge ? /^[\r\n]*$/ : /^[\r\n]+$/, `bad separator ${JSON.stringify(piece)}`);
-    });
+    assert.doesNotMatch(bytes, /[\r\n]/, `a line break in ${JSON.stringify(bytes)}`);
   });
 });

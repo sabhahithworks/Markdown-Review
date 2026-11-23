@@ -12,11 +12,13 @@ import { renderPlainText } from '../render/plaintext.js';
 import {
   noOpenCommentsMessage,
   promptCopiedMessage,
+  promptFileFailedMessage,
   promptSentMessage,
   sendFallbackMessage,
 } from '../panel/notices.js';
 import { readTarget } from '../panel/readTarget.js';
 import { buildPrompt } from '../prompt/buildPrompt.js';
+import { promptPointerLine } from '../prompt/pointer.js';
 import { ReviewStore } from '../store/ReviewStore.js';
 import { defaultIo, type PromptIo } from './promptTargets.js';
 import { resolveTarget } from './resolveTarget.js';
@@ -92,13 +94,41 @@ export async function deliverPrompt(
   await vscode.env.clipboard.writeText(prompt);
 
   // The prompt is on the clipboard before any hand-off, so a refused or failed hand-off is a copy.
+  // The terminal gets only a pointer line: the prompt is saved to the prompt file and the line is
+  // put on the clipboard for the paste; any failure puts the full prompt back on the clipboard.
   let sent = false;
-  if (sendTarget !== 'clipboard') {
+  let fileFailed = false;
+  if (sendTarget === 'chat') {
     try {
-      sent = sendTarget === 'chat' ? await io.toChat(prompt) : await io.toTerminal();
+      sent = await io.toChat(prompt);
     } catch (error) {
       output.appendLine(`[copyPrompt] sending to ${sendTarget} failed: ${String(error)}`);
     }
+  } else if (sendTarget === 'terminal') {
+    const file = store.promptFileUri();
+    const line = promptPointerLine(file.fsPath);
+    if (line === undefined) {
+      output.appendLine(`[copyPrompt] the prompt file path holds a line break: ${file.fsPath}`);
+      fileFailed = true;
+    } else {
+      let saved = false;
+      try {
+        await io.writePromptFile(file, prompt);
+        saved = true;
+      } catch (error) {
+        output.appendLine(`[copyPrompt] could not save the prompt file ${file.fsPath}: ${String(error)}`);
+        fileFailed = true;
+      }
+      if (saved) {
+        try {
+          await vscode.env.clipboard.writeText(line);
+          sent = await io.toTerminal();
+        } catch (error) {
+          output.appendLine(`[copyPrompt] sending to ${sendTarget} failed: ${String(error)}`);
+        }
+      }
+    }
+    if (!sent) await vscode.env.clipboard.writeText(prompt);
   }
   // After the write, so a clipboard failure leaves the notes file for the next attempt; before the
   // snapshot, which replaces the prompt order the notes were matched against.
@@ -110,6 +140,12 @@ export async function deliverPrompt(
   if (sendTarget === 'clipboard') {
     io.notify(promptCopiedMessage(count, review.targetPath));
   } else {
-    io.notify(sent ? promptSentMessage(count, sendTarget) : sendFallbackMessage(sendTarget));
+    io.notify(
+      sent
+        ? promptSentMessage(count, sendTarget)
+        : fileFailed
+          ? promptFileFailedMessage()
+          : sendFallbackMessage(sendTarget),
+    );
   }
 }
