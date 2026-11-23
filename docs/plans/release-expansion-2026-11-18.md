@@ -115,6 +115,8 @@ Planner decisions:
 - **D-q14** (V-33, auto-decided 2026-11-19) Accepted residual on N1's shape: `agentNotes.raw` stores the whole notes file in the sidecar, so a very large notes file makes a large sidecar. Notes files are short prose in practice. A digest or a cut `raw` is left for a later release, if a real file ever shows the cost.
 - **D-q15** (V-34, auto-decided 2026-11-19) Accepted for 0.1.0: the diagram's "N comments in source" marker counts every located comment in the source, including resolved and filtered-out ones without a card. The count is too high in that case, and no comment is hidden or lost.
 - **D-q16** (CI2, owner 2026-11-23) The terminal target never pastes the multi-line prompt. CI run 45178228385 on `windows-latest` recorded `first line…\rsecond line…\rthird line…` with no bracketed-paste markers: ConPTY does not pass the program's `ESC[?2004h` on, so every newline arrives as Enter (U1 is false on Windows; S4's FAILURE PATHS applied). On every platform, the terminal target now saves the prompt to a prompt file next to the sidecar (`promptFileName`: `.reviews/docs__a.md.prompt.md` in workspace mode, `<hash>.prompt.md` beside the global sidecar) and pastes the one line ``Read the review instructions in `<absolute fsPath>` and follow them.``. The line has no line break, so nothing is submitted early whether or not the terminal brackets the paste. The file is overwritten on each terminal send and is never deleted automatically. Chat and Copy keep the full prompt. If the file cannot be saved, or its path holds a line break, the full prompt stays on the clipboard and the message is `Markdown Review could not save the prompt file. The prompt was copied instead.`. A refused or failed terminal hand-off puts the full prompt back on the clipboard, with the existing no-terminal message. Rows S5, S6 and S7 carry it.
+- **D-q17** (V-36, owner rule "take the recommended option", 2026-11-23; changes D-q16's line) The pointer line puts the path in single quotes, not backticks: ``Read the review instructions in '<absolute fsPath>' and follow them.``. A backticked path is run as a command when Enter is pressed at a POSIX shell, and a `$(…)` in a target's name ran code (reproduced in zsh). Single quotes are literal in sh, bash, zsh, fish and PowerShell. A path holding any character that can break out of them or that cmd.exe treats specially (`'`, the PowerShell quotes `‘ ’ ‚ ‛`, `&`, `|`, `<`, `>`, `^`, `%`, or a line break) gets no line. The send then falls back to copy with `promptFileFailedMessage()`, as a line break already does. V5 carries it.
+- **D-q18** (V-37, owner rule "take the recommended option", 2026-11-23) Accepted residual under D33: a note that puts the comment number on one line and its reasons in list items or a following paragraph attaches only the first line to the card. The rest shows under "Notes from the agent", and nothing is dropped. Joining an unnumbered chunk to the numbered chunk before it would attach a general note that follows a numbered one to the wrong comment. O1's four-agent run shows how real agents write notes, and a later release can revisit this with that evidence.
 
 Rejected (discussion): shipping 0.1.0 now and deferring Mermaid; a "not rendered" label only.
 
@@ -1058,6 +1060,25 @@ Depends on: S6.
 Entry check: `grep -c "terminal on Windows" docs/plans/05-acceptance-run.md` prints 0.
 Done: committed, tracker row updated.
 
+### V5: The pointer line quotes the path so a shell cannot run it (lane: app)
+
+GOAL: Pressing Enter on the pasted pointer line at any shell runs nothing from the path; a path that cannot be quoted safely falls back to copy (D-q17).
+READ FIRST: `src/prompt/pointer.ts` (all of it); `src/test/pointer.test.ts` (all of it); `src/commands/copyPrompt.ts:105-115` (the line-break fallback and its log line); `src/test/integration/suite/send.spec.ts` the test `a prompt file path with a line break falls back to copy without writing` (mirror it).
+CHANGE:
+- `src/prompt/pointer.ts`: `promptPointerLine(filePath)` returns `undefined` when `filePath` matches `/[\r\n'\u2018\u2019\u201A\u201B&|<>^%]/`, else exactly `` `Read the review instructions in '${filePath}' and follow them.` ``. Name the regex `UNSAFE_IN_POINTER` at module level; the doc comment says why each group is there (line break = Enter, D-q16; quotes end the single-quoted string in sh and PowerShell; `& | < > ^ %` are special to cmd.exe even inside single quotes), D-q17.
+- `src/commands/copyPrompt.ts`: the log line for an undefined pointer becomes `[copyPrompt] the prompt file path cannot be pasted safely: <fsPath>`; nothing else changes.
+- `src/test/pointer.test.ts`: the first two tests expect the single-quoted form. New tests: `a path with a shell substitution is quoted, not run` (`'/w/docs/$(touch x).md.prompt.md'` gives the line with the path verbatim inside single quotes, and the line contains no backtick); `a path that could leave the quotes gives no line`, one `expect` each for `'`, `\u2019`, `&`, `|`, `<`, `>`, `^`, `%` inside an otherwise normal path; the existing line-break test stays.
+- `src/test/integration/suite/send.spec.ts`: a new test `a prompt file path with a quote falls back to copy without writing`, mirroring the line-break test with a target named `docs/send-quote'd.md`: no `writePromptFile` call, `toTerminalCalls` 0, the clipboard includes `Why three?`, `messages` is `[promptFileFailedMessage()]`'s exact string, and a baseline is taken.
+MIRROR: `src/test/integration/suite/send.spec.ts` line-break fallback test (V-35, 25fd0b9).
+INVARIANTS: D35 (no `sendText`); L-starter-tests-assert-values; L-no-network; layer direction (`src/prompt/` imports nothing from `vscode`).
+DECIDED: D-q17. Fall back rather than escape: there is no quoting that is safe in sh, PowerShell and cmd.exe at once, and such names are rare.
+OUT OF SCOPE: docs (the README names no quoting); `terminalPaste.spec.ts` (it builds its line through `promptPointerLine`, so it follows; `spec [draft]` holds none of the refused characters).
+ACCEPTANCE: `npx vitest run --project node src/test/pointer.test.ts`, then `npm run check`, then `npm run test:integration` (0 failed; rerun once on a 20 s timeout in a test this phase did not touch).
+FAILURE PATHS: an unsafe path → no write, the full prompt stays on the clipboard, `promptFileFailedMessage()`, a baseline is taken.
+Depends on: S7.
+Entry check: `grep -c UNSAFE_IN_POINTER src/prompt/pointer.ts` prints 0.
+Done: tests pass, committed, tracker row updated.
+
 ### CI2: A recorded green CI run on the final code (lane: infra, kind: owner)
 
 GOAL: The branch is pushed and both CI jobs pass on the final code, which settles U6.
@@ -1069,7 +1090,7 @@ DECIDED: D7, D37, D51. The branch can be pushed at any point after CI1 to see th
 OUT OF SCOPE: publishing.
 ACCEPTANCE: the Actions run for the branch's last commit shows `check` and `windows` green; the owner records the run URL in the tracker note.
 FAILURE PATHS: none: an owner run. A red job stops the release until its row is done.
-Depends on: S7.
+Depends on: V5.
 Entry check: `ls .github/workflows/ci.yml | wc -l` prints 1.
 Done: run recorded, tracker row updated.
 
@@ -1394,11 +1415,12 @@ coverage-hash: 0300423e
 | S5 | app | F | prompt file name, pointer line, message | done | tag | Tests 47 passed (47); Tests 714 passed (714) |
 | S6 | app | S5 | terminal send pastes one pointer line | done | tag | Tests 714 passed (714) |
 | S7 | docs | S6 | docs for the one-line terminal send | done | tag | 2; 0; 1; 1 |
-| CI2 | infra | S7 | recorded green CI run | todo | - | run 45176257671 red: toUri path (fixed 40d2dc8), Windows probe no TTY (fixed 73d8132); run 45178228385 red: Windows paste unbracketed → D-q16 |
+| V5 | app | S7 | pointer line quotes the path safely | todo | - | - |
+| CI2 | infra | V5 | recorded green CI run | todo | - | run 45176257671 red: toUri path (fixed 40d2dc8), Windows probe no TTY (fixed 73d8132); run 45178228385 red: Windows paste unbracketed → D-q16 |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |
 | V | all | S7 | verification | in-progress | - | - |
 
-**Order:** `0 → CI1 → B1 → A1 → A2 → M1 → M2 → M3 → M4 → M5 → M6 → W1 → W2 → W3 → W4 → W5 → N1 → N2 → N3 → N4 → N5 → N6 → S1 → S2 → S3 → S4 → T1 → H1 → P1 → R1 → F → S5 → S6 → S7 → CI2 → O1 → O2`
+**Order:** `0 → CI1 → B1 → A1 → A2 → M1 → M2 → M3 → M4 → M5 → M6 → W1 → W2 → W3 → W4 → W5 → N1 → N2 → N3 → N4 → N5 → N6 → S1 → S2 → S3 → S4 → T1 → H1 → P1 → R1 → F → S5 → S6 → S7 → V5 → CI2 → O1 → O2`
 
 The next phase is the first row whose state is not `done`, `skipped` or `dropped` and whose `depends on` rows are all `done`.
