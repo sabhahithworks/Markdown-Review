@@ -108,7 +108,7 @@ export async function deliverPrompt(
     const file = store.promptFileUri();
     const line = promptPointerLine(file.fsPath);
     if (line === undefined) {
-      output.appendLine(`[copyPrompt] the prompt file path holds a line break: ${file.fsPath}`);
+      output.appendLine(`[copyPrompt] the prompt file path cannot be pasted safely: ${file.fsPath}`);
       fileFailed = true;
     } else {
       let saved = false;

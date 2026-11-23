@@ -1415,7 +1415,7 @@ coverage-hash: 0300423e
 | S5 | app | F | prompt file name, pointer line, message | done | tag | Tests 47 passed (47); Tests 714 passed (714) |
 | S6 | app | S5 | terminal send pastes one pointer line | done | tag | Tests 714 passed (714) |
 | S7 | docs | S6 | docs for the one-line terminal send | done | tag | 2; 0; 1; 1 |
-| V5 | app | S7 | pointer line quotes the path safely | todo | - | - |
+| V5 | app | S7 | pointer line quotes the path safely | done | tag | Tests 5 passed (5); Tests 716 passed (716); 114 passed, 0 failed (run-tests.sh SUMMARY=none) |
 | CI2 | infra | V5 | recorded green CI run | todo | - | run 45176257671 red: toUri path (fixed 40d2dc8), Windows probe no TTY (fixed 73d8132); run 45178228385 red: Windows paste unbracketed → D-q16 |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |
