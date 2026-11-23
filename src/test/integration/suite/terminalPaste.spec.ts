@@ -38,11 +38,24 @@ function pasteIntoProbe(): Promise<string | undefined> {
     });
     try {
       terminal.show();
-      await waitFor(
-        () => vscode.window.activeTerminal === terminal && fs.existsSync(readyFile),
-        'the probe terminal to be active and ready',
-        PROBE_READY_TIMEOUT_MS,
-      );
+      try {
+        await waitFor(
+          () => vscode.window.activeTerminal === terminal && fs.existsSync(readyFile),
+          'the probe terminal to be active and ready',
+          PROBE_READY_TIMEOUT_MS,
+        );
+      } catch (err) {
+        const probeError = fs.existsSync(`${readyFile}.err`) ? fs.readFileSync(`${readyFile}.err`, 'utf8') : '<none>';
+        const detail = [
+          `active=${vscode.window.activeTerminal === terminal}`,
+          `activeName=${vscode.window.activeTerminal?.name ?? '<none>'}`,
+          `ready=${fs.existsSync(readyFile)}`,
+          `exitStatus=${JSON.stringify(terminal.exitStatus)}`,
+          `execPath=${process.execPath}`,
+          `probeError=${probeError}`,
+        ].join('; ');
+        throw new Error(`${(err as Error).message}; ${detail}`, { cause: err });
+      }
       await delay(PASTE_SETTLE_MS);
 
       const text = LINES.join('\n');
