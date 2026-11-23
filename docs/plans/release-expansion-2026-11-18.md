@@ -1394,7 +1394,7 @@ coverage-hash: 0300423e
 | S5 | app | F | prompt file name, pointer line, message | todo | - | - |
 | S6 | app | S5 | terminal send pastes one pointer line | todo | - | - |
 | S7 | docs | S6 | docs for the one-line terminal send | todo | - | - |
-| CI2 | infra | S7 | recorded green CI run | todo | - | run 45176257671 red: toUri path (fixed 6f6241c), Windows probe no TTY (fixed e7c15ef); run 45178228385 red: Windows paste unbracketed → D-q16 |
+| CI2 | infra | S7 | recorded green CI run | todo | - | run 45176257671 red: toUri path (fixed 40d2dc8), Windows probe no TTY (fixed 73d8132); run 45178228385 red: Windows paste unbracketed → D-q16 |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |
 | V | all | F | verification | done | 34d77f7 | wf_1518a4e0-dbf on e6dfee4: 707 unit, 110 integration green; V-32/V-33/V-34 accepted (D-q13–D-q15) |
