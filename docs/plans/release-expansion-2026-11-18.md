@@ -79,7 +79,7 @@ Planner decisions:
 - **D32** The notes file is `.reviews/<sidecar base>.notes.md`, for example `.reviews/docs__specs__auth.md.notes.md`. It does not match `.reviews/*.json`, so activation and the review index ignore it.
 - **D33** Attaching a note to a card. Input: the notes text, NFC-normalized, `\r\n` → `\n`. Chunks: split at blank lines and before every list-item line (`^[ \t]*(?:[-*+]|\d+[.)])[ \t]+`); each chunk is trimmed and holds no blank line. A chunk's numbers are every match of `#(\d{1,3})\b`, `\bcomments?\s+#?(\d{1,3})\b`, `\bitems?\s+#?(\d{1,3})\b` (case-insensitive) and a leading `^[ \t]*(\d{1,3})[.)][ \t]`, parsed to integers. A number attaches when `1 ≤ n ≤ promptOrder.length` (integers on both sides) and `promptOrder[n - 1]` is still a comment. A chunk with no attaching number is unattached. Nothing is dropped. rule: `src/detect/agentNotes.ts`
 - **D34** `NOTES_MAX_CHARS = 16_000`. Longer notes are cut there and the D22 line is shown. Notes are rendered with `textContent` only, never as markup.
-- **D35** Send mechanics. Chat: `workbench.action.chat.open` with `{ query, isPartialQuery: true }`. Terminal: write the clipboard, focus the terminal, then `workbench.action.terminal.paste`. `Terminal.sendText` is never used, in any fallback: in a shell without bracketed paste it would run each prompt line as a command. The baseline snapshot is taken after a successful hand-off, as for copy. Any failure falls back to copy with the approved message, and the baseline is still taken because the prompt is on the clipboard. If S4 cannot prove the paste, it stops for the owner. rule: `src/commands/promptTargets.ts`
+- **D35** Send mechanics. Chat: `workbench.action.chat.open` with `{ query, isPartialQuery: true }`. Terminal: write the clipboard, focus the terminal, then `workbench.action.terminal.paste`. `Terminal.sendText` is never used, in any fallback: in a shell without bracketed paste it would run each prompt line as a command. The baseline snapshot is taken after a successful hand-off, as for copy. Any failure falls back to copy with the approved message, and the baseline is still taken because the prompt is on the clipboard. If S4 cannot prove the paste, it stops for the owner. rule: `src/commands/promptTargets.ts` **Amended 2026-11-23 by D-q16:** the terminal target pastes a one-line pointer to a saved prompt file, never the prompt.
 - **D36** New commands `markdownReview.sendPromptToChat` and `markdownReview.sendPromptToTerminal`, available in the palette. Activation stays inferred from `contributes.commands`.
 - **D37** "No network calls" binds shipped code only (L-no-network's scope is `src/**`, `media/src/**`), so CI on GitHub is allowed. CI jobs: `ubuntu-latest` (check, build, integration under `xvfb-run`) and `windows-latest` (unit, build, integration). Both set `PERF=0`: the 5 MB timing suite is not meaningful on a shared runner and stays a local gate.
 - **D38** `SECURITY.md` lives at `.github/SECURITY.md` and points to GitHub private vulnerability reporting, so no email address is published. O2 enables that repo setting.
@@ -114,12 +114,13 @@ Planner decisions:
 - **D-q13** (V-32, auto-decided 2026-11-19) Accepted residual under D47: when the agent rewrites the notes file within a round, the current round's unattached notes are rebuilt from carried notes plus the new read, so a general note the user never dismissed and the agent removed is no longer shown. A rewrite is treated as a revision. Keeping the old text would show a revised note twice, because nothing identifies a revision.
 - **D-q14** (V-33, auto-decided 2026-11-19) Accepted residual on N1's shape: `agentNotes.raw` stores the whole notes file in the sidecar, so a very large notes file makes a large sidecar. Notes files are short prose in practice. A digest or a cut `raw` is left for a later release, if a real file ever shows the cost.
 - **D-q15** (V-34, auto-decided 2026-11-19) Accepted for 0.1.0: the diagram's "N comments in source" marker counts every located comment in the source, including resolved and filtered-out ones without a card. The count is too high in that case, and no comment is hidden or lost.
+- **D-q16** (CI2, owner 2026-11-23) The terminal target never pastes the multi-line prompt. CI run 45178228385 on `windows-latest` recorded `first line…\rsecond line…\rthird line…` with no bracketed-paste markers: ConPTY does not pass the program's `ESC[?2004h` on, so every newline arrives as Enter (U1 is false on Windows; S4's FAILURE PATHS applied). On every platform, the terminal target now saves the prompt to a prompt file next to the sidecar (`promptFileName`: `.reviews/docs__a.md.prompt.md` in workspace mode, `<hash>.prompt.md` beside the global sidecar) and pastes the one line ``Read the review instructions in `<absolute fsPath>` and follow them.``. The line has no line break, so nothing is submitted early whether or not the terminal brackets the paste. The file is overwritten on each terminal send and is never deleted automatically. Chat and Copy keep the full prompt. If the file cannot be saved, or its path holds a line break, the full prompt stays on the clipboard and the message is `Markdown Review could not save the prompt file. The prompt was copied instead.`. A refused or failed terminal hand-off puts the full prompt back on the clipboard, with the existing no-terminal message. Rows S5, S6 and S7 carry it.
 
 Rejected (discussion): shipping 0.1.0 now and deferring Mermaid; a "not rendered" label only.
 
 ## UNCONFIRMED
 
-- **U1** `workbench.action.terminal.paste` delivers multi-line text as one bracketed paste to a program that enabled bracketed-paste mode. Confirmed by S4's extension-host test. Blocks S4. There is no code fallback (D35): if it fails, S4 stops as `blocked` for the owner.
+- **U1** `workbench.action.terminal.paste` delivers multi-line text as one bracketed paste to a program that enabled bracketed-paste mode. Confirmed by S4's extension-host test. Blocks S4. There is no code fallback (D35): if it fails, S4 stops as `blocked` for the owner. **Disproved on Windows** (CI run 45178228385, recorded bytes in `CI2.md`); superseded by D-q16.
 - **U2** The VS Code version that introduced `isPartialQuery`, and whether Cursor supports the command (a forum post says no). Not chased: S2 falls back to copy with the D22 message whenever the command is missing or throws, and O1 checks it in current VS Code and in Cursor.
 - **U3** Mermaid runs under the pane's CSP without `'unsafe-eval'`. The bundle has three `Function("return this")()` fallbacks behind short-circuits and no `eval(`. Confirmed by M2's probe in a real browser, before anything is built on it. Blocks M2. Fallback: none is acceptable; `'unsafe-eval'` is never added, and M2 stops for the owner.
 - **U4** `htmlLabels: false` yields SVG text labels. Confirmed by the same M2 probe (flowchart and sequence diagram) and again per theme in M6. Fallback in M4's brief: add `ADD_TAGS: ['foreignobject']` and `HTML_INTEGRATION_POINTS: { foreignobject: true }` to the sanitize options, mirroring Mermaid's own DOMPurify config.
@@ -995,6 +996,68 @@ Depends on: R1.
 Entry check: `git status --porcelain | grep -v '^??' | wc -l` prints 0.
 Done: gates pass, tracker row updated.
 
+### S5: Prompt file name, pointer line and message (lane: app)
+
+GOAL: The pieces the one-line terminal send needs exist and are unit-tested: the prompt file's name and location, the pointer line, and the failure message (D-q16).
+READ FIRST: `src/store/sidecarPath.ts:50-58` (`notesFileName`, `notesPromptPath`, the shape to copy); `src/store/ReviewStore.ts:708-712` (`notesPromptPath()`, where the new method goes); `src/panel/notices.ts:38-51` (`promptSentMessage`, `sendFallbackMessage`); `src/test/sidecarPath.test.ts:160-170`; `src/test/notices.test.ts`.
+CHANGE:
+- `src/store/sidecarPath.ts`: add `export function promptFileName(sidecarName: string): string` directly after `notesFileName`, returning `` `${sidecarName.replace(/\.json$/, '')}.prompt.md` ``, with a one-line doc comment in the style of `notesFileName`.
+- `src/prompt/pointer.ts`: new, with no `vscode` import. `export function promptPointerLine(filePath: string): string | undefined` returns `undefined` when `filePath` contains `\r` or `\n`. Otherwise it returns exactly ``Read the review instructions in `${filePath}` and follow them.``. The doc comment says why it is one line (D-q16: ConPTY on Windows does not bracket a paste, so a newline would be Enter).
+- `src/panel/notices.ts`: add `export function promptFileFailedMessage(): string` after `sendFallbackMessage`, returning `'Markdown Review could not save the prompt file. The prompt was copied instead.'`.
+- `src/store/ReviewStore.ts`: import `promptFileName`; add a public `promptFileUri(): vscode.Uri` after `notesPromptPath()`, returning `vscode.Uri.joinPath(this.sidecar, '..', promptFileName(path.basename(this.sidecar.fsPath)))`, with a doc comment: beside the sidecar in either storage mode.
+- `src/test/sidecarPath.test.ts`: tests `promptFileName replaces the json suffix` (`docs__specs__auth.md.json` → `docs__specs__auth.md.prompt.md`), `promptFileName appends without a json suffix` (`a.md` → `a.md.prompt.md`) and `promptFileName keeps a global hashed name` (`0123456789abcdef.json` → `0123456789abcdef.prompt.md`).
+- `src/test/pointer.test.ts`: new. `the line names the path in backticks and holds no line break`: `'/w/.reviews/docs__a.md.prompt.md'` gives exactly ``Read the review instructions in `/w/.reviews/docs__a.md.prompt.md` and follow them.``, which does not match `/[\r\n]/`. `a Windows path is kept verbatim`: `'C:\\Users\\a b\\.reviews\\x.prompt.md'` appears unchanged between the backticks. `a path with a line break gives no line`: `'/w/a\nb'` and `'/w/a\rb'` give `undefined`.
+- `src/test/notices.test.ts`: `promptFileFailedMessage` equals the exact string above.
+MIRROR: `src/store/sidecarPath.ts:50-53` (`notesFileName`) and its test at `src/test/sidecarPath.test.ts:164`.
+INVARIANTS: L-starter-tests-assert-values; no new dependencies; layer direction (`src/prompt/` and `src/store/sidecarPath.ts` import nothing from `vscode`).
+DECIDED: D-q16. An absolute `fsPath` in the line, not a workspace-relative path, so it works whatever the terminal's cwd. A name beside the sidecar, so global mode needs no new location.
+OUT OF SCOPE: `src/commands/` (S6); docs (S7); deleting the prompt file.
+ACCEPTANCE: `npx vitest run --project node src/test/sidecarPath.test.ts src/test/pointer.test.ts src/test/notices.test.ts`, then `npm run check`.
+FAILURE PATHS: a path with a line break returns `undefined` (S6 turns that into the file-failed copy).
+Depends on: F.
+Entry check: `ls src/prompt/pointer.ts 2>/dev/null | wc -l` prints 0.
+Done: tests pass, committed, tracker row updated.
+
+### S6: The terminal send pastes one line that points at the prompt file (lane: app)
+
+GOAL: *Send to → Active terminal* saves the prompt to the prompt file and pastes only the one pointer line, so no platform can submit it early. Any failure leaves the full prompt on the clipboard (D-q16).
+READ FIRST: `src/commands/copyPrompt.ts:84-115` (build, clipboard, hand-off, round end, baseline, message); `src/commands/promptTargets.ts` (all of it, 45 lines); `src/test/integration/suite/send.spec.ts:15-60` (the `recorder`, `seed`) and `:102-124` (`falls back to copy`); `src/test/integration/suite/terminalPaste.spec.ts` (all of it: the probe, `probeShell`, the diagnostics).
+CHANGE:
+- `src/commands/promptTargets.ts`: `PromptIo` gains `writePromptFile(file: vscode.Uri, text: string): Promise<void>`. `defaultIo.writePromptFile` runs `await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(file, '..'))`, then `await vscode.workspace.fs.writeFile(file, new TextEncoder().encode(text))`. The header comment says the terminal receives the one pointer line on the clipboard, never the prompt (D-q16), and this file still never types into a terminal (D35).
+- `src/commands/copyPrompt.ts`: replace the hand-off block (`let sent = false; if (sendTarget !== 'clipboard') {…}`) with the following. `chat` works as today: `try { sent = await io.toChat(prompt) } catch → log`. `terminal`: `const file = store.promptFileUri()`, `const line = promptPointerLine(file.fsPath)`, and a `let fileFailed = false`. When `line === undefined`, log `[copyPrompt] the prompt file path holds a line break: <fsPath>` and set `fileFailed`. Otherwise, in a `try`, `await io.writePromptFile(file, prompt)`; on a throw, log `[copyPrompt] could not save the prompt file <fsPath>: <error>` and set `fileFailed`. If the write succeeded: `try { await vscode.env.clipboard.writeText(line); sent = await io.toTerminal(); } catch → log as today`, then `if (!sent) await vscode.env.clipboard.writeText(prompt)`. The final message: `sent ? promptSentMessage(count, sendTarget) : fileFailed ? promptFileFailedMessage() : sendFallbackMessage(sendTarget)`. `endNotesRound` and `snapshotBaseline` stay where they are, after the hand-off, so a baseline is taken on every path that reaches them, as today. Update the comment above the hand-off.
+- `src/test/integration/suite/send.spec.ts`: `recorder` gains a third optional parameter `write: (file: vscode.Uri, text: string) => Promise<void> = (f, t) => defaultIo.writePromptFile(f, t)` and a `clipboardAtTerminal: string[]` field. Its `toTerminal` pushes `await vscode.env.clipboard.readText()` before calling the stub. New tests:
+  - `terminal target pastes one line that points at the prompt file`: `seed('send-term-line')`, terminal stub `true`. `clipboardAtTerminal` is `[promptPointerLine(file.fsPath)]`, where `file = workspaceUri(REVIEWS_DIR, 'docs__send-term-line.md.prompt.md')`, and it does not match `/[\r\n]/`. The file's text includes `Why three?` and a `\n`. `messages` is `['1 comment pasted into the terminal. Press Enter to send.']`. A baseline is taken.
+  - `a prompt file that cannot be saved falls back to copy`: `write` rejects with `new Error('disk full')`. `toTerminalCalls` is 0, the clipboard includes `Why three?`, `messages` is `['Markdown Review could not save the prompt file. The prompt was copied instead.']`, and a baseline is taken.
+  - `falls back to copy` keeps every assertion: its terminal cases now pass because the full prompt is restored to the clipboard.
+- `src/test/integration/suite/terminalPaste.spec.ts`: the proof is now that the pointer line reaches a terminal program whole and with no line break, on every platform. Write `promptPointerLine(path.join(dir, 'spec [draft].md.prompt.md'))` to the clipboard (assert it is defined) in place of the three lines, then `defaultIo.toTerminal()`. Wait (PASTE_ARRIVAL_TIMEOUT_MS) until the record, with every `\x1b[200~` and `\x1b[201~` removed, includes the line, then settle for TAIL_SETTLE_MS. The two tests become `the pointer line arrives whole` (the stripped record equals the line exactly) and `no line break reaches the terminal` (the raw record does not match `/[\r\n]/`). Keep `probeShell`, the ready diagnostics, the Linux clipboard skip and the probe fixture unchanged. Remove the now-unused `LINES` and the marker-order assertions. Rewrite the header comment to say why (D-q16, the CI run's recorded bytes).
+MIRROR: `src/test/integration/suite/send.spec.ts:88-101` (`chat target hands over the prompt`) for the new send tests.
+INVARIANTS: D35 (`Terminal.sendText` is never used); L-no-network; L-extend-harnesses; L-starter-tests-assert-values; the baseline is taken after the hand-off (PRD §7); the extension never deletes user data (the prompt file is only overwritten).
+DECIDED: D-q16. The failure message is `promptFileFailedMessage()` from S5. No change to `promptSentMessage` wording. The file is written even when no terminal turns out to be open; it is overwritten on the next send.
+OUT OF SCOPE: chat and copy delivery; deleting the prompt file; docs (S7); `pasteProbe.cjs`.
+ACCEPTANCE: `npm run check`, then `npm run test:integration`, which reports 0 failed. When a 20 s timeout hits a test this phase did not touch, rerun once. Windows is proven by CI2's run.
+FAILURE PATHS: the file cannot be saved, or its path holds a line break → the full prompt is on the clipboard, `promptFileFailedMessage()`, a baseline is taken. No terminal, or the paste throws → the full prompt is restored to the clipboard, the existing no-terminal message, a baseline is taken.
+Depends on: S5.
+Entry check: `grep -c writePromptFile src/commands/promptTargets.ts` prints 0.
+Done: tests pass, committed, tracker row updated.
+
+### S7: Docs for the one-line terminal send (lane: docs, kind: docs)
+
+GOAL: The README, changelog and acceptance runsheet describe the terminal send as it now works (D-q16).
+READ FIRST: `README.md:60-66`; `CHANGELOG.md:30-36`; `docs/plans/05-acceptance-run.md:104-113`.
+CHANGE:
+- `README.md` "Send to chat or terminal": the terminal saves the prompt to `.reviews/<name>.prompt.md` and pastes one line pointing at it into the active terminal, so the prompt cannot be sent early, even in a terminal that does not bracket a paste (Windows). The file is overwritten on each send; add `.reviews/*.prompt.md` to `.gitignore` to keep it out of commits. Drop the sentence about VS Code's multi-line paste warning. Nothing is submitted, and an unavailable target still means the prompt is copied.
+- `CHANGELOG.md` Unreleased, Added: amend the Send bullet so the terminal half reads "paste a one-line pointer to the saved prompt file into the active terminal".
+- `docs/plans/05-acceptance-run.md`: the `S, terminal with Claude Code and with Codex` box says one line is pasted, nothing is submitted, and after Enter the agent reads the prompt file and edits the document. The `S, plain shell prompt (U8)` box says the line is pasted and nothing runs until Enter. A new box after them: `**S, terminal on Windows.** *Send to* terminal in Claude Code on Windows: one line is pasted, nothing is submitted, and after Enter the agent follows the prompt file.`
+MIRROR: the existing box style at `docs/plans/05-acceptance-run.md:108-111`.
+INVARIANTS: L-changelog-unreleased.
+DECIDED: D-q16.
+OUT OF SCOPE: code.
+ACCEPTANCE: `grep -c "prompt.md" README.md` prints ≥ 1; `grep -c "multi-line paste warning" README.md` prints 0; `grep -c "terminal on Windows" docs/plans/05-acceptance-run.md` prints 1; `grep -c "one-line pointer" CHANGELOG.md` prints ≥ 1.
+FAILURE PATHS: none: docs only.
+Depends on: S6.
+Entry check: `grep -c "terminal on Windows" docs/plans/05-acceptance-run.md` prints 0.
+Done: committed, tracker row updated.
+
 ### CI2: A recorded green CI run on the final code (lane: infra, kind: owner)
 
 GOAL: The branch is pushed and both CI jobs pass on the final code, which settles U6.
@@ -1006,7 +1069,7 @@ DECIDED: D7, D37, D51. The branch can be pushed at any point after CI1 to see th
 OUT OF SCOPE: publishing.
 ACCEPTANCE: the Actions run for the branch's last commit shows `check` and `windows` green; the owner records the run URL in the tracker note.
 FAILURE PATHS: none: an owner run. A red job stops the release until its row is done.
-Depends on: F.
+Depends on: S7.
 Entry check: `ls .github/workflows/ci.yml | wc -l` prints 1.
 Done: run recorded, tracker row updated.
 
@@ -1328,11 +1391,14 @@ coverage-hash: 0300423e
 | V2 | app | V1 | read-only store after an unsafe load | done | tag | 1 fix round; Tests 703 passed (703) |
 | V3 | app | V2 | watchers match glob-character names | done | tag | Tests 4 passed (4); Tests 707 passed (707) |
 | V4 | app | V3 | integration suite builds the extension | done | tag | Tests 707 passed (707) |
-| CI2 | infra | F | recorded green CI run | todo | - | - |
+| S5 | app | F | prompt file name, pointer line, message | todo | - | - |
+| S6 | app | S5 | terminal send pastes one pointer line | todo | - | - |
+| S7 | docs | S6 | docs for the one-line terminal send | todo | - | - |
+| CI2 | infra | S7 | recorded green CI run | todo | - | run 45176257671 red: toUri path (fixed 6f6241c), Windows probe no TTY (fixed e7c15ef); run 45178228385 red: Windows paste unbracketed → D-q16 |
 | O1 | docs | CI2 | manual acceptance, four agents | todo | - | - |
 | O2 | docs | O1 | package, record, publish | todo | - | - |
 | V | all | F | verification | done | 34d77f7 | wf_1518a4e0-dbf on e6dfee4: 707 unit, 110 integration green; V-32/V-33/V-34 accepted (D-q13–D-q15) |
 
-**Order:** `0 → CI1 → B1 → A1 → A2 → M1 → M2 → M3 → M4 → M5 → M6 → W1 → W2 → W3 → W4 → W5 → N1 → N2 → N3 → N4 → N5 → N6 → S1 → S2 → S3 → S4 → T1 → H1 → P1 → R1 → F → CI2 → O1 → O2`
+**Order:** `0 → CI1 → B1 → A1 → A2 → M1 → M2 → M3 → M4 → M5 → M6 → W1 → W2 → W3 → W4 → W5 → N1 → N2 → N3 → N4 → N5 → N6 → S1 → S2 → S3 → S4 → T1 → H1 → P1 → R1 → F → S5 → S6 → S7 → CI2 → O1 → O2`
 
 The next phase is the first row whose state is not `done`, `skipped` or `dropped` and whose `depends on` rows are all `done`.
