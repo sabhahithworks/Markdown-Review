@@ -22,6 +22,20 @@ const LINES = ['first line of the prompt', 'second line of the prompt', 'third l
 
 const PROBE = path.resolve(__dirname, '..', 'src', 'test', 'integration', 'fixtures', 'pasteProbe.cjs');
 
+/**
+ * The program that runs the probe. On Windows, Code.exe is a GUI-subsystem binary: run as Node
+ * under ConPTY it gets no TTY (`stdin.isTTY` undefined, no `setRawMode`), so the probe needs a
+ * console `node.exe` from PATH. Elsewhere the extension host's own binary works as Node.
+ */
+function probeShell(): string {
+  if (process.platform !== 'win32') return process.execPath;
+  for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
+    const candidate = path.join(dir, 'node.exe');
+    if (dir && fs.existsSync(candidate)) return candidate;
+  }
+  throw new Error('the terminal paste probe needs node.exe on PATH on Windows');
+}
+
 let recorded: Promise<string | undefined> | undefined;
 
 /** Runs the paste once and returns the bytes the probe saw, or undefined when the clipboard is unavailable. */
@@ -32,7 +46,7 @@ function pasteIntoProbe(): Promise<string | undefined> {
     const readyFile = path.join(dir, 'ready');
     const terminal = vscode.window.createTerminal({
       name: 'paste probe',
-      shellPath: process.execPath,
+      shellPath: probeShell(),
       shellArgs: [PROBE, recordFile, readyFile],
       env: { ELECTRON_RUN_AS_NODE: '1' },
     });
@@ -51,7 +65,7 @@ function pasteIntoProbe(): Promise<string | undefined> {
           `activeName=${vscode.window.activeTerminal?.name ?? '<none>'}`,
           `ready=${fs.existsSync(readyFile)}`,
           `exitStatus=${JSON.stringify(terminal.exitStatus)}`,
-          `execPath=${process.execPath}`,
+          `shell=${probeShell()}`,
           `probeError=${probeError}`,
         ].join('; ');
         throw new Error(`${(err as Error).message}; ${detail}`, { cause: err });
