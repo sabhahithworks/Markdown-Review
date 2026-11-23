@@ -52,6 +52,11 @@ export function notesFileName(sidecarName: string): string {
   return `${sidecarName.replace(/\.json$/, '')}.notes.md`;
 }
 
+/** The prompt file for a sidecar: a trailing `.json` becomes `.prompt.md`, otherwise `.prompt.md` is appended. */
+export function promptFileName(sidecarName: string): string {
+  return `${sidecarName.replace(/\.json$/, '')}.prompt.md`;
+}
+
 /** The notes path as the prompt names it: forward slashes by concatenation, never `path.join`. */
 export function notesPromptPath(sidecarName: string): string {
   return `${REVIEWS_DIR}/${notesFileName(sidecarName)}`;

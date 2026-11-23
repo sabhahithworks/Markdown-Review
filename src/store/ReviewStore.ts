@@ -33,6 +33,7 @@ import {
   globalSidecarFileName,
   notesFileName,
   notesPromptPath as toNotesPromptPath,
+  promptFileName,
   sidecarFileName,
   toTargetPath,
 } from './sidecarPath.js';
@@ -709,6 +710,11 @@ export class ReviewStore {
   /** The notes file as the prompt names it, or undefined when the review is not stored in the workspace. */
   notesPromptPath(): string | undefined {
     return this.notes === undefined ? undefined : toNotesPromptPath(path.basename(this.sidecar.fsPath));
+  }
+
+  /** The prompt file, beside the sidecar in either storage mode. */
+  promptFileUri(): vscode.Uri {
+    return vscode.Uri.joinPath(this.sidecar, '..', promptFileName(path.basename(this.sidecar.fsPath)));
   }
 
   /**

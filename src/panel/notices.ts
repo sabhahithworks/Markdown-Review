@@ -50,6 +50,11 @@ export function sendFallbackMessage(target: SendTarget): string {
     : 'VS Code chat is not available here. The prompt was copied instead.';
 }
 
+/** Shown when the prompt file could not be written and the prompt was copied instead. */
+export function promptFileFailedMessage(): string {
+  return 'Markdown Review could not save the prompt file. The prompt was copied instead.';
+}
+
 /** Shown instead of copying when there is nothing to ask for (Plan 04 §4). */
 export function noOpenCommentsMessage(targetPath: string): string {
   return `No open comments on ${targetPath}.`;

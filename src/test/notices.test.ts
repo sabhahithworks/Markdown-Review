@@ -17,6 +17,7 @@ import {
   noOpenCommentsMessage,
   nothingToClearMessage,
   promptCopiedMessage,
+  promptFileFailedMessage,
   promptSentMessage,
   sendFallbackMessage,
   badgeText,
@@ -162,6 +163,14 @@ describe('indicator wording', () => {
   it('status bar tooltip ends with the re-check line', () => {
     expect(statusBarTooltip(counts(1, 0, 0))).toBe(
       '1 open · 0 to confirm · 0 needs re-link\nOpen the review to check for changes.',
+    );
+  });
+});
+
+describe('promptFileFailedMessage', () => {
+  it('matches the specified wording', () => {
+    expect(promptFileFailedMessage()).toBe(
+      'Markdown Review could not save the prompt file. The prompt was copied instead.',
     );
   });
 });

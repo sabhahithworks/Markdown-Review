@@ -1391,7 +1391,7 @@ coverage-hash: 0300423e
 | V2 | app | V1 | read-only store after an unsafe load | done | tag | 1 fix round; Tests 703 passed (703) |
 | V3 | app | V2 | watchers match glob-character names | done | tag | Tests 4 passed (4); Tests 707 passed (707) |
 | V4 | app | V3 | integration suite builds the extension | done | tag | Tests 707 passed (707) |
-| S5 | app | F | prompt file name, pointer line, message | todo | - | - |
+| S5 | app | F | prompt file name, pointer line, message | done | tag | Tests 47 passed (47); Tests 714 passed (714) |
 | S6 | app | S5 | terminal send pastes one pointer line | todo | - | - |
 | S7 | docs | S6 | docs for the one-line terminal send | todo | - | - |
 | CI2 | infra | S7 | recorded green CI run | todo | - | run 45176257671 red: toUri path (fixed 40d2dc8), Windows probe no TTY (fixed 73d8132); run 45178228385 red: Windows paste unbracketed → D-q16 |
