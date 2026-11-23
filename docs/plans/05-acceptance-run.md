@@ -106,9 +106,12 @@ just produces a verified archive of an unverified product.
 - [ ] **S, send to chat.** *Send to* chat in VS Code puts the prompt in the chat input and submits
       nothing.
 - [ ] **S, terminal with Claude Code and with Codex.** *Send to* terminal in a terminal running
-      Claude Code, then in one running Codex: the prompt is pasted and not submitted.
-- [ ] **S, plain shell prompt (U8).** *Send to* terminal at a plain shell prompt: VS Code's own
-      multi-line paste warning appears and nothing runs. If prompt lines run, this box is red.
+      Claude Code, then in one running Codex: one line is pasted, nothing is submitted, and after
+      Enter the agent reads the prompt file and edits the document.
+- [ ] **S, plain shell prompt (U8).** *Send to* terminal at a plain shell prompt: the line is pasted
+      and nothing runs until Enter. If prompt lines run, this box is red.
+- [ ] **S, terminal on Windows.** *Send to* terminal in Claude Code on Windows: one line is pasted,
+      nothing is submitted, and after Enter the agent follows the prompt file.
 - [ ] **S, fallback in Cursor.** In Cursor, where the chat command may be missing, the prompt is
       copied instead and a message says so.
 - [ ] **W, whole-document comment.** Add one with **Comment on document**, copy the prompt, let an

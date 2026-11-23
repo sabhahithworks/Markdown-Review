@@ -61,9 +61,11 @@ footnotes survives an agent's edit.
 
 Besides copying the prompt, the header's **Send to** menu (and the commands *Send Review Prompt to
 Chat* and *Send Review Prompt to Terminal*) delivers it for you. Chat opens VS Code's chat with the
-prompt typed in; the terminal gets it pasted into the active terminal. Nothing is submitted: you press
-Enter yourself. At a plain shell prompt VS Code shows its own multi-line paste warning, and nothing
-runs until you confirm. If the target is unavailable, the prompt is copied instead.
+prompt typed in. The terminal saves the prompt to `.reviews/<name>.prompt.md` and pastes one line
+pointing at it into the active terminal, so the prompt cannot be sent early, even in a terminal that
+does not bracket a paste (Windows). The file is overwritten on each send; add `.reviews/*.prompt.md`
+to `.gitignore` to keep it out of commits. Nothing is submitted: you press Enter yourself. If the
+target is unavailable, the prompt is copied instead.
 
 ## Whole-document comments
 
