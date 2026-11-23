@@ -27,7 +27,11 @@ describe('promptPointerLine', () => {
 
   it('a path that could leave the quotes gives no line', () => {
     expect(promptPointerLine("/w/a'b.md")).toBeUndefined();
+    // PowerShell takes all four typographic single quotes as a quote (D-q17).
+    expect(promptPointerLine('/w/a\u2018b.md')).toBeUndefined();
     expect(promptPointerLine('/w/a\u2019b.md')).toBeUndefined();
+    expect(promptPointerLine('/w/a\u201ab.md')).toBeUndefined();
+    expect(promptPointerLine('/w/a\u201bb.md')).toBeUndefined();
     expect(promptPointerLine('/w/a&b.md')).toBeUndefined();
     expect(promptPointerLine('/w/a|b.md')).toBeUndefined();
     expect(promptPointerLine('/w/a<b.md')).toBeUndefined();
